@@ -530,6 +530,7 @@ export class CmsService {
        JOIN organizations o ON o.id = eo.organization_id
        LEFT JOIN users u ON u.id = eo.created_by_user_id
        WHERE eo.revoked_at IS NULL
+         AND (eo.expires_at IS NULL OR eo.expires_at > now())
        ORDER BY o.name, eo.entitlement_key`
     );
 
