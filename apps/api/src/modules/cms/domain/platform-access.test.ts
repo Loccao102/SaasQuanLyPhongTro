@@ -26,3 +26,27 @@ test("ops operator can manage jobs but not settings", () => {
     false
   );
 });
+
+test("only platform admin gets entitlement override management by default", () => {
+  assert.equal(
+    platformRoleHasPermission(
+      "PLATFORM_ADMIN",
+      "platform.entitlements.manage"
+    ),
+    true
+  );
+  assert.equal(
+    platformRoleHasPermission(
+      "SUPPORT_OPERATOR",
+      "platform.entitlements.manage"
+    ),
+    false
+  );
+  assert.equal(
+    platformRoleHasPermission(
+      "OPS_OPERATOR",
+      "platform.entitlements.manage"
+    ),
+    false
+  );
+});
