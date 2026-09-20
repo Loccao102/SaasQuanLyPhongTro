@@ -27,6 +27,29 @@ export function MetricCard({
   );
 }
 
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+  action
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <header className="page-header">
+      <div className="page-header__copy">
+        {eyebrow ? <span className="page-header__eyebrow">{eyebrow}</span> : null}
+        <h1>{title}</h1>
+        {description ? <p>{description}</p> : null}
+      </div>
+      {action ? <div className="page-header__action">{action}</div> : null}
+    </header>
+  );
+}
+
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <div className="section-header">
@@ -49,4 +72,8 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
       </div>
     </div>
   );
+}
+
+export function MoneyDisplay({ amountVnd }: { amountVnd: number }) {
+  return <>{new Intl.NumberFormat("vi-VN").format(amountVnd)}đ</>;
 }

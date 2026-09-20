@@ -50,9 +50,15 @@ jobs:
         run: |
           docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
 
+          docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
+
+          docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.down.sql
+
           docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0001_identity_property_foundation.down.sql
 
           docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
+
+          docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
 
       - name: Build
         run: pnpm build

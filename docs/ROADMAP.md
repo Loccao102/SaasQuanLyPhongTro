@@ -10,7 +10,18 @@
 - Property/floor/room model.
 - CI: lint, typecheck, unit tests, migration checks.
 
-## Phase 1 — Metering
+## Phase 1 — Leasing
+
+- Resident records.
+- Lease lifecycle and room occupancy invariant.
+- Lease parties.
+- Contract create/activate flow.
+- Termination orchestration.
+- Deposit readiness.
+- Renewal/amendment workflow.
+- Admin contract screens.
+
+## Phase 2 — Metering
 
 - Billing cycles.
 - Staff assignments.
@@ -19,7 +30,7 @@
 - Meter validation and anomaly warning.
 - Admin progress tracking.
 
-## Phase 2 — Billing
+## Phase 3 — Billing
 
 - Pricing policies.
 - Invoice + invoice lines.
@@ -27,7 +38,7 @@
 - VietQR/deeplink abstraction.
 - Excel import/export.
 
-## Phase 3 — Notifications
+## Phase 4 — Notifications
 
 - Notification job/attempt model.
 - Queue worker.
@@ -35,7 +46,7 @@
 - Retry/manual review dashboard.
 - Provider abstraction for future official APIs.
 
-## Phase 4 — Payments
+## Phase 5 — Payments
 
 - SePay webhook receiver.
 - Idempotent webhook event processing.
@@ -44,7 +55,7 @@
 - SSE payment status.
 - Collection dashboard.
 
-## Phase 5 — Hardening
+## Phase 6 — Hardening
 
 - Audit log.
 - Security review.
