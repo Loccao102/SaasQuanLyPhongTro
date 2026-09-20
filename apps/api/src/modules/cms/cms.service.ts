@@ -264,6 +264,19 @@ export class CmsService {
     this.requirePermission(principal, "platform.plans.manage");
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
+
+    if (input.effectiveAt !== undefined) {
+      const effectiveAt = new Date(input.effectiveAt);
+      if (Number.isNaN(effectiveAt.getTime())) {
+        throw new BadRequestException("effectiveAt must be a valid date-time.");
+      }
+      if (effectiveAt.getTime() > Date.now()) {
+        throw new BadRequestException(
+          "Future plan activation is not supported until scheduled commercial changes are implemented."
+        );
+      }
+    }
+
     const fingerprint = this.fingerprint({
       action: "PLAN_CONFIG_UPDATED",
       code,
