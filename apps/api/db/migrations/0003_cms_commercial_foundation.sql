@@ -73,6 +73,7 @@ CREATE TABLE organization_subscriptions (
   current_period_end timestamptz,
   grace_ends_at timestamptz,
   cancel_at_period_end boolean NOT NULL DEFAULT false,
+  version integer NOT NULL DEFAULT 1 CHECK (version >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (plan_id, plan_version_id)
@@ -82,6 +83,38 @@ CREATE TABLE organization_subscriptions (
 
 CREATE INDEX organization_subscriptions_status_idx
   ON organization_subscriptions (status, current_period_end);
+
+CREATE TABLE organization_entitlement_overrides (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  entitlement_key text NOT NULL
+    CHECK (entitlement_key IN (
+      'room_limit',
+      'staff_limit',
+      'automation_actions_monthly',
+      'advanced_reports',
+      'audit_log'
+    )),
+  value jsonb NOT NULL,
+  expires_at timestamptz,
+  reason text NOT NULL,
+  created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz,
+  revoked_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  CHECK (revoked_at IS NOT NULL OR revoked_by_user_id IS NULL)
+);
+
+CREATE UNIQUE INDEX organization_entitlement_overrides_active_uidx
+  ON organization_entitlement_overrides (organization_id, entitlement_key)
+  WHERE revoked_at IS NULL;
+
+CREATE INDEX organization_entitlement_overrides_org_idx
+  ON organization_entitlement_overrides (
+    organization_id,
+    entitlement_key,
+    created_at DESC
+  );
 
 CREATE TABLE platform_audit_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
