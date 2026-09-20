@@ -25,3 +25,13 @@ export interface UpdatePlanInput {
   effectiveAt?: string;
   reason?: string;
 }
+
+export interface UpdateEntitlementOverrideInput {
+  value: unknown;
+  expiresAt?: string | null;
+  reason?: string;
+}
+
+export interface RevokeEntitlementOverrideInput {
+  reason?: string;
+}
