@@ -51,6 +51,7 @@ Baseline platform capabilities:
 - `platform.cms.read`;
 - `platform.settings.manage`;
 - `platform.plans.manage`;
+- `platform.entitlements.manage`;
 - `platform.organizations.inspect`;
 - `platform.jobs.manage`;
 - `platform.audit.read`;
