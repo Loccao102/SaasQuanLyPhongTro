@@ -53,6 +53,61 @@ Termination may finalize only when Metering, financial settlement and deposit se
 
 Leasing does not own those modules' source-of-truth records.
 
+## Product design preflight — Admin Leasing
+
+Surface:
+- Admin Web.
+
+Primary persona:
+- OWNER / ADMIN / MANAGER.
+
+Permission and scope:
+- list/detail requires `lease.read`;
+- create/activate requires `lease.manage`;
+- termination requires `lease.terminate`;
+- resource context is organization + property;
+- current screens explicitly remain demo UI until trustworthy principal/auth is connected.
+
+Job-to-be-done:
+- find the current/historical contract for a room and safely move a tenant out without losing contractual or financial history.
+
+Main flow:
+1. Hợp đồng list with status/property/search filters.
+2. Lease detail with terms, parties and lifecycle history.
+3. Dedicated “Chấm dứt hợp đồng” workflow.
+4. Effective date/reason.
+5. Metering readiness.
+6. Financial readiness.
+7. Deposit readiness.
+8. Consequence review and final action.
+
+Destructive/financial risks:
+- termination makes the room available for a future lease;
+- historical lease/resident/invoice data must remain;
+- final action is blocked while any required readiness is PENDING;
+- deposit value shown from contract is not treated as proof of an actual cash transaction.
+
+Critical UI states:
+- loaded demo state implemented;
+- explicit PENDING readiness implemented;
+- destructive action disabled when not ready;
+- list/create mutations remain disabled until secure write API/auth exists;
+- loading/empty/network/API errors will be implemented with real API integration rather than fake states.
+
+Responsive:
+- desktop/tablet-first;
+- list table scrolls horizontally when needed;
+- detail becomes single-column;
+- termination stepper becomes a horizontal scrollable sequence before collapsing content.
+
+Reusable components:
+- AdminShell;
+- PageHeader;
+- StatusBadge;
+- MetricCard;
+- MoneyDisplay;
+- SectionHeader.
+
 ## Migration notes
 
 Forward:

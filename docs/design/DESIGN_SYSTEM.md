@@ -1,6 +1,6 @@
 # Product Design System — Baseline
 
-Status: baseline rules for future implementation. This document describes design constraints and patterns; it does not claim that UI components are already implemented.
+Status: baseline rules for future implementation.
 
 ## Product surfaces
 
@@ -101,13 +101,16 @@ A complex domain transition should use a guided workflow/wizard rather than a ge
 
 "Chấm dứt hợp đồng" is a domain transition, not record deletion.
 
-Expected flow can include:
+Expected flow:
 1. effective move-out date;
-2. final meter readings;
-3. outstanding charges/final invoice;
-4. deposit deductions/refund;
-5. confirmation;
-6. resulting room availability and audit event.
+2. final meter-reading readiness;
+3. outstanding-charge/final-invoice readiness;
+4. deposit settlement readiness;
+5. consequence review;
+6. explicit final action;
+7. resulting room availability and audit event.
+
+A termination workflow must show unresolved readiness and block finalization while required dependencies remain pending.
 
 Creating the next lease must not erase or mutate the historical lease.
 
@@ -132,14 +135,19 @@ Baseline:
 
 ## Reuse
 
-Before creating a new UI pattern, check whether an existing pattern can serve:
+Implemented shared primitives in `@propops/ui`:
 - PageHeader;
 - StatusBadge;
+- MetricCard;
+- MoneyDisplay;
+- SectionHeader;
+- ProgressBar.
+
+Before creating a new UI pattern, also check whether an existing pattern can serve:
 - DataTable/List;
 - EmptyState;
 - ErrorState;
 - ConfirmAction;
-- MoneyDisplay;
 - DateDisplay;
 - PermissionGate;
 - SyncStatus;
