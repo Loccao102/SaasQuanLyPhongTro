@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   MetricCard,
-  ProgressBar,
   SectionHeader,
   StatusBadge
 } from "@propops/ui";
