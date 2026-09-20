@@ -60,6 +60,23 @@ export type CmsAuditEvent = {
   reason: string;
 };
 
+export type CmsEntitlementOverride = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  key:
+    | "room_limit"
+    | "staff_limit"
+    | "automation_actions_monthly"
+    | "advanced_reports"
+    | "audit_log";
+  value: number | boolean;
+  expiresAt: string | null;
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+};
+
 export type IntegrationStatus = {
   connected: boolean;
   reason: string;
@@ -94,6 +111,8 @@ export const cmsApi = {
   settings: () => request<CmsSetting[]>("/settings"),
   plans: () => request<CmsPlan[]>("/plans"),
   organizations: () => request<CmsOrganization[]>("/organizations"),
+  entitlementOverrides: () =>
+    request<CmsEntitlementOverride[]>("/entitlement-overrides"),
   audit: () => request<CmsAuditEvent[]>("/audit"),
   jobs: () => request<IntegrationStatus>("/jobs"),
   logs: () => request<IntegrationStatus>("/logs"),
@@ -123,5 +142,40 @@ export const cmsApi = {
       method: "PATCH",
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify(input)
-    })
+    }),
+
+  setEntitlementOverride: (
+    organizationId: string,
+    key: CmsEntitlementOverride["key"],
+    input: { value: number | boolean; expiresAt: string | null; reason: string }
+  ) =>
+    request<CmsEntitlementOverride>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/entitlement-overrides/" +
+        encodeURIComponent(key),
+      {
+        method: "PATCH",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(input)
+      }
+    ),
+
+  revokeEntitlementOverride: (
+    organizationId: string,
+    key: CmsEntitlementOverride["key"],
+    reason: string
+  ) =>
+    request<{ organizationId: string; key: string; revoked: true }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/entitlement-overrides/" +
+        encodeURIComponent(key) +
+        "/revoke",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ reason })
+      }
+    )
 };
