@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.1.0
-  description: Draft platform-operator contract. Business ownership remains in SaaS modules.
+  version: 0.2.0
+  description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
 paths:
@@ -11,6 +11,7 @@ paths:
       summary: Get operational summary
       responses:
         "200": { description: OK }
+        "401": { description: No active platform principal }
   /settings:
     get:
       summary: List system settings
@@ -18,70 +19,75 @@ paths:
         "200": { description: OK }
   /settings/{key}:
     patch:
-      summary: Change a system setting
+      summary: Versioned, audited system-setting update
       parameters:
         - { in: path, name: key, required: true, schema: { type: string } }
-        - { in: header, name: Idempotency-Key, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [value, reason]
+              required: [value, expectedVersion, reason]
               properties:
                 value: {}
-                expectedVersion: { type: integer, minimum: 0 }
+                expectedVersion: { type: integer, minimum: 1 }
                 reason: { type: string, minLength: 3 }
       responses:
-        "200": { description: Updated }
-        "409": { description: Version conflict or invalid change }
+        "200": { description: Updated or replayed idempotent response }
+        "409": { description: Version conflict or reused idempotency key with different payload }
   /plans:
     get:
-      summary: List SaaS plans
+      summary: List current SaaS plan versions
       responses:
         "200": { description: OK }
   /plans/{code}:
     patch:
-      summary: Change plan configuration
+      summary: Create a new plan version and make it current
       parameters:
         - { in: path, name: code, required: true, schema: { type: string } }
-        - { in: header, name: Idempotency-Key, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monthlyPriceVnd, roomLimit, staffLimit, automationQuota, expectedVersion, reason]
+              properties:
+                monthlyPriceVnd: { type: integer, minimum: 0 }
+                roomLimit: { type: integer, minimum: 1 }
+                staffLimit: { type: integer, minimum: 1 }
+                automationQuota: { type: integer, minimum: 0 }
+                expectedVersion: { type: integer, minimum: 1 }
+                effectiveAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 3 }
       responses:
-        "200": { description: Updated }
+        "200": { description: New current plan version }
+        "409": { description: Version conflict or idempotency conflict }
   /organizations:
     get:
-      summary: Search organizations across the SaaS
-      responses:
-        "200": { description: OK }
-  /organizations/{organizationId}:
-    get:
-      summary: Get subscription, usage and operational summary
-      parameters:
-        - { in: path, name: organizationId, required: true, schema: { type: string } }
+      summary: Inspect organizations, subscriptions and current room/staff usage
       responses:
         "200": { description: OK }
   /jobs:
     get:
-      summary: List operational jobs
+      summary: Read job-integration status
       responses:
-        "200": { description: OK }
+        "200": { description: Returns connected=false until durable jobs exist }
   /jobs/{jobId}/retry:
     post:
-      summary: Queue idempotent manual retry
-      parameters:
-        - { in: path, name: jobId, required: true, schema: { type: string } }
-        - { in: header, name: Idempotency-Key, required: true, schema: { type: string } }
+      summary: Retry a durable job
       responses:
-        "202": { description: Retry queued }
-        "409": { description: Job not retryable }
+        "501": { description: Not available until durable job persistence is connected }
   /logs:
     get:
-      summary: Query technical logs through observability integration
+      summary: Read observability-integration status
       responses:
-        "200": { description: OK }
+        "200": { description: Returns connected=false until observability is connected }
   /audit:
     get:
-      summary: List platform audit events
+      summary: List durable platform audit events
       responses:
         "200": { description: OK }

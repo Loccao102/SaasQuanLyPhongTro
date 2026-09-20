@@ -1,0 +1,106 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  NotImplementedException,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards
+} from "@nestjs/common";
+import { CmsPlatformGuard } from "./cms-platform.guard.js";
+import { CmsService } from "./cms.service.js";
+import type {
+  CmsRequest,
+  PlatformPrincipal,
+  UpdatePlanInput,
+  UpdateSettingInput
+} from "./cms.types.js";
+
+@Controller("cms")
+@UseGuards(CmsPlatformGuard)
+export class CmsController {
+  constructor(private readonly cms: CmsService) {}
+
+  @Get("dashboard")
+  getDashboard(@Req() request: CmsRequest) {
+    return this.cms.getDashboard(this.principal(request));
+  }
+
+  @Get("settings")
+  listSettings(@Req() request: CmsRequest) {
+    return this.cms.listSettings(this.principal(request));
+  }
+
+  @Patch("settings/:key")
+  updateSetting(
+    @Req() request: CmsRequest,
+    @Param("key") key: string,
+    @Body() input: UpdateSettingInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.updateSetting(
+      this.principal(request),
+      key,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Get("plans")
+  listPlans(@Req() request: CmsRequest) {
+    return this.cms.listPlans(this.principal(request));
+  }
+
+  @Patch("plans/:code")
+  updatePlan(
+    @Req() request: CmsRequest,
+    @Param("code") code: string,
+    @Body() input: UpdatePlanInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.updatePlan(
+      this.principal(request),
+      code,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Get("organizations")
+  listOrganizations(@Req() request: CmsRequest) {
+    return this.cms.listOrganizations(this.principal(request));
+  }
+
+  @Get("audit")
+  listAudit(@Req() request: CmsRequest) {
+    return this.cms.listAudit(this.principal(request));
+  }
+
+  @Get("jobs")
+  listJobs(@Req() request: CmsRequest) {
+    return this.cms.getJobsIntegrationStatus(this.principal(request));
+  }
+
+  @Post("jobs/:jobId/retry")
+  retryJob(@Req() request: CmsRequest, @Param("jobId") _jobId: string) {
+    this.cms.getJobsIntegrationStatus(this.principal(request));
+    throw new NotImplementedException(
+      "Job retry will be enabled when durable job persistence is connected."
+    );
+  }
+
+  @Get("logs")
+  listLogs(@Req() request: CmsRequest) {
+    return this.cms.getLogsIntegrationStatus(this.principal(request));
+  }
+
+  private principal(request: CmsRequest): PlatformPrincipal {
+    if (!request.platformPrincipal) {
+      throw new Error("CmsPlatformGuard did not attach a principal.");
+    }
+    return request.platformPrincipal;
+  }
+}
