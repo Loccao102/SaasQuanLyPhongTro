@@ -8,7 +8,7 @@ import {
   NotImplementedException
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
-import { PostgresService } from "../../infrastructure/database/postgres.service.js";
+import { DatabaseService } from "../database/database.service.js";
 import {
   InvalidEntitlementOverrideError,
   isEntitlementKey,
@@ -111,7 +111,7 @@ type EntitlementOverrideRow = QueryResultRow & {
 
 @Injectable()
 export class CmsService {
-  constructor(private readonly db: PostgresService) {}
+  constructor(private readonly db: DatabaseService) {}
 
   async getDashboard(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
@@ -170,7 +170,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.transaction(async (client) => {
+    return this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,
@@ -292,7 +292,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.transaction(async (client) => {
+    return this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,
@@ -579,7 +579,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.transaction(async (client) => {
+    return this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,
@@ -715,7 +715,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.transaction(async (client) => {
+    return this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,

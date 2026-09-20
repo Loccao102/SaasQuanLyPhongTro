@@ -1,4 +1,4 @@
-# Implementation Slice 0006 — SaaS Commercial Lifecycle & Entitlements
+# Implementation Slice 0007 — SaaS Commercial Lifecycle & Entitlements
 
 Status: domain foundation. Persistence commands and tenant enforcement are intentionally separate follow-up work.
 

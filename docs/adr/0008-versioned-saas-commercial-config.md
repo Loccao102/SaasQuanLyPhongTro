@@ -1,4 +1,4 @@
-# ADR-0007: Versioned SaaS Commercial Configuration
+# ADR-0008: Versioned SaaS Commercial Configuration
 
 - Status: Accepted
 - Date: 2026-09-21

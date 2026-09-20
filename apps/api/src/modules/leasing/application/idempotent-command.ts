@@ -1,5 +1,6 @@
 export interface StoredCommandReceipt {
   commandType: string;
+  leaseId: string | null;
   response: unknown;
 }
 
@@ -27,8 +28,32 @@ export class InvalidIdempotencyKeyError extends Error {
 
 export class IdempotencyConflictError extends Error {
   constructor() {
-    super("The idempotency key was already used for a different command.");
+    super(
+      "The idempotency key was already used for a different command or lease."
+    );
     this.name = "IdempotencyConflictError";
+  }
+}
+
+export function normalizeIdempotencyKey(value: string): string {
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    throw new InvalidIdempotencyKeyError();
+  }
+
+  return normalized;
+}
+
+export function assertReceiptMatches(
+  receipt: StoredCommandReceipt,
+  input: { commandType: string; leaseId: string | null }
+): void {
+  if (
+    receipt.commandType !== input.commandType ||
+    receipt.leaseId !== input.leaseId
+  ) {
+    throw new IdempotencyConflictError();
   }
 }
 
@@ -42,19 +67,11 @@ export async function executeLeaseCommandIdempotently<T>(
   },
   operation: () => Promise<T>
 ): Promise<T> {
-  const idempotencyKey = input.idempotencyKey.trim();
-
-  if (idempotencyKey.length === 0) {
-    throw new InvalidIdempotencyKeyError();
-  }
-
+  const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
   const existing = await store.find(input.organizationId, idempotencyKey);
 
   if (existing) {
-    if (existing.commandType !== input.commandType) {
-      throw new IdempotencyConflictError();
-    }
-
+    assertReceiptMatches(existing, input);
     return existing.response as T;
   }
 

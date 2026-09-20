@@ -1,4 +1,4 @@
-# ADR-0006: CMS is an Internal Control Surface
+# ADR-0007: CMS is an Internal Control Surface
 
 - Status: Accepted
 - Date: 2026-09-21

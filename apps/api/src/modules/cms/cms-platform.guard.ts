@@ -5,7 +5,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
-import { PostgresService } from "../../infrastructure/database/postgres.service.js";
+import { DatabaseService } from "../database/database.service.js";
 import type { CmsRequest, PlatformPrincipal } from "./cms.types.js";
 import { isPlatformRole } from "./domain/platform-access.js";
 
@@ -18,7 +18,7 @@ type PlatformOperatorRow = QueryResultRow & {
 
 @Injectable()
 export class CmsPlatformGuard implements CanActivate {
-  constructor(private readonly db: PostgresService) {}
+  constructor(private readonly db: DatabaseService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<CmsRequest>();

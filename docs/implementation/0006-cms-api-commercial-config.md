@@ -1,4 +1,4 @@
-# Implementation Slice 0005 — CMS API & Commercial Configuration
+# Implementation Slice 0006 — CMS API & Commercial Configuration
 
 ## Scope
 

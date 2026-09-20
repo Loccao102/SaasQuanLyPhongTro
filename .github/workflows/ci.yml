@@ -43,7 +43,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit tests
         run: pnpm test
 
       - name: Migration smoke test
@@ -67,6 +67,12 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
           run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
           run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.sql
+
+      - name: Leasing integration tests
+        env:
+          DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops
+          DATABASE_POOL_MAX: 4
+        run: pnpm --filter @propops/api test:integration
 
       - name: Build
         run: pnpm build
