@@ -43,7 +43,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit tests
         run: pnpm test
 
       - name: Migration smoke test
@@ -59,6 +59,12 @@ jobs:
           docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
 
           docker run --rm --network host             -e PGPASSWORD=propops             -v "$PWD:/repo:ro"             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1             -f /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
+
+      - name: Leasing integration tests
+        env:
+          DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops
+          DATABASE_POOL_MAX: 4
+        run: pnpm --filter @propops/api test:integration
 
       - name: Build
         run: pnpm build

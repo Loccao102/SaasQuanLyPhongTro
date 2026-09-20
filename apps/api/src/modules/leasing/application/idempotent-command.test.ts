@@ -28,6 +28,7 @@ class MemoryReceiptStore implements LeaseCommandReceiptStore {
       `${input.organizationId}:${input.idempotencyKey}`,
       {
         commandType: input.commandType,
+        leaseId: input.leaseId,
         response: input.response
       }
     );
@@ -81,6 +82,36 @@ test("reusing an idempotency key for a different command is rejected", async () 
           idempotencyKey: "cmd-123",
           commandType: "LEASE_TERMINATE",
           leaseId: "lease-1"
+        },
+        async () => ({ ok: true })
+      ),
+    IdempotencyConflictError
+  );
+});
+
+test("reusing an idempotency key for another lease is rejected", async () => {
+  const store = new MemoryReceiptStore();
+
+  await executeLeaseCommandIdempotently(
+    store,
+    {
+      organizationId: "org-a",
+      idempotencyKey: "cmd-123",
+      commandType: "LEASE_ACTIVATE",
+      leaseId: "lease-1"
+    },
+    async () => ({ ok: true })
+  );
+
+  await assert.rejects(
+    () =>
+      executeLeaseCommandIdempotently(
+        store,
+        {
+          organizationId: "org-a",
+          idempotencyKey: "cmd-123",
+          commandType: "LEASE_ACTIVATE",
+          leaseId: "lease-2"
         },
         async () => ({ ok: true })
       ),
