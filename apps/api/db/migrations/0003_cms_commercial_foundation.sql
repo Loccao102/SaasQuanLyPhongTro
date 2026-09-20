@@ -57,8 +57,8 @@ CREATE TABLE saas_plan_versions (
 
 ALTER TABLE saas_plans
   ADD CONSTRAINT saas_plans_current_version_fk
-  FOREIGN KEY (current_version_id)
-  REFERENCES saas_plan_versions(id)
+  FOREIGN KEY (id, current_version_id)
+  REFERENCES saas_plan_versions(plan_id, id)
   ON DELETE RESTRICT;
 
 CREATE TABLE organization_subscriptions (
