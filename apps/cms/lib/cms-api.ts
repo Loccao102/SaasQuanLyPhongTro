@@ -70,12 +70,12 @@ const apiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("content-type", "application/json");
+
   const response = await fetch(apiBase + "/cms" + path, {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init?.headers
-    },
+    headers,
     credentials: "include"
   });
 
