@@ -34,6 +34,40 @@ function actor(
   };
 }
 
+async function cleanupFixture(pool: Pool): Promise<void> {
+  const organizations = [organizationId, otherOrganizationId];
+
+  await pool.query(
+    "DELETE FROM lease_command_receipts WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM lease_terminations WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM lease_residents WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM leases WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM residents WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM audit_events WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query("DELETE FROM users WHERE id = $1", [actorUserId]);
+}
+
 test("lease commands are transactional, authorized, idempotent and auditable", async () => {
   const connectionString = process.env.DATABASE_URL;
 
@@ -47,18 +81,7 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
   );
 
   try {
-    await fixturePool.query(
-      "DELETE FROM audit_events WHERE organization_id = ANY($1::uuid[])",
-      [[organizationId, otherOrganizationId]]
-    );
-    await fixturePool.query(
-      "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
-      [[organizationId, otherOrganizationId]]
-    );
-    await fixturePool.query(
-      "DELETE FROM users WHERE id = $1",
-      [actorUserId]
-    );
+    await cleanupFixture(fixturePool);
 
     await fixturePool.query(
       `INSERT INTO users (id, email, display_name)
@@ -277,15 +300,7 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
     );
   } finally {
     await database.onModuleDestroy();
-    await fixturePool.query(
-      "DELETE FROM audit_events WHERE organization_id = ANY($1::uuid[])",
-      [[organizationId, otherOrganizationId]]
-    );
-    await fixturePool.query(
-      "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
-      [[organizationId, otherOrganizationId]]
-    );
-    await fixturePool.query("DELETE FROM users WHERE id = $1", [actorUserId]);
+    await cleanupFixture(fixturePool);
     await fixturePool.end();
   }
 });
