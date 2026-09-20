@@ -194,6 +194,51 @@ export default function CmsPage() {
         );
       }
 
+      if (modal.kind === "entitlement") {
+        const organizationId = String(data.get("organizationId") ?? "");
+        const key = String(data.get("entitlementKey") ?? "") as CmsEntitlementOverride["key"];
+        const rawValue = String(data.get("overrideValue") ?? "").trim();
+        const booleanKey = key === "advanced_reports" || key === "audit_log";
+        if (booleanKey && rawValue !== "true" && rawValue !== "false") {
+          throw new Error("Boolean entitlement phải là true hoặc false.");
+        }
+        const value = booleanKey ? rawValue === "true" : Number(rawValue);
+        if (!booleanKey && (!Number.isInteger(value) || Number(value) < 0)) {
+          throw new Error("Numeric entitlement phải là số nguyên không âm.");
+        }
+        const rawExpiry = String(data.get("expiresAt") ?? "").trim();
+        const expiresAt = rawExpiry
+          ? new Date(rawExpiry).toISOString()
+          : null;
+
+        const updated = await cmsApi.setEntitlementOverride(
+          organizationId,
+          key,
+          { value, expiresAt, reason }
+        );
+        setEntitlementOverrides((items) => [
+          ...items.filter(
+            (item) =>
+              !(
+                item.organizationId === updated.organizationId &&
+                item.key === updated.key
+              )
+          ),
+          updated
+        ]);
+      }
+
+      if (modal.kind === "revokeEntitlement") {
+        await cmsApi.revokeEntitlementOverride(
+          modal.override.organizationId,
+          modal.override.key,
+          reason
+        );
+        setEntitlementOverrides((items) =>
+          items.filter((item) => item.id !== modal.override.id)
+        );
+      }
+
       const [nextAudit, nextDashboard] = await Promise.all([
         cmsApi.audit(),
         cmsApi.dashboard()
@@ -546,6 +591,82 @@ export default function CmsPage() {
             </section>
           )}
 
+          {!loading && view === "entitlements" && (
+            <section className="cms-panel">
+              <SectionHeader
+                title="Entitlement overrides"
+                action={
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={organizations.length === 0}
+                    onClick={() => setModal({ kind: "entitlement" })}
+                  >
+                    Thêm override
+                  </button>
+                }
+              />
+              <p className="cms-note">
+                Override chỉ dành cho ngoại lệ theo organization. Plan vẫn là
+                default source; override có thể đặt expiry và luôn được audit.
+              </p>
+              {entitlementOverrides.length === 0 ? (
+                <div className="empty-state">
+                  Chưa có entitlement override đang hoạt động.
+                </div>
+              ) : (
+                <div className="cms-table-wrap">
+                  <table className="cms-table">
+                    <thead>
+                      <tr>
+                        <th>Organization</th>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th>Expires</th>
+                        <th>Reason</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entitlementOverrides.map((override) => (
+                        <tr key={override.id}>
+                          <td>
+                            <strong>{override.organizationName}</strong>
+                            <small>{override.organizationId}</small>
+                          </td>
+                          <td>{override.key}</td>
+                          <td>{pretty(override.value)}</td>
+                          <td>
+                            {override.expiresAt
+                              ? new Date(override.expiresAt).toLocaleString(
+                                  "vi-VN"
+                                )
+                              : "Không hết hạn"}
+                          </td>
+                          <td>{override.reason}</td>
+                          <td>
+                            <button
+                              className="text-button text-button--danger"
+                              type="button"
+                              onClick={() =>
+                                setModal({
+                                  kind: "revokeEntitlement",
+                                  override
+                                })
+                              }
+                            >
+                              Revoke
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
           {!loading && view === "jobs" && (
             <section className="cms-panel">
               <SectionHeader title="Operational jobs" />
@@ -706,6 +827,62 @@ export default function CmsPage() {
                   </>
                 );
               })()}
+
+            {modal.kind === "entitlement" && (
+              <>
+                <h2>Thêm entitlement override</h2>
+                <p className="modal-warning">
+                  Override sẽ supersede override chưa revoke cùng key của
+                  organization. Dữ liệu plan không bị sửa.
+                </p>
+                <label>
+                  Organization
+                  <select name="organizationId" required>
+                    {organizations.map((organization) => (
+                      <option value={organization.id} key={organization.id}>
+                        {organization.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Entitlement key
+                  <select name="entitlementKey" required>
+                    <option value="room_limit">room_limit</option>
+                    <option value="staff_limit">staff_limit</option>
+                    <option value="automation_actions_monthly">
+                      automation_actions_monthly
+                    </option>
+                    <option value="advanced_reports">advanced_reports</option>
+                    <option value="audit_log">audit_log</option>
+                  </select>
+                </label>
+                <label>
+                  Value
+                  <input
+                    name="overrideValue"
+                    type="text"
+                    placeholder="350 hoặc true / false"
+                    required
+                  />
+                </label>
+                <label>
+                  Hết hạn (tùy chọn)
+                  <input name="expiresAt" type="datetime-local" />
+                </label>
+              </>
+            )}
+
+            {modal.kind === "revokeEntitlement" && (
+              <>
+                <h2>Revoke entitlement override</h2>
+                <p className="modal-warning">
+                  {modal.override.organizationName} · {modal.override.key} ={" "}
+                  {pretty(modal.override.value)} sẽ quay về giá trị từ plan sau
+                  khi revoke.
+                </p>
+              </>
+            )}
 
             <label>
               Lý do
