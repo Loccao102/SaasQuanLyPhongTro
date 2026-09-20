@@ -16,6 +16,7 @@ Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, t�
 - **Auditability:** giá, chỉ số, hóa đơn và webhook phải truy ngược được lịch sử.
 - **Public invoice là zero-install mobile web.**
 - **Staff app là PWA offline-first.**
+- **Design-before-code:** mọi user-facing feature phải qua Product Design Preflight trước khi viết UI code.
 
 ## Kiến trúc cấp cao
 
@@ -40,6 +41,7 @@ Public Invoice ┘                 │
 - [Domain Model](docs/architecture/DOMAIN_MODEL.md)
 - [Scalability](docs/architecture/SCALABILITY.md)
 - [Security & Multi-tenancy](docs/architecture/SECURITY.md)
+- [Design System](docs/design/DESIGN_SYSTEM.md)
 - [Notification Automation](docs/operations/NOTIFICATION_AUTOMATION.md)
 - [Offline PWA](docs/operations/OFFLINE_PWA.md)
 - [Payment Reconciliation](docs/operations/PAYMENT_RECONCILIATION.md)
@@ -48,6 +50,8 @@ Public Invoice ┘                 │
 
 ## AI/Codex development rules
 
-Repo có `AGENTS.md` và các project skills trong `.agents/skills/`. Codex tự phát hiện repo skills tại đường dẫn này.
+Repo có `AGENTS.md` và các project skills trong `.agents/skills/`.
+
+Đối với mọi thay đổi user-facing, `AGENTS.md` bắt buộc agent đọc `product-design`, `frontend-pwa` và Design System trước khi thiết kế hoặc viết UI. Mỗi frontend app còn có nested `AGENTS.md` riêng để tăng mức enforce theo context.
 
 Mọi thay đổi kiến trúc quan trọng phải cập nhật ADR và docs tương ứng trước hoặc cùng PR với code.
