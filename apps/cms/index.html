@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prop-Ops CMS</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="mark">P</span>
+        <div><strong>Prop-Ops</strong><small>Internal CMS</small></div>
+      </div>
+      <nav id="nav" aria-label="CMS navigation"></nav>
+      <div class="sidebar-foot">
+        <span class="role">PLATFORM_ADMIN</span>
+        <button id="reset" class="link" type="button">Reset mock data</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="prototype-note" role="note">
+        Prototype: dữ liệu mock/localStorage. Mọi authorization và mutation thực tế phải được enforce ở backend.
+      </div>
+      <header class="header">
+        <div>
+          <p class="eyebrow">Internal SaaS operations</p>
+          <h1 id="title">Tổng quan</h1>
+        </div>
+        <div id="clock" class="muted"></div>
+      </header>
+      <section id="content" tabindex="-1"></section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

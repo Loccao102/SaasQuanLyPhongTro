@@ -1,0 +1,202 @@
+openapi: 3.1.0
+info:
+  title: Prop-Ops CMS API
+  version: 0.1.0
+  description: Draft contract for internal CMS. Business ownership remains in SaaS modules.
+servers:
+  - url: /api/cms
+paths:
+  /dashboard:
+    get:
+      summary: Get internal operational summary
+      responses:
+        "200": { description: OK }
+  /settings:
+    get:
+      summary: List system settings
+      responses:
+        "200": { description: OK }
+  /settings/{key}:
+    patch:
+      summary: Change a system setting
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, reason]
+              properties:
+                value: {}
+                expectedVersion: { type: integer, minimum: 0 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Updated }
+        "409": { description: Version conflict or invalid transition }
+  /plans:
+    get:
+      summary: List SaaS plans and configured limits
+      responses:
+        "200": { description: OK }
+  /plans/{code}:
+    patch:
+      summary: Change plan configuration
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                monthlyPriceVnd: { type: integer, minimum: 0 }
+                roomLimit: { type: integer, minimum: 1 }
+                staffLimit: { type: integer, minimum: 1 }
+                automationQuota: { type: integer, minimum: 0 }
+                effectiveAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Updated }
+  /organizations:
+    get:
+      summary: Search/inspect organizations across the SaaS
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: subscriptionStatus
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /organizations/{organizationId}:
+    get:
+      summary: Get organization subscription, usage and operational summary
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /organizations/{organizationId}/subscription/change-plan:
+    post:
+      summary: Change subscription plan through SaaS application service
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode, reason]
+              properties:
+                planCode: { type: string }
+                effectiveAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Changed }
+        "409": { description: Invalid state transition }
+  /organizations/{organizationId}/subscription/suspend:
+    post:
+      summary: Suspend an organization subscription
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Suspended }
+  /organizations/{organizationId}/subscription/reactivate:
+    post:
+      summary: Reactivate an organization subscription
+      parameters:
+        - in: path
+          name: organizationId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Reactivated }
+  /jobs:
+    get:
+      summary: List operational jobs
+      responses:
+        "200": { description: OK }
+  /jobs/{jobId}/retry:
+    post:
+      summary: Queue an idempotent manual retry
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "202": { description: Retry queued }
+        "409": { description: Job not retryable }
+  /audit:
+    get:
+      summary: List platform audit events
+      responses:
+        "200": { description: OK }
+  /logs:
+    get:
+      summary: Query technical logs through observability integration
+      description: Technical logs are not stored as business source of truth in CMS.
+      responses:
+        "200": { description: OK }

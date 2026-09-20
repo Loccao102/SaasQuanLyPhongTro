@@ -21,7 +21,8 @@ Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, t�
 ## Kiến trúc cấp cao
 
 ```text
-Admin Web ─────┐
+CMS ───────────┐
+Admin Web ─────┤
 Staff PWA ─────┼──> Backend API (Modular Monolith) ──> PostgreSQL
 Public Invoice ┘                 │
                                  ├──> Redis / Job Queue
@@ -38,6 +39,8 @@ Public Invoice ┘                 │
 ## Tài liệu
 
 - [System Overview](docs/architecture/OVERVIEW.md)
+- [CMS / Internal Control Surface](docs/architecture/CMS.md)
+- [CMS Workflows](docs/design/CMS_WORKFLOWS.md)
 - [Domain Model](docs/architecture/DOMAIN_MODEL.md)
 - [Scalability](docs/architecture/SCALABILITY.md)
 - [Security & Multi-tenancy](docs/architecture/SECURITY.md)
