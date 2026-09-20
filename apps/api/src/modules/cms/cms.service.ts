@@ -242,8 +242,33 @@ export class CmsService {
     this.requirePermission(principal, "platform.plans.manage");
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const fingerprint = this.fingerprint({
+      action: "PLAN_CONFIG_UPDATED",
+      code,
+      monthlyPriceVnd: input.monthlyPriceVnd ?? null,
+      roomLimit: input.roomLimit ?? null,
+      staffLimit: input.staffLimit ?? null,
+      automationQuota: input.automationQuota ?? null,
+      expectedVersion: input.expectedVersion ?? null,
+      effectiveAt: input.effectiveAt ?? null,
+      reason
+    });
 
     return this.db.transaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
       const currentResult = await client.query<PlanRow>(
         this.planSelectSql("WHERE p.code = $1", "FOR UPDATE OF p"),
         [code]
@@ -278,28 +303,6 @@ export class CmsService {
           throw new BadRequestException(error.message);
         }
         throw error;
-      }
-
-      const fingerprint = this.fingerprint({
-        action: "PLAN_CONFIG_UPDATED",
-        code,
-        ...next,
-        expectedVersion: input.expectedVersion,
-        effectiveAt: input.effectiveAt ?? null,
-        reason
-      });
-      const receipt = await this.readReceipt(
-        client,
-        principal.userId,
-        commandKey
-      );
-      if (receipt) {
-        if (receipt.request_fingerprint !== fingerprint) {
-          throw new ConflictException(
-            "Idempotency-Key was already used with a different request."
-          );
-        }
-        return receipt.response;
       }
 
       const versionResult = await client.query<
