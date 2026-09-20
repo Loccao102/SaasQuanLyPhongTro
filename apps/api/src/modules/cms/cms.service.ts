@@ -245,7 +245,7 @@ export class CmsService {
 
     return this.db.transaction(async (client) => {
       const currentResult = await client.query<PlanRow>(
-        this.planSelectSql("WHERE p.code = $1 FOR UPDATE OF p"),
+        this.planSelectSql("WHERE p.code = $1", "FOR UPDATE OF p"),
         [code]
       );
       const current = currentResult.rows[0];
@@ -543,7 +543,7 @@ export class CmsService {
     };
   }
 
-  private planSelectSql(suffix = ""): string {
+  private planSelectSql(whereClause = "", lockClause = ""): string {
     return `SELECT
        p.id::text AS plan_id,
        p.code,
