@@ -14,6 +14,8 @@ import { CmsService } from "./cms.service.js";
 import type {
   CmsRequest,
   PlatformPrincipal,
+  RevokeEntitlementOverrideInput,
+  UpdateEntitlementOverrideInput,
   UpdatePlanInput,
   UpdateSettingInput
 } from "./cms.types.js";
@@ -71,6 +73,45 @@ export class CmsController {
   @Get("organizations")
   listOrganizations(@Req() request: CmsRequest) {
     return this.cms.listOrganizations(this.principal(request));
+  }
+
+  @Get("entitlement-overrides")
+  listEntitlementOverrides(@Req() request: CmsRequest) {
+    return this.cms.listEntitlementOverrides(this.principal(request));
+  }
+
+  @Patch("organizations/:organizationId/entitlement-overrides/:key")
+  setEntitlementOverride(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Param("key") key: string,
+    @Body() input: UpdateEntitlementOverrideInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.setEntitlementOverride(
+      this.principal(request),
+      organizationId,
+      key,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("organizations/:organizationId/entitlement-overrides/:key/revoke")
+  revokeEntitlementOverride(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Param("key") key: string,
+    @Body() input: RevokeEntitlementOverrideInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.revokeEntitlementOverride(
+      this.principal(request),
+      organizationId,
+      key,
+      input,
+      idempotencyKey
+    );
   }
 
   @Get("audit")
