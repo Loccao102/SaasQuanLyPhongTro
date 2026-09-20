@@ -48,6 +48,10 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
 
   try {
     await fixturePool.query(
+      "DELETE FROM audit_events WHERE organization_id = ANY($1::uuid[])",
+      [[organizationId, otherOrganizationId]]
+    );
+    await fixturePool.query(
       "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
       [[organizationId, otherOrganizationId]]
     );
@@ -273,6 +277,10 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
     );
   } finally {
     await database.onModuleDestroy();
+    await fixturePool.query(
+      "DELETE FROM audit_events WHERE organization_id = ANY($1::uuid[])",
+      [[organizationId, otherOrganizationId]]
+    );
     await fixturePool.query(
       "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
       [[organizationId, otherOrganizationId]]
