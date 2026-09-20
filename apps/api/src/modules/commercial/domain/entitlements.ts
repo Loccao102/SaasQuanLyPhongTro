@@ -1,9 +1,16 @@
-export type EntitlementKey =
-  | "room_limit"
-  | "staff_limit"
-  | "automation_actions_monthly"
-  | "advanced_reports"
-  | "audit_log";
+export const entitlementKeys = [
+  "room_limit",
+  "staff_limit",
+  "automation_actions_monthly",
+  "advanced_reports",
+  "audit_log"
+] as const;
+
+export type EntitlementKey = (typeof entitlementKeys)[number];
+
+export function isEntitlementKey(value: string): value is EntitlementKey {
+  return (entitlementKeys as readonly string[]).includes(value);
+}
 
 export type EntitlementValue = number | boolean;
 
@@ -79,6 +86,32 @@ function assertBooleanOverride(
       key,
       "value must be boolean."
     );
+  }
+}
+
+export function validateEntitlementOverride(
+  override: EntitlementOverride
+): void {
+  if (override.expiresAt !== null) {
+    const expiresAt = new Date(override.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw new InvalidEntitlementOverrideError(
+        override.key,
+        "expiresAt must be an ISO date-time."
+      );
+    }
+  }
+
+  switch (override.key) {
+    case "room_limit":
+    case "staff_limit":
+    case "automation_actions_monthly":
+      assertNumberOverride(override.key, override.value);
+      return;
+    case "advanced_reports":
+    case "audit_log":
+      assertBooleanOverride(override.key, override.value);
+      return;
   }
 }
 
