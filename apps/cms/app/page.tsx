@@ -16,6 +16,7 @@ import {
   cmsApi,
   type CmsAuditEvent,
   type CmsDashboard,
+  type CmsEntitlementOverride,
   type CmsOrganization,
   type CmsPlan,
   type CmsSetting,
@@ -27,6 +28,7 @@ type View =
   | "settings"
   | "plans"
   | "organizations"
+  | "entitlements"
   | "jobs"
   | "logs"
   | "audit";
@@ -34,6 +36,8 @@ type Tone = "neutral" | "success" | "warning" | "danger" | "info";
 type ModalState =
   | { kind: "setting"; key: string }
   | { kind: "plan"; code: string }
+  | { kind: "entitlement" }
+  | { kind: "revokeEntitlement"; override: CmsEntitlementOverride }
   | null;
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -41,6 +45,7 @@ const navItems: Array<{ id: View; label: string }> = [
   { id: "settings", label: "Cấu hình" },
   { id: "plans", label: "Gói & giới hạn" },
   { id: "organizations", label: "Organizations" },
+  { id: "entitlements", label: "Entitlement overrides" },
   { id: "jobs", label: "Jobs / Queue" },
   { id: "logs", label: "Technical logs" },
   { id: "audit", label: "Audit log" }
@@ -79,6 +84,7 @@ export default function CmsPage() {
   const [settings, setSettings] = useState<CmsSetting[]>([]);
   const [plans, setPlans] = useState<CmsPlan[]>([]);
   const [organizations, setOrganizations] = useState<CmsOrganization[]>([]);
+  const [entitlementOverrides, setEntitlementOverrides] = useState<CmsEntitlementOverride[]>([]);
   const [audit, setAudit] = useState<CmsAuditEvent[]>([]);
   const [jobsStatus, setJobsStatus] = useState<IntegrationStatus | null>(null);
   const [logsStatus, setLogsStatus] = useState<IntegrationStatus | null>(null);
@@ -91,12 +97,21 @@ export default function CmsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextDashboard, nextSettings, nextPlans, nextOrganizations, nextAudit, nextJobs, nextLogs] =
-        await Promise.all([
+      const [
+        nextDashboard,
+        nextSettings,
+        nextPlans,
+        nextOrganizations,
+        nextEntitlementOverrides,
+        nextAudit,
+        nextJobs,
+        nextLogs
+      ] = await Promise.all([
           cmsApi.dashboard(),
           cmsApi.settings(),
           cmsApi.plans(),
           cmsApi.organizations(),
+          cmsApi.entitlementOverrides(),
           cmsApi.audit(),
           cmsApi.jobs(),
           cmsApi.logs()
@@ -105,6 +120,7 @@ export default function CmsPage() {
       setSettings(nextSettings);
       setPlans(nextPlans);
       setOrganizations(nextOrganizations);
+      setEntitlementOverrides(nextEntitlementOverrides);
       setAudit(nextAudit);
       setJobsStatus(nextJobs);
       setLogsStatus(nextLogs);
