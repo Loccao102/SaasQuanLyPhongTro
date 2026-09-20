@@ -2,6 +2,7 @@ BEGIN;
 
 DROP TABLE IF EXISTS platform_command_receipts;
 DROP TABLE IF EXISTS platform_audit_events;
+DROP TABLE IF EXISTS organization_entitlement_overrides;
 DROP TABLE IF EXISTS organization_subscriptions;
 
 ALTER TABLE IF EXISTS saas_plans
