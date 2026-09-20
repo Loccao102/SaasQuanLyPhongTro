@@ -87,15 +87,13 @@ export function resolveEffectiveEntitlements(
   overrides: readonly EntitlementOverride[],
   now = new Date()
 ): EffectiveEntitlements {
-  const result: EffectiveEntitlements = {
-    ...plan,
-    source: {
-      room_limit: "PLAN",
-      staff_limit: "PLAN",
-      automation_actions_monthly: "PLAN",
-      advanced_reports: "PLAN",
-      audit_log: "PLAN"
-    }
+  const values: PlanEntitlements = { ...plan };
+  const source: Record<EntitlementKey, "PLAN" | "OVERRIDE"> = {
+    room_limit: "PLAN",
+    staff_limit: "PLAN",
+    automation_actions_monthly: "PLAN",
+    advanced_reports: "PLAN",
+    audit_log: "PLAN"
   };
 
   for (const override of overrides) {
@@ -104,30 +102,33 @@ export function resolveEffectiveEntitlements(
     switch (override.key) {
       case "room_limit":
         assertNumberOverride(override.key, override.value);
-        result.roomLimit = override.value;
+        values.roomLimit = override.value;
         break;
       case "staff_limit":
         assertNumberOverride(override.key, override.value);
-        result.staffLimit = override.value;
+        values.staffLimit = override.value;
         break;
       case "automation_actions_monthly":
         assertNumberOverride(override.key, override.value);
-        result.automationActionsMonthly = override.value;
+        values.automationActionsMonthly = override.value;
         break;
       case "advanced_reports":
         assertBooleanOverride(override.key, override.value);
-        result.advancedReports = override.value;
+        values.advancedReports = override.value;
         break;
       case "audit_log":
         assertBooleanOverride(override.key, override.value);
-        result.auditLog = override.value;
+        values.auditLog = override.value;
         break;
     }
 
-    result.source[override.key] = "OVERRIDE";
+    source[override.key] = "OVERRIDE";
   }
 
-  return result;
+  return {
+    ...values,
+    source
+  };
 }
 
 export function evaluateResourceLimit(
