@@ -14,9 +14,38 @@ find room where
 
 Không bao giờ authorize chỉ bằng room_id/invoice_id.
 
+Các foreign key giữa những bảng tenant-owned quan trọng nên mang cả `organization_id` khi thực tế cho phép, để DB cũng từ chối tham chiếu chéo organization thay vì chỉ dựa vào application code.
+
+## Membership, roles và scopes
+
+User là identity toàn cục. Quyền của user trong từng organization nằm ở `OrganizationMembership`.
+
+Baseline roles:
+- `OWNER`;
+- `ADMIN`;
+- `MANAGER`;
+- `STAFF`;
+- `ACCOUNTANT`;
+- `VIEWER`.
+
+Business code authorize theo permission/capability, không rải `if role === ...` khắp code.
+
+Một membership có một hoặc nhiều resource scopes:
+- `ORGANIZATION`;
+- `OPERATIONAL_GROUP`;
+- `PROPERTY`.
+
+Authorization phải thỏa cả:
+1. membership đang ACTIVE;
+2. đúng organization;
+3. role có permission;
+4. ít nhất một scope bao phủ resource.
+
+Frontend chỉ phản ánh quyền để UX rõ ràng; enforcement bắt buộc nằm server-side.
+
 ## CMS / Platform operators
 
-CMS có cross-organization visibility nên không dùng tenant role thông thường.
+CMS là cross-organization surface dành cho platform operator và không được cấp quyền chỉ dựa trên tenant membership.
 
 Baseline platform capabilities:
 - `platform.cms.read`;
@@ -33,6 +62,7 @@ Rules:
 - No generic SQL editor or raw secret viewer.
 - Settings/plan/job retry mutations require audit with actor, target, before/after, reason and timestamp.
 - Cross-organization reads exist only through explicit `/api/cms/*` endpoints/application services.
+- Tenant OWNER/ADMIN does not automatically become a CMS/platform principal.
 
 ## Public invoice
 
@@ -44,16 +74,6 @@ Public invoice không yêu cầu account nhưng phải dùng token:
 - chỉ expose dữ liệu cần thiết.
 
 Không đưa internal numeric IDs vào URL công khai nếu không cần.
-
-## Roles
-
-Tenant baseline:
-- OWNER/ADMIN;
-- MANAGER;
-- STAFF;
-- READ_ONLY.
-
-Authorization nên dùng permission/capability ở domain layer thay vì chỉ ẩn nút frontend.
 
 ## Secrets
 
@@ -74,8 +94,9 @@ Ghi audit cho:
 - issue/cancel invoice;
 - manual payment allocation;
 - thay đổi bank/integration config;
-- CMS settings/plan/job retry mutations;
-- admin impersonation nếu có.
+- admin impersonation nếu có;
+- thay đổi role/scope và các thao tác quyền hạn nhạy cảm;
+- CMS settings/plan/job retry mutations.
 
 ## Webhooks
 
