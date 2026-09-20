@@ -77,6 +77,9 @@ type OrganizationRow = QueryResultRow & {
   room_limit: number | null;
   staff_limit: number | null;
   automation_quota: number | null;
+  room_limit_source: string | null;
+  staff_limit_source: string | null;
+  automation_quota_source: string | null;
 };
 
 type AuditRow = QueryResultRow & {
@@ -411,9 +414,24 @@ export class CmsService {
          COALESCE(staff_usage.staff_count, 0)::int AS staff_count,
          s.status AS subscription_status,
          p.code AS plan_code,
-         pv.room_limit,
-         pv.staff_limit,
-         pv.automation_quota
+         COALESCE(room_override.value, pv.room_limit) AS room_limit,
+         COALESCE(staff_override.value, pv.staff_limit) AS staff_limit,
+         COALESCE(automation_override.value, pv.automation_quota) AS automation_quota,
+         CASE
+           WHEN room_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.room_limit IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS room_limit_source,
+         CASE
+           WHEN staff_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.staff_limit IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS staff_limit_source,
+         CASE
+           WHEN automation_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.automation_quota IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS automation_quota_source
        FROM organizations o
        LEFT JOIN LATERAL (
          SELECT u.display_name
@@ -441,6 +459,36 @@ export class CmsService {
          ON p.id = s.plan_id
        LEFT JOIN saas_plan_versions pv
          ON pv.id = s.plan_version_id
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'room_limit'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) room_override ON true
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'staff_limit'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) staff_override ON true
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'automation_actions_monthly'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) automation_override ON true
        ORDER BY o.created_at DESC, o.id DESC`
     );
 
@@ -457,6 +505,9 @@ export class CmsService {
       roomLimit: row.room_limit,
       staffLimit: row.staff_limit,
       automationQuota: row.automation_quota,
+      roomLimitSource: row.room_limit_source,
+      staffLimitSource: row.staff_limit_source,
+      automationQuotaSource: row.automation_quota_source,
       automationUsed: null
     }));
   }
