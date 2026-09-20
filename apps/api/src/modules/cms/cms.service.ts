@@ -563,8 +563,9 @@ export class CmsService {
      FROM saas_plans p
      JOIN saas_plan_versions pv
        ON pv.id = p.current_version_id
-     ${suffix}
-     ORDER BY p.created_at, p.code`;
+     ${whereClause}
+     ORDER BY p.created_at, p.code
+     ${lockClause}`;
   }
 
   private async readReceipt(
