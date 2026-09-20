@@ -4,7 +4,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  NotImplementedException
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { PostgresService } from "../../infrastructure/database/postgres.service.js";
@@ -469,6 +470,13 @@ export class CmsService {
         "Durable notification/general job persistence has not been implemented in this repository slice.",
       entries: []
     };
+  }
+
+  retryJob(principal: PlatformPrincipal, _jobId: string): never {
+    this.requirePermission(principal, "platform.jobs.manage");
+    throw new NotImplementedException(
+      "Job retry will be enabled when durable job persistence is connected."
+    );
   }
 
   getLogsIntegrationStatus(principal: PlatformPrincipal) {
