@@ -1,0 +1,23 @@
+{
+  "name": "propops-saas",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "engines": {"node": ">=22.13.0"},
+  "scripts": {
+    "dev:admin": "pnpm --filter @propops/admin dev",
+    "dev:staff": "pnpm --filter @propops/staff dev",
+    "dev:public": "pnpm --filter @propops/public-invoice dev",
+    "dev:api": "pnpm --filter @propops/api dev",
+    "lint": "eslint apps packages",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "eslint": "10.11.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0"
+  }
+}
