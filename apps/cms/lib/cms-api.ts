@@ -44,6 +44,9 @@ export type CmsOrganization = {
   roomLimit: number | null;
   staffLimit: number | null;
   automationQuota: number | null;
+  roomLimitSource: "PLAN" | "OVERRIDE" | null;
+  staffLimitSource: "PLAN" | "OVERRIDE" | null;
+  automationQuotaSource: "PLAN" | "OVERRIDE" | null;
   automationUsed: number | null;
 };
 
