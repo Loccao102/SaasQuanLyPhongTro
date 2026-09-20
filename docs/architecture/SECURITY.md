@@ -14,6 +14,26 @@ find room where
 
 Không bao giờ authorize chỉ bằng room_id/invoice_id.
 
+## CMS / Platform operators
+
+CMS có cross-organization visibility nên không dùng tenant role thông thường.
+
+Baseline platform capabilities:
+- `platform.cms.read`;
+- `platform.settings.manage`;
+- `platform.plans.manage`;
+- `platform.organizations.inspect`;
+- `platform.jobs.manage`;
+- `platform.audit.read`;
+- `platform.logs.read`.
+
+Rules:
+- UI visibility is not authorization; backend always enforces platform permission.
+- CMS never writes PostgreSQL directly.
+- No generic SQL editor or raw secret viewer.
+- Settings/plan/job retry mutations require audit with actor, target, before/after, reason and timestamp.
+- Cross-organization reads exist only through explicit `/api/cms/*` endpoints/application services.
+
 ## Public invoice
 
 Public invoice không yêu cầu account nhưng phải dùng token:
@@ -27,7 +47,7 @@ Không đưa internal numeric IDs vào URL công khai nếu không cần.
 
 ## Roles
 
-Baseline:
+Tenant baseline:
 - OWNER/ADMIN;
 - MANAGER;
 - STAFF;
@@ -54,6 +74,7 @@ Ghi audit cho:
 - issue/cancel invoice;
 - manual payment allocation;
 - thay đổi bank/integration config;
+- CMS settings/plan/job retry mutations;
 - admin impersonation nếu có.
 
 ## Webhooks
