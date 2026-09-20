@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Headers,
-  NotImplementedException,
   Param,
   Patch,
   Post,
@@ -85,11 +84,8 @@ export class CmsController {
   }
 
   @Post("jobs/:jobId/retry")
-  retryJob(@Req() request: CmsRequest, @Param("jobId") _jobId: string) {
-    this.cms.getJobsIntegrationStatus(this.principal(request));
-    throw new NotImplementedException(
-      "Job retry will be enabled when durable job persistence is connected."
-    );
+  retryJob(@Req() request: CmsRequest, @Param("jobId") jobId: string) {
+    return this.cms.retryJob(this.principal(request), jobId);
   }
 
   @Get("logs")
