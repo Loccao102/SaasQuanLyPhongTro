@@ -57,13 +57,16 @@ jobs:
           }
 
           run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0002_cms_commercial_foundation.sql
+          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
+          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.sql
 
-          run_psql /repo/apps/api/db/migrations/0002_cms_commercial_foundation.down.sql
+          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.down.sql
+          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.down.sql
           run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.down.sql
 
           run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0002_cms_commercial_foundation.sql
+          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
+          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.sql
 
       - name: Build
         run: pnpm build

@@ -45,6 +45,12 @@ a { color: inherit; }
 .metric-card__label { padding-right: 24px; font-size: 13px; font-weight: 650; }
 .metric-card__value { display: block; margin-top: 12px; font-size: clamp(24px, 2vw, 31px); letter-spacing: -0.04em; }
 .metric-card__detail { margin-top: 6px; font-size: 12px; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.page-header__copy { display: grid; gap: 7px; min-width: 0; }
+.page-header__eyebrow { color: var(--color-text-muted); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.page-header h1 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.045em; }
+.page-header p { max-width: 720px; margin: 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.55; }
+.page-header__action { flex: 0 0 auto; }
 .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .section-header h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 .progress-block { display: grid; gap: 10px; }
@@ -52,3 +58,7 @@ a { color: inherit; }
 .progress-block__meta strong { color: var(--color-text); }
 .progress-bar { height: 9px; overflow: hidden; border-radius: 999px; background: #e9edf4; }
 .progress-bar span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); }
+@media (max-width: 640px) {
+  .page-header { display: grid; }
+  .page-header__action { width: 100%; }
+}

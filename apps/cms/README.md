@@ -8,7 +8,8 @@ Apply migrations in order:
 
 ```bash
 psql "$DATABASE_URL" -f apps/api/db/migrations/0001_identity_property_foundation.sql
-psql "$DATABASE_URL" -f apps/api/db/migrations/0002_cms_commercial_foundation.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0003_cms_commercial_foundation.sql
 psql "$DATABASE_URL" -f apps/api/db/seeds/cms_dev_operator.sql
 ```
 

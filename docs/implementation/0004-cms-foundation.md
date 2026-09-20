@@ -1,4 +1,4 @@
-# Implementation Slice 0003 — CMS Foundation
+# Implementation Slice 0004 — CMS Foundation
 
 Status: interactive frontend prototype with mock data. No real CMS authorization or persistence is claimed.
 

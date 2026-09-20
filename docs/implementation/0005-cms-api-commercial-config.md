@@ -1,4 +1,4 @@
-# Implementation Slice 0004 — CMS API & Commercial Configuration
+# Implementation Slice 0005 — CMS API & Commercial Configuration
 
 ## Scope
 
@@ -42,7 +42,7 @@ Plan changes create immutable saas_plan_versions and move saas_plans.current_ver
 
 ## Local development
 
-After migrations:
+Apply migrations through `0003_cms_commercial_foundation.sql`, then:
 
 ```bash
 psql "$DATABASE_URL" -f apps/api/db/seeds/cms_dev_operator.sql

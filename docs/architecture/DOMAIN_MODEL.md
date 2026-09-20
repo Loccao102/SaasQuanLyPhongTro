@@ -44,12 +44,12 @@ Nguyên tắc:
 - room usage lấy từ Room source of truth, không copy thành authoritative counter trong CMS.
 
 Subscription baseline:
-- TRIALING;
-- ACTIVE;
-- PAST_DUE;
-- GRACE_PERIOD;
-- SUSPENDED;
-- CANCELLED.
+- `TRIALING`;
+- `ACTIVE`;
+- `PAST_DUE`;
+- `GRACE_PERIOD`;
+- `SUSPENDED`;
+- `CANCELLED`.
 
 ## 4. Administrative Area
 
@@ -83,13 +83,41 @@ Một property có thể thuộc một administrative area và một hoặc nhi�
 
 Property là một địa điểm/cơ sở cụ thể. Room không mang trực tiếp thông tin người thuê hiện tại; quan hệ người thuê đi qua Lease.
 
+Room occupancy được suy ra từ Lease có trạng thái `ACTIVE` hoặc `TERMINATION_SCHEDULED`; không lưu một `current_tenant_id` mutable trên Room.
+
 ## 7. Lease / Resident
 
 ```text
-Resident -> Lease -> Room
+Room
+  -> Lease
+      -> LeaseResident[]
+          -> Resident
 ```
 
-Lease có thời gian hiệu lực, trạng thái và lịch sử. Đổi người thuê không phá lịch sử invoice cũ.
+Lease có lịch sử độc lập. Người thuê chuyển đi không xóa Lease cũ, và hợp đồng tiếp theo luôn là Lease mới.
+
+Lifecycle baseline:
+
+```text
+DRAFT -> ACTIVE -> TERMINATION_SCHEDULED -> TERMINATED
+   \-> CANCELLED
+
+TERMINATION_SCHEDULED -> ACTIVE
+```
+
+Chỉ được hoàn tất chấm dứt khi Metering, financial settlement và deposit settlement đều đã `READY` hoặc `NOT_REQUIRED`.
+
+Leasing chỉ giữ trạng thái readiness để orchestration; meter reading, invoice, payment vẫn thuộc module sở hữu tương ứng.
+
+Một Lease lưu contractual snapshot cơ bản:
+- start_date / planned_end_date;
+- base_rent_vnd;
+- deposit_required_vnd;
+- billing_day;
+- parties/residents;
+- lifecycle/version.
+
+Các số tiền dùng integer VND.
 
 ## 8. Pricing
 
