@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.2.0
+  version: 0.3.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -71,6 +71,52 @@ paths:
       summary: Inspect organizations, subscriptions and current room/staff usage
       responses:
         "200": { description: OK }
+  /entitlement-overrides:
+    get:
+      summary: List current non-revoked organization entitlement overrides
+      responses:
+        "200": { description: OK }
+  /organizations/{organizationId}/entitlement-overrides/{key}:
+    patch:
+      summary: Set or supersede an organization entitlement override
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: key, required: true, schema: { type: string, enum: [room_limit, staff_limit, automation_actions_monthly, advanced_reports, audit_log] } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, reason]
+              properties:
+                value: {}
+                expiresAt: { type: [string, "null"], format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Override set or idempotently replayed }
+        "400": { description: Invalid key, value, expiry or reason }
+        "409": { description: Reused idempotency key with different payload }
+  /organizations/{organizationId}/entitlement-overrides/{key}/revoke:
+    post:
+      summary: Revoke an organization entitlement override
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: key, required: true, schema: { type: string, enum: [room_limit, staff_limit, automation_actions_monthly, advanced_reports, audit_log] } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Override revoked or idempotently replayed }
+        "404": { description: No current override for that organization/key }
   /jobs:
     get:
       summary: Read job-integration status
