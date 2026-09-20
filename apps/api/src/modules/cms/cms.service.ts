@@ -9,8 +9,16 @@ import {
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { PostgresService } from "../../infrastructure/database/postgres.service.js";
+import {
+  InvalidEntitlementOverrideError,
+  isEntitlementKey,
+  validateEntitlementOverride,
+  type EntitlementValue
+} from "../commercial/domain/entitlements.js";
 import type {
   PlatformPrincipal,
+  RevokeEntitlementOverrideInput,
+  UpdateEntitlementOverrideInput,
   UpdatePlanInput,
   UpdateSettingInput
 } from "./cms.types.js";
@@ -83,6 +91,19 @@ type AuditRow = QueryResultRow & {
   before_state: unknown;
   after_state: unknown;
   reason: string;
+};
+
+type EntitlementOverrideRow = QueryResultRow & {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  entitlement_key: string;
+  value: unknown;
+  expires_at: Date | null;
+  reason: string;
+  created_at: Date;
+  created_by_name: string | null;
+  revoked_at: Date | null;
 };
 
 @Injectable()
@@ -427,6 +448,286 @@ export class CmsService {
     }));
   }
 
+  async listEntitlementOverrides(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.organizations.inspect");
+    const result = await this.db.query<EntitlementOverrideRow>(
+      `SELECT
+         eo.id::text,
+         eo.organization_id::text,
+         o.name AS organization_name,
+         eo.entitlement_key,
+         eo.value,
+         eo.expires_at,
+         eo.reason,
+         eo.created_at,
+         u.display_name AS created_by_name,
+         eo.revoked_at
+       FROM organization_entitlement_overrides eo
+       JOIN organizations o ON o.id = eo.organization_id
+       LEFT JOIN users u ON u.id = eo.created_by_user_id
+       WHERE eo.revoked_at IS NULL
+       ORDER BY o.name, eo.entitlement_key`
+    );
+
+    return result.rows.map((row) => this.mapEntitlementOverride(row));
+  }
+
+  async setEntitlementOverride(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    keyValue: string,
+    input: UpdateEntitlementOverrideInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.entitlements.manage");
+    if (!isEntitlementKey(keyValue)) {
+      throw new BadRequestException("Unknown entitlement key.");
+    }
+
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const expiresAt = input.expiresAt ?? null;
+
+    try {
+      validateEntitlementOverride({
+        key: keyValue,
+        value: input.value as EntitlementValue,
+        expiresAt
+      });
+    } catch (error) {
+      if (error instanceof InvalidEntitlementOverrideError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+
+    if (expiresAt !== null && new Date(expiresAt).getTime() <= Date.now()) {
+      throw new BadRequestException("expiresAt must be in the future.");
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "ENTITLEMENT_OVERRIDE_SET",
+      organizationId,
+      key: keyValue,
+      value: input.value,
+      expiresAt,
+      reason
+    });
+
+    return this.db.transaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      const organization = await client.query<QueryResultRow & { id: string }>(
+        "SELECT id::text FROM organizations WHERE id = $1 FOR UPDATE",
+        [organizationId]
+      );
+      if (!organization.rows[0]) {
+        throw new NotFoundException("Organization was not found.");
+      }
+
+      const currentResult = await client.query<EntitlementOverrideRow>(
+        `SELECT
+           eo.id::text,
+           eo.organization_id::text,
+           o.name AS organization_name,
+           eo.entitlement_key,
+           eo.value,
+           eo.expires_at,
+           eo.reason,
+           eo.created_at,
+           u.display_name AS created_by_name,
+           eo.revoked_at
+         FROM organization_entitlement_overrides eo
+         JOIN organizations o ON o.id = eo.organization_id
+         LEFT JOIN users u ON u.id = eo.created_by_user_id
+         WHERE eo.organization_id = $1
+           AND eo.entitlement_key = $2
+           AND eo.revoked_at IS NULL
+         FOR UPDATE OF eo`,
+        [organizationId, keyValue]
+      );
+      const current = currentResult.rows[0];
+
+      if (current) {
+        await client.query(
+          `UPDATE organization_entitlement_overrides
+           SET revoked_at = now(), revoked_by_user_id = $3
+           WHERE organization_id = $1
+             AND entitlement_key = $2
+             AND revoked_at IS NULL`,
+          [organizationId, keyValue, principal.userId]
+        );
+      }
+
+      const inserted = await client.query<EntitlementOverrideRow>(
+        `WITH inserted AS (
+           INSERT INTO organization_entitlement_overrides (
+             organization_id, entitlement_key, value, expires_at,
+             reason, created_by_user_id
+           )
+           VALUES ($1, $2, $3::jsonb, $4::timestamptz, $5, $6)
+           RETURNING *
+         )
+         SELECT
+           i.id::text,
+           i.organization_id::text,
+           o.name AS organization_name,
+           i.entitlement_key,
+           i.value,
+           i.expires_at,
+           i.reason,
+           i.created_at,
+           u.display_name AS created_by_name,
+           i.revoked_at
+         FROM inserted i
+         JOIN organizations o ON o.id = i.organization_id
+         LEFT JOIN users u ON u.id = i.created_by_user_id`,
+        [
+          organizationId,
+          keyValue,
+          JSON.stringify(input.value),
+          expiresAt,
+          reason,
+          principal.userId
+        ]
+      );
+      const response = this.mapEntitlementOverride(inserted.rows[0]!);
+
+      await this.insertAudit(client, {
+        actorUserId: principal.userId,
+        action: "ENTITLEMENT_OVERRIDE_SET",
+        targetType: "ENTITLEMENT_OVERRIDE",
+        targetKey: organizationId + ":" + keyValue,
+        organizationId,
+        beforeState: current
+          ? this.mapEntitlementOverride(current)
+          : {},
+        afterState: response,
+        reason
+      });
+      await this.insertReceipt(
+        client,
+        principal.userId,
+        commandKey,
+        "ENTITLEMENT_OVERRIDE_SET",
+        fingerprint,
+        response
+      );
+      return response;
+    });
+  }
+
+  async revokeEntitlementOverride(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    keyValue: string,
+    input: RevokeEntitlementOverrideInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.entitlements.manage");
+    if (!isEntitlementKey(keyValue)) {
+      throw new BadRequestException("Unknown entitlement key.");
+    }
+
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const fingerprint = this.fingerprint({
+      action: "ENTITLEMENT_OVERRIDE_REVOKED",
+      organizationId,
+      key: keyValue,
+      reason
+    });
+
+    return this.db.transaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      const currentResult = await client.query<EntitlementOverrideRow>(
+        `SELECT
+           eo.id::text,
+           eo.organization_id::text,
+           o.name AS organization_name,
+           eo.entitlement_key,
+           eo.value,
+           eo.expires_at,
+           eo.reason,
+           eo.created_at,
+           u.display_name AS created_by_name,
+           eo.revoked_at
+         FROM organization_entitlement_overrides eo
+         JOIN organizations o ON o.id = eo.organization_id
+         LEFT JOIN users u ON u.id = eo.created_by_user_id
+         WHERE eo.organization_id = $1
+           AND eo.entitlement_key = $2
+           AND eo.revoked_at IS NULL
+         FOR UPDATE OF eo`,
+        [organizationId, keyValue]
+      );
+      const current = currentResult.rows[0];
+      if (!current) {
+        throw new NotFoundException("Active entitlement override was not found.");
+      }
+
+      await client.query(
+        `UPDATE organization_entitlement_overrides
+         SET revoked_at = now(), revoked_by_user_id = $3
+         WHERE organization_id = $1
+           AND entitlement_key = $2
+           AND revoked_at IS NULL`,
+        [organizationId, keyValue, principal.userId]
+      );
+
+      const response = {
+        organizationId,
+        key: keyValue,
+        revoked: true
+      };
+
+      await this.insertAudit(client, {
+        actorUserId: principal.userId,
+        action: "ENTITLEMENT_OVERRIDE_REVOKED",
+        targetType: "ENTITLEMENT_OVERRIDE",
+        targetKey: organizationId + ":" + keyValue,
+        organizationId,
+        beforeState: this.mapEntitlementOverride(current),
+        afterState: response,
+        reason
+      });
+      await this.insertReceipt(
+        client,
+        principal.userId,
+        commandKey,
+        "ENTITLEMENT_OVERRIDE_REVOKED",
+        fingerprint,
+        response
+      );
+      return response;
+    });
+  }
+
   async listAudit(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.audit.read");
     const result = await this.db.query<AuditRow>(
@@ -522,6 +823,20 @@ export class CmsService {
     return createHash("sha256")
       .update(JSON.stringify(value))
       .digest("hex");
+  }
+
+  private mapEntitlementOverride(row: EntitlementOverrideRow) {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      organizationName: row.organization_name,
+      key: row.entitlement_key,
+      value: row.value,
+      expiresAt: row.expires_at?.toISOString() ?? null,
+      reason: row.reason,
+      createdAt: row.created_at.toISOString(),
+      createdBy: row.created_by_name ?? "system"
+    };
   }
 
   private mapSetting(row: SettingRow) {
