@@ -383,7 +383,8 @@ export class SubscriptionBillingService {
   ): Promise<ProviderPaymentIngestionView> {
     const provider = input.provider.trim();
     const providerTransactionId = input.providerTransactionId.trim();
-    const paymentReference = input.paymentReference?.trim() || null;
+    const paymentReference =
+      input.paymentReference?.trim().toUpperCase() || null;
 
     if (!provider || !providerTransactionId) {
       throw new SubscriptionBillingConflictError(
@@ -411,9 +412,22 @@ export class SubscriptionBillingService {
     );
     const existing = existingResult.rows[0];
     if (existing) {
+      const metadata =
+        typeof existing.metadata === "object" &&
+        existing.metadata !== null &&
+        !Array.isArray(existing.metadata)
+          ? (existing.metadata as Record<string, unknown>)
+          : null;
+      const existingReference =
+        typeof metadata?.paymentReference === "string"
+          ? metadata.paymentReference
+          : null;
+
       if (
         Number(existing.amount_vnd) !== input.amountVnd ||
-        existing.source !== "PROVIDER"
+        existing.source !== "PROVIDER" ||
+        existing.occurred_at.getTime() !== occurredAt.getTime() ||
+        existingReference !== paymentReference
       ) {
         throw new SubscriptionBillingConflictError(
           "Provider transaction id was reused with different payment content."
