@@ -47,10 +47,12 @@ export type CmsSubscription = {
   planCode: string;
   status: CmsSubscriptionStatus;
   version: number;
+  billingInterval: "MONTHLY" | "YEARLY";
   trialEndsAt: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   graceEndsAt: string | null;
+  pastDueAt: string | null;
   cancelAtPeriodEnd: boolean;
 };
 
@@ -210,6 +212,7 @@ export const cmsApi = {
     input: {
       planCode: string;
       status: "TRIALING" | "ACTIVE";
+      billingInterval: "MONTHLY" | "YEARLY";
       trialEndsAt?: string | null;
       reason: string;
     }
