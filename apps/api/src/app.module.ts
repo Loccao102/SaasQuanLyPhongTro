@@ -4,6 +4,7 @@ import { CommercialModule } from "./modules/commercial/commercial.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { IdentityModule } from "./modules/identity/identity.module.js";
 import { LeasingModule } from "./modules/leasing/leasing.module.js";
+import { NotificationsModule } from "./modules/notifications/notifications.module.js";
 import { PropertiesModule } from "./modules/properties/properties.module.js";
 
 @Module({
@@ -13,6 +14,7 @@ import { PropertiesModule } from "./modules/properties/properties.module.js";
     PropertiesModule,
     LeasingModule,
     CommercialModule,
+    NotificationsModule,
     CmsModule
   ]
 })
