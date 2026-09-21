@@ -34,6 +34,10 @@ async function cleanup(pool: Pool): Promise<void> {
     [organizationId]
   );
   await pool.query(
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
+    [organizationId]
+  );
+  await pool.query(
     "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
     [organizationId]
   );
@@ -328,6 +332,14 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     );
     assert.equal(subscriptionAudits.rows[0]?.count, 3);
 
+    await fixturePool.query(
+      `UPDATE organization_subscriptions
+       SET current_period_start = now() - interval '1 month 1 second',
+           current_period_end = now() - interval '1 second'
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
+
     const billingInvoice = await fixturePool.query<{
       id: string;
       amount_vnd: string;
@@ -376,12 +388,19 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(billingBeforePayment.billingInterval, "MONTHLY");
     assert.equal(billingBeforePayment.latestInvoice?.status, "OPEN");
     assert.equal(billingBeforePayment.latestInvoice?.amountVnd, 249_000);
+    assert.equal(billingBeforePayment.latestInvoice?.paidAmountVnd, 0);
+    assert.equal(
+      billingBeforePayment.latestInvoice?.remainingAmountVnd,
+      249_000
+    );
+    assert.equal(billingBeforePayment.latestInvoice?.isOverdue, true);
 
     const firstManualPayment = await service.recordSubscriptionPayment(
       principal,
       organizationId,
       {
         invoiceId: billingInvoiceId,
+        amountVnd: 249_000,
         reason: "Integration verified bank transfer"
       },
       "cms-manual-payment-001"
@@ -391,6 +410,7 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
       organizationId,
       {
         invoiceId: billingInvoiceId,
+        amountVnd: 249_000,
         reason: "Integration verified bank transfer"
       },
       "cms-manual-payment-001"
@@ -433,11 +453,19 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     const manualPaymentCount = await fixturePool.query<{ count: number }>(
       `SELECT count(*)::int AS count
        FROM saas_subscription_payments
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
+    assert.equal(manualPaymentCount.rows[0]?.count, 1);
+
+    const manualAllocationCount = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM saas_subscription_payment_allocations
        WHERE organization_id = $1
          AND invoice_id = $2`,
       [organizationId, billingInvoiceId]
     );
-    assert.equal(manualPaymentCount.rows[0]?.count, 1);
+    assert.equal(manualAllocationCount.rows[0]?.count, 1);
 
     const manualPaymentAudit = await fixturePool.query<{ count: number }>(
       `SELECT count(*)::int AS count
@@ -459,6 +487,15 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(billingAfterPayment.subscriptionStatus, "ACTIVE");
     assert.equal(billingAfterPayment.subscriptionVersion, 4);
     assert.equal(billingAfterPayment.latestInvoice?.status, "PAID");
+    assert.equal(
+      billingAfterPayment.latestInvoice?.paidAmountVnd,
+      249_000
+    );
+    assert.equal(
+      billingAfterPayment.latestInvoice?.remainingAmountVnd,
+      0
+    );
+    assert.equal(billingAfterPayment.latestInvoice?.isOverdue, false);
     assert.ok(billingAfterPayment.latestInvoice?.paidAt);
 
     const firstProviderPause =
