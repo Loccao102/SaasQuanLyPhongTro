@@ -3,8 +3,9 @@ import "@propops/ui/styles.css";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "PropOps CMS",
-  description: "Internal control surface for SaaS settings, operations and audit."
+  title: "PropOps Control Plane",
+  description:
+    "PropOps SaaS control plane for operations, subscriptions, billing, automation and audit."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
