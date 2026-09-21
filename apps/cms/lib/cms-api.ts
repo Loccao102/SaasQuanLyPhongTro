@@ -1,4 +1,93 @@
 export type CmsDashboard = {
+  branding: {
+    productName: string;
+    descriptor: string;
+    tagline: string;
+    palette: Record<string, unknown>;
+  };
+  display: {
+    locale: string;
+    timezone: string;
+    currencyCode: string;
+    dateFormat: string;
+    dateTimeFormat: string;
+    presets: Record<string, unknown>;
+  };
+  windows: {
+    leaseExpiryDays: number;
+    recentHours: number;
+    workerStaleAfterSeconds: number;
+    webhookStaleAfterSeconds: number;
+  };
+  organizations: {
+    total: number;
+    active: number;
+    suspended: number;
+    activeMemberships: number;
+  };
+  assets: {
+    activeProperties: number;
+    activeRooms: number;
+    occupiedRooms: number;
+    vacantRooms: number;
+    occupancyRatePercent: number;
+    activeResidents: number;
+    activeLeases: number;
+    terminationScheduledLeases: number;
+    expiringLeases: number;
+  };
+  commercial: {
+    trialingSubscriptions: number;
+    activeSubscriptions: number;
+    pastDueSubscriptions: number;
+    gracePeriodSubscriptions: number;
+    suspendedSubscriptions: number;
+    cancelledSubscriptions: number;
+    cancelAtPeriodEndSubscriptions: number;
+    delinquentOrganizationCount: number | null;
+    unpaidInvoiceCount: number | null;
+    overdueInvoiceCount: number | null;
+    outstandingVnd: number | null;
+    overdueVnd: number | null;
+    successfulPaymentCountRecent: number | null;
+    successfulPaymentVndRecent: number | null;
+    activePlans: number;
+  };
+  automation: {
+    queuedJobs: number;
+    runningJobs: number;
+    retryWaitJobs: number;
+    manualReviewJobs: number;
+    failedJobs: number;
+    sentJobsRecent: number;
+    healthyWorkers: number;
+    degradedWorkers: number;
+    staleWorkers: number;
+    pausedProviders: number;
+    webhookReceived: number;
+    webhookProcessing: number;
+    webhookReviewRequired: number;
+    webhookFailed: number;
+    webhookStaleProcessing: number;
+    webhookProcessedRecent: number;
+  };
+  platform: {
+    settingCount: number;
+    auditRecent: number;
+  };
+  topOrganizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    activeRooms: number;
+    currentLeases: number;
+  }>;
+  planDistribution: Array<{
+    planCode: string;
+    planName: string;
+    subscriptions: number;
+  }>;
+
   organizationCount: number;
   activeRoomCount: number;
   settingCount: number;
