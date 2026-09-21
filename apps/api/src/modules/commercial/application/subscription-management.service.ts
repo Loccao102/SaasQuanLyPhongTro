@@ -14,10 +14,12 @@ type SubscriptionRow = QueryResultRow & {
   plan_code: string;
   status: SubscriptionStatus;
   version: number;
+  billing_interval: "MONTHLY" | "YEARLY";
   trial_ends_at: Date | null;
   current_period_start: Date | null;
   current_period_end: Date | null;
   grace_ends_at: Date | null;
+  past_due_at: Date | null;
   cancel_at_period_end: boolean;
 };
 
@@ -33,10 +35,12 @@ export interface SubscriptionView {
   planCode: string;
   status: SubscriptionStatus;
   version: number;
+  billingInterval: "MONTHLY" | "YEARLY";
   trialEndsAt: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   graceEndsAt: string | null;
+  pastDueAt: string | null;
   cancelAtPeriodEnd: boolean;
 }
 
@@ -95,6 +99,7 @@ export class SubscriptionManagementService {
       organizationId: string;
       planCode: string;
       status: "TRIALING" | "ACTIVE";
+      billingInterval?: "MONTHLY" | "YEARLY";
       trialEndsAt?: string | null;
     }
   ): Promise<SubscriptionView> {
@@ -140,6 +145,16 @@ export class SubscriptionManagementService {
       throw new SubscriptionPlanNotFoundError();
     }
 
+    const billingInterval = input.billingInterval ?? "MONTHLY";
+    if (
+      billingInterval !== "MONTHLY" &&
+      billingInterval !== "YEARLY"
+    ) {
+      throw new InvalidSubscriptionProvisioningError(
+        "billingInterval must be MONTHLY or YEARLY."
+      );
+    }
+
     let trialEndsAt: string | null = null;
     if (input.status === "TRIALING") {
       trialEndsAt =
@@ -160,28 +175,46 @@ export class SubscriptionManagementService {
          plan_id,
          plan_version_id,
          status,
+         billing_interval,
          trial_ends_at,
-         current_period_start
+         current_period_start,
+         current_period_end
        )
-       VALUES ($1, $2, $3, $4, $5::timestamptz, now())
+       VALUES (
+         $1,
+         $2,
+         $3,
+         $4,
+         $5,
+         $6::timestamptz,
+         CASE WHEN $4 = 'ACTIVE' THEN now() ELSE NULL END,
+         CASE
+           WHEN $4 <> 'ACTIVE' THEN NULL
+           WHEN $5 = 'YEARLY' THEN now() + interval '1 year'
+           ELSE now() + interval '1 month'
+         END
+       )
        RETURNING
          id::text,
          organization_id::text,
          plan_id::text,
          plan_version_id::text,
-         $6::text AS plan_code,
+         $7::text AS plan_code,
          status,
          version,
+         billing_interval,
          trial_ends_at,
          current_period_start,
          current_period_end,
          grace_ends_at,
+         past_due_at,
          cancel_at_period_end`,
       [
         input.organizationId,
         selectedPlan.plan_id,
         selectedPlan.plan_version_id,
         input.status,
+        billingInterval,
         trialEndsAt,
         input.planCode
       ]
@@ -219,10 +252,12 @@ export class SubscriptionManagementService {
          p.code AS plan_code,
          s.status,
          s.version,
+         s.billing_interval,
          s.trial_ends_at,
          s.current_period_start,
          s.current_period_end,
          s.grace_ends_at,
+         s.past_due_at,
          s.cancel_at_period_end
        FROM organization_subscriptions s
        JOIN saas_plans p ON p.id = s.plan_id
@@ -267,9 +302,27 @@ export class SubscriptionManagementService {
        SET status = $2,
            version = $3,
            grace_ends_at = $4::timestamptz,
+           past_due_at = CASE
+             WHEN $2 = 'PAST_DUE' THEN COALESCE(past_due_at, now())
+             WHEN $2 = 'ACTIVE' THEN NULL
+             ELSE past_due_at
+           END,
            trial_ends_at = CASE
              WHEN $2 = 'ACTIVE' THEN NULL
              ELSE trial_ends_at
+           END,
+           current_period_start = CASE
+             WHEN $2 = 'ACTIVE' AND current_period_start IS NULL THEN now()
+             ELSE current_period_start
+           END,
+           current_period_end = CASE
+             WHEN $2 = 'ACTIVE' AND current_period_end IS NULL
+               THEN CASE
+                 WHEN billing_interval = 'YEARLY'
+                   THEN now() + interval '1 year'
+                 ELSE now() + interval '1 month'
+               END
+             ELSE current_period_end
            END,
            updated_at = now()
        WHERE organization_id = $1
@@ -281,10 +334,12 @@ export class SubscriptionManagementService {
          $5::text AS plan_code,
          status,
          version,
+         billing_interval,
          trial_ends_at,
          current_period_start,
          current_period_end,
          grace_ends_at,
+         past_due_at,
          cancel_at_period_end`,
       [
         input.organizationId,
@@ -329,10 +384,12 @@ export class SubscriptionManagementService {
          p.code AS plan_code,
          s.status,
          s.version,
+         s.billing_interval,
          s.trial_ends_at,
          s.current_period_start,
          s.current_period_end,
          s.grace_ends_at,
+         s.past_due_at,
          s.cancel_at_period_end
        FROM organization_subscriptions s
        JOIN saas_plans p ON p.id = s.plan_id
@@ -400,10 +457,12 @@ export class SubscriptionManagementService {
          $4::text AS plan_code,
          status,
          version,
+         billing_interval,
          trial_ends_at,
          current_period_start,
          current_period_end,
          grace_ends_at,
+         past_due_at,
          cancel_at_period_end`,
       [
         input.organizationId,
@@ -448,10 +507,12 @@ export class SubscriptionManagementService {
       planCode: row.plan_code,
       status: row.status,
       version: row.version,
+      billingInterval: row.billing_interval,
       trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
       currentPeriodStart: row.current_period_start?.toISOString() ?? null,
       currentPeriodEnd: row.current_period_end?.toISOString() ?? null,
       graceEndsAt: row.grace_ends_at?.toISOString() ?? null,
+      pastDueAt: row.past_due_at?.toISOString() ?? null,
       cancelAtPeriodEnd: row.cancel_at_period_end
     };
   }
