@@ -314,6 +314,20 @@ export default function CmsPage() {
     (org) => org.roomLimit !== null && org.rooms > org.roomLimit
   ).length;
 
+  const dashboardNumber = (value: number) =>
+    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN").format(value);
+  const dashboardMoney = (value: number) =>
+    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN", {
+      style: "currency",
+      currency: dashboard?.display.currencyCode ?? "VND",
+      maximumFractionDigits: 0
+    }).format(value);
+  const dashboardPercent = (value: number) =>
+    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1
+    }).format(value) + "%";
+
   async function submitModal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!modal) return;
@@ -606,10 +620,16 @@ export default function CmsPage() {
     <div className="cms-shell">
       <aside className="cms-sidebar">
         <div className="cms-brand">
-          <span className="cms-brand__mark">P</span>
+          <img
+            className="cms-brand__mark"
+            src="/propops-mark.svg"
+            alt=""
+            width={42}
+            height={42}
+          />
           <div>
-            <strong>PropOps</strong>
-            <span>Internal CMS</span>
+            <strong>{dashboard?.branding.productName ?? "PropOps"}</strong>
+            <span>Control Plane</span>
           </div>
         </div>
         <nav className="cms-nav" aria-label="CMS navigation">
@@ -643,12 +663,15 @@ export default function CmsPage() {
 
       <main className="cms-main">
         <div className="cms-warning" role="note">
-          CMS dùng SaaS PostgreSQL qua /api/cms/*. Browser không được quyền chọn platform user hay ghi DB trực tiếp.
+          LIVE DB · Control Plane đọc dữ liệu vận hành trực tiếp từ PostgreSQL qua /api/cms/*. Không có KPI demo/hardcode.
         </div>
 
         <header className="cms-topbar">
           <div>
-            <span className="cms-eyebrow">INTERNAL SAAS OPERATIONS</span>
+            <span className="cms-eyebrow">
+              {dashboard?.branding.tagline ??
+                "VẬN HÀNH HIỆU QUẢ · KIẾN TẠO GIÁ TRỊ BỀN VỮNG"}
+            </span>
             <h1>{visibleNavItems.find((item) => item.id === view)?.label}</h1>
           </div>
           <button className="secondary-button" type="button" onClick={() => void load()}>
@@ -667,70 +690,280 @@ export default function CmsPage() {
 
           {!loading && view === "dashboard" && dashboard && (
             <>
-              <section className="cms-metrics" aria-label="CMS summary">
+              <section className="cms-hero">
+                <div className="cms-hero__brand">
+                  <img
+                    src="/propops-logo.svg"
+                    alt={dashboard.branding.productName}
+                    className="cms-hero__logo"
+                  />
+                  <div>
+                    <span className="cms-eyebrow">CONTROL PLANE · LIVE DATA</span>
+                    <h2>{dashboard.branding.tagline}</h2>
+                    <p>
+                      {dashboard.branding.descriptor} · {dashboard.display.locale}
+                      {" · "}
+                      {dashboard.display.timezone}
+                    </p>
+                  </div>
+                </div>
+                <div className="cms-hero__status">
+                  <StatusBadge tone="success">POSTGRESQL LIVE</StatusBadge>
+                  <small>
+                    cửa sổ gần đây {dashboard.windows.recentHours}h · hợp đồng
+                    sắp hết hạn {dashboard.windows.leaseExpiryDays} ngày
+                  </small>
+                </div>
+              </section>
+
+              <SectionHeader
+                title="Tài sản & vận hành tenant"
+                action={
+                  <span className="cms-note">
+                    Tổng hợp trực tiếp từ properties / rooms / residents / leases
+                  </span>
+                }
+              />
+              <section className="cms-metrics cms-metrics--dense">
+                <MetricCard
+                  label="Cơ sở đang hoạt động"
+                  value={dashboardNumber(dashboard.assets.activeProperties)}
+                  detail={dashboardNumber(dashboard.organizations.active) + " organization active"}
+                  tone="info"
+                />
+                <MetricCard
+                  label="Phòng đang hoạt động"
+                  value={dashboardNumber(dashboard.assets.activeRooms)}
+                  detail={overLimit + " organization vượt room limit"}
+                  tone={overLimit ? "warning" : "success"}
+                />
+                <MetricCard
+                  label="Phòng có hợp đồng"
+                  value={dashboardNumber(dashboard.assets.occupiedRooms)}
+                  detail={dashboardPercent(dashboard.assets.occupancyRatePercent) + " lấp đầy"}
+                  tone="success"
+                />
+                <MetricCard
+                  label="Phòng trống"
+                  value={dashboardNumber(dashboard.assets.vacantRooms)}
+                  detail="Suy ra từ phòng active không có lease hiện hành"
+                  tone={dashboard.assets.vacantRooms > 0 ? "warning" : "success"}
+                />
+                <MetricCard
+                  label="Cư dân active"
+                  value={dashboardNumber(dashboard.assets.activeResidents)}
+                  detail={dashboardNumber(dashboard.organizations.activeMemberships) + " thành viên tổ chức active"}
+                  tone="info"
+                />
+                <MetricCard
+                  label="Hợp đồng active"
+                  value={dashboardNumber(dashboard.assets.activeLeases)}
+                  detail={dashboardNumber(dashboard.assets.terminationScheduledLeases) + " đang chờ chấm dứt"}
+                  tone="neutral"
+                />
+                <MetricCard
+                  label={"HĐ hết hạn ≤ " + dashboard.windows.leaseExpiryDays + " ngày"}
+                  value={dashboardNumber(dashboard.assets.expiringLeases)}
+                  detail="Theo planned_end_date của lease hiện hành"
+                  tone={dashboard.assets.expiringLeases > 0 ? "warning" : "success"}
+                />
+                <MetricCard
+                  label="Tỷ lệ lấp đầy"
+                  value={dashboardPercent(dashboard.assets.occupancyRatePercent)}
+                  detail={
+                    dashboardNumber(dashboard.assets.occupiedRooms) +
+                    " / " +
+                    dashboardNumber(dashboard.assets.activeRooms) +
+                    " phòng"
+                  }
+                  tone="success"
+                />
+              </section>
+
+              <SectionHeader
+                title="SaaS subscription & billing"
+                action={
+                  <span className="cms-note">
+                    Financial KPI là billing của PropOps, không phải doanh thu tiền trọ
+                  </span>
+                }
+              />
+              <section className="cms-metrics cms-metrics--dense">
                 <MetricCard
                   label="Organizations"
-                  value={String(dashboard.organizationCount)}
+                  value={dashboardNumber(dashboard.organizations.total)}
                   detail={
-                    hasPermission("platform.billing.read")
-                      ? String(dashboard.delinquentOrganizationCount ?? 0) +
-                        " organization delinquent"
-                      : "Nguồn thật từ SaaS DB"
+                    dashboardNumber(dashboard.organizations.suspended) +
+                    " organization suspended"
+                  }
+                  tone={dashboard.organizations.suspended > 0 ? "warning" : "info"}
+                />
+                <MetricCard
+                  label="Subscription active"
+                  value={dashboardNumber(dashboard.commercial.activeSubscriptions)}
+                  detail={
+                    dashboardNumber(dashboard.commercial.trialingSubscriptions) +
+                    " trialing"
+                  }
+                  tone="success"
+                />
+                <MetricCard
+                  label="Delinquent"
+                  value={dashboardNumber(
+                    dashboard.commercial.delinquentOrganizationCount ?? 0
+                  )}
+                  detail={
+                    dashboardNumber(dashboard.commercial.pastDueSubscriptions) +
+                    " past due · " +
+                    dashboardNumber(dashboard.commercial.gracePeriodSubscriptions) +
+                    " grace"
                   }
                   tone={
-                    (dashboard.delinquentOrganizationCount ?? 0) > 0
+                    (dashboard.commercial.delinquentOrganizationCount ?? 0) > 0
+                      ? "danger"
+                      : "success"
+                  }
+                />
+                <MetricCard
+                  label="Cancel cuối kỳ"
+                  value={dashboardNumber(
+                    dashboard.commercial.cancelAtPeriodEndSubscriptions
+                  )}
+                  detail="Scheduled cancellation"
+                  tone={
+                    dashboard.commercial.cancelAtPeriodEndSubscriptions > 0
                       ? "warning"
-                      : "info"
+                      : "neutral"
                   }
                 />
                 {hasPermission("platform.billing.read") ? (
                   <>
                     <MetricCard
                       label="SaaS chưa thu"
-                      value={money(dashboard.outstandingVnd ?? 0)}
+                      value={dashboardMoney(
+                        dashboard.commercial.outstandingVnd ?? 0
+                      )}
                       detail={
-                        String(dashboard.unpaidInvoiceCount ?? 0) +
-                        " invoice còn số dư"
+                        dashboardNumber(
+                          dashboard.commercial.unpaidInvoiceCount ?? 0
+                        ) + " invoice còn số dư"
                       }
                       tone={
-                        (dashboard.outstandingVnd ?? 0) > 0
+                        (dashboard.commercial.outstandingVnd ?? 0) > 0
                           ? "warning"
                           : "success"
                       }
                     />
                     <MetricCard
                       label="SaaS quá hạn"
-                      value={money(dashboard.overdueVnd ?? 0)}
+                      value={dashboardMoney(dashboard.commercial.overdueVnd ?? 0)}
                       detail={
-                        String(dashboard.overdueInvoiceCount ?? 0) +
-                        " invoice đã đến hạn"
+                        dashboardNumber(
+                          dashboard.commercial.overdueInvoiceCount ?? 0
+                        ) + " invoice overdue"
                       }
                       tone={
-                        (dashboard.overdueVnd ?? 0) > 0
+                        (dashboard.commercial.overdueVnd ?? 0) > 0
                           ? "danger"
                           : "success"
                       }
                     />
+                    <MetricCard
+                      label={"Thanh toán " + dashboard.windows.recentHours + "h"}
+                      value={dashboardMoney(
+                        dashboard.commercial.successfulPaymentVndRecent ?? 0
+                      )}
+                      detail={
+                        dashboardNumber(
+                          dashboard.commercial.successfulPaymentCountRecent ?? 0
+                        ) + " payment thành công"
+                      }
+                      tone="success"
+                    />
                   </>
                 ) : null}
                 <MetricCard
-                  label="Active rooms"
-                  value={String(dashboard.activeRoomCount)}
-                  detail={overLimit + " organization đang over-limit"}
-                  tone={overLimit ? "warning" : "success"}
-                />
-                <MetricCard
-                  label="Plans"
-                  value={String(dashboard.activePlanCount)}
-                  detail="Versioned plan configuration"
+                  label="Plan active"
+                  value={dashboardNumber(dashboard.commercial.activePlans)}
+                  detail={dashboard.planDistribution
+                    .map((item) => item.planCode + " " + item.subscriptions)
+                    .join(" · ")}
                   tone="neutral"
                 />
-                <MetricCard
-                  label="Audit 24h"
-                  value={String(dashboard.platformAudit24h)}
-                  detail={dashboard.settingCount + " system settings"}
-                  tone="neutral"
-                />
+              </section>
+
+              <section className="cms-dashboard-grid">
+                <article className="cms-panel">
+                  <SectionHeader title="Top organization theo số phòng" />
+                  {dashboard.topOrganizations.length === 0 ? (
+                    <div className="empty-state">Chưa có dữ liệu phòng.</div>
+                  ) : (
+                    <div className="dashboard-ranking">
+                      {dashboard.topOrganizations.map((item) => {
+                        const maxRooms = Math.max(
+                          1,
+                          ...dashboard.topOrganizations.map(
+                            (organization) => organization.activeRooms
+                          )
+                        );
+                        const width = Math.round(
+                          (item.activeRooms / maxRooms) * 100
+                        );
+                        return (
+                          <div className="dashboard-ranking__row" key={item.id}>
+                            <div>
+                              <strong>{item.name}</strong>
+                              <small>{item.slug}</small>
+                            </div>
+                            <div className="dashboard-ranking__bar">
+                              <span style={{ width: width + "%" }} />
+                            </div>
+                            <strong>{dashboardNumber(item.activeRooms)}</strong>
+                            <small>{dashboardNumber(item.currentLeases)} lease</small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </article>
+
+                <article className="cms-panel">
+                  <SectionHeader title="Automation & payment pipeline" />
+                  <div className="dashboard-health-grid">
+                    <div>
+                      <span>Notification queued</span>
+                      <strong>{dashboardNumber(dashboard.automation.queuedJobs)}</strong>
+                    </div>
+                    <div>
+                      <span>Retry wait</span>
+                      <strong>{dashboardNumber(dashboard.automation.retryWaitJobs)}</strong>
+                    </div>
+                    <div>
+                      <span>Manual review</span>
+                      <strong>{dashboardNumber(dashboard.automation.manualReviewJobs)}</strong>
+                    </div>
+                    <div>
+                      <span>Sent {dashboard.windows.recentHours}h</span>
+                      <strong>{dashboardNumber(dashboard.automation.sentJobsRecent)}</strong>
+                    </div>
+                    <div>
+                      <span>Healthy workers</span>
+                      <strong>{dashboardNumber(dashboard.automation.healthyWorkers)}</strong>
+                    </div>
+                    <div>
+                      <span>Stale workers</span>
+                      <strong>{dashboardNumber(dashboard.automation.staleWorkers)}</strong>
+                    </div>
+                    <div>
+                      <span>Webhook review</span>
+                      <strong>{dashboardNumber(dashboard.automation.webhookReviewRequired)}</strong>
+                    </div>
+                    <div>
+                      <span>Webhook failed</span>
+                      <strong>{dashboardNumber(dashboard.automation.webhookFailed)}</strong>
+                    </div>
+                  </div>
+                </article>
               </section>
 
               <section className="cms-grid">
@@ -764,6 +997,7 @@ export default function CmsPage() {
                                 (org.roomLimit !== null &&
                                   org.rooms > org.roomLimit)
                             )
+                            .slice(0, 10)
                             .map((org) => (
                               <tr key={org.id}>
                                 <td>
@@ -794,7 +1028,7 @@ export default function CmsPage() {
                                           : org.latestInvoice.status}
                                       </StatusBadge>
                                       <small>
-                                        {money(
+                                        {dashboardMoney(
                                           org.latestInvoice.remainingAmountVnd
                                         )}{" "}
                                         còn lại
@@ -818,32 +1052,66 @@ export default function CmsPage() {
                 </article>
 
                 <article className="cms-panel">
-                  <SectionHeader title="Integrations" />
+                  <SectionHeader title="Platform health" />
                   <div className="health-list">
                     <div>
                       <span>CMS API / PostgreSQL</span>
                       <StatusBadge tone="success">CONNECTED</StatusBadge>
                     </div>
-                    {hasPermission("platform.jobs.read") ? (
-                      <div>
-                        <span>Jobs persistence</span>
-                        <StatusBadge
-                          tone={jobsStatus?.connected ? "success" : "warning"}
-                        >
-                          {jobsStatus?.connected ? "CONNECTED" : "PENDING"}
-                        </StatusBadge>
-                      </div>
-                    ) : null}
-                    {hasPermission("platform.logs.read") ? (
-                      <div>
-                        <span>Observability logs</span>
-                        <StatusBadge
-                          tone={logsStatus?.connected ? "success" : "warning"}
-                        >
-                          {logsStatus?.connected ? "CONNECTED" : "PENDING"}
-                        </StatusBadge>
-                      </div>
-                    ) : null}
+                    <div>
+                      <span>Platform audit {dashboard.windows.recentHours}h</span>
+                      <strong>{dashboardNumber(dashboard.platform.auditRecent)}</strong>
+                    </div>
+                    <div>
+                      <span>System settings</span>
+                      <strong>{dashboardNumber(dashboard.platform.settingCount)}</strong>
+                    </div>
+                    <div>
+                      <span>Worker heartbeat</span>
+                      <StatusBadge
+                        tone={
+                          dashboard.automation.staleWorkers > 0 ||
+                          dashboard.automation.degradedWorkers > 0
+                            ? "warning"
+                            : "success"
+                        }
+                      >
+                        {dashboard.automation.staleWorkers > 0
+                          ? dashboard.automation.staleWorkers + " STALE"
+                          : dashboard.automation.degradedWorkers > 0
+                            ? dashboard.automation.degradedWorkers + " DEGRADED"
+                            : "HEALTHY"}
+                      </StatusBadge>
+                    </div>
+                    <div>
+                      <span>Notification provider</span>
+                      <StatusBadge
+                        tone={
+                          dashboard.automation.pausedProviders > 0
+                            ? "warning"
+                            : "success"
+                        }
+                      >
+                        {dashboard.automation.pausedProviders > 0
+                          ? dashboard.automation.pausedProviders + " PAUSED"
+                          : "ACTIVE"}
+                      </StatusBadge>
+                    </div>
+                    <div>
+                      <span>Billing webhook stale</span>
+                      <StatusBadge
+                        tone={
+                          dashboard.automation.webhookStaleProcessing > 0
+                            ? "danger"
+                            : "success"
+                        }
+                      >
+                        {dashboard.automation.webhookStaleProcessing > 0
+                          ? dashboard.automation.webhookStaleProcessing +
+                            " STALE"
+                          : "CLEAR"}
+                      </StatusBadge>
+                    </div>
                   </div>
                 </article>
               </section>
@@ -852,7 +1120,7 @@ export default function CmsPage() {
 
           {!loading &&
             view === "settings" &&
-            ["General", "Billing", "Automation"].map((group) => (
+            Array.from(new Set(settings.map((item) => item.group))).map((group) => (
               <section className="cms-panel" key={group}>
                 <SectionHeader title={group} />
                 <div className="settings-list">
