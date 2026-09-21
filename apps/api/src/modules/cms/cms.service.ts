@@ -1416,7 +1416,7 @@ export class CmsService {
           action: "BILLING_WEBHOOK_REQUEUED",
           targetType: "SAAS_BILLING_WEBHOOK_EVENT",
           targetKey: normalizedEventId,
-          organizationId: null,
+          organizationId: undefined,
           beforeState: requeue.before,
           afterState: requeue.after,
           reason
