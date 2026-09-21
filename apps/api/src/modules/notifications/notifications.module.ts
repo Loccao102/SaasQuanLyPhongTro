@@ -6,13 +6,13 @@ import { NotificationCampaignService } from "./application/notification-campaign
 import { NotificationOperationsService } from "./application/notification-operations.service.js";
 import { NotificationWorkerService } from "./application/notification-worker.service.js";
 import { NotificationInternalController } from "./notification-internal.controller.js";
-import { InternalWorkerGuard } from "./internal-worker.guard.js";
+import { InternalServiceGuard } from "../internal/internal-service.guard.js";
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
   controllers: [NotificationInternalController],
   providers: [
-    InternalWorkerGuard,
+    InternalServiceGuard,
     NotificationCampaignService,
     NotificationWorkerService,
     NotificationOperationsService
