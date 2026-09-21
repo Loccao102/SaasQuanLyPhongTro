@@ -46,7 +46,7 @@ CMS routes may perform cross-organization reads only after server-side platform 
 - Organization inspection: subscription, usage vs entitlement, health summaries.
 - Subscription operations: provision from current plan version and audited lifecycle transitions.
 - Entitlement overrides: organization-specific limit/feature exceptions with optional expiry.
-- Operations: job status, retry/manual review, provider health.
+- Operations: durable notification job status, audited FAILED/MANUAL_REVIEW retry, provider health.
 - Logs/Audit: technical logs via observability; durable structured platform audit.
 
 ## Security invariants
@@ -61,3 +61,9 @@ CMS routes may perform cross-organization reads only after server-side platform 
 ## Failure behavior
 
 Action errors state whether mutation committed. Bulk operations return per-item results/partial success. Provider failure does not corrupt core state. UNKNOWN notification state is never converted to success.
+
+## Notification operations
+
+CMS job retry never bypasses worker/commercial checks. A manual retry only moves an eligible job back to `QUEUED`; the separate worker must claim it again through the internal API, where current organization/subscription access is re-evaluated.
+
+Quota consumption is recipient-idempotent. Re-sending the same durable notification job does not consume a second monthly quota unit, while a new recipient job requires its own reserved unit.
