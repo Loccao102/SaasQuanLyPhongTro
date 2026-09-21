@@ -1445,6 +1445,166 @@ export class SubscriptionBillingService {
     return result.rows.map((row) => this.mapInvoice(row));
   }
 
+  private async applyScheduledCancellationInTransaction(
+    client: PoolClient,
+    organizationId: string
+  ): Promise<{
+    from: SubscriptionStatus;
+    to: SubscriptionStatus;
+    version: number;
+  } | null> {
+    const subscription = await this.loadSubscriptionForUpdate(
+      client,
+      organizationId
+    );
+    if (
+      subscription.status === "CANCELLED" ||
+      !subscription.cancel_at_period_end
+    ) {
+      return null;
+    }
+
+    const effectiveAt =
+      subscription.status === "TRIALING"
+        ? subscription.trial_ends_at
+        : subscription.current_period_end;
+
+    if (!effectiveAt || effectiveAt.getTime() > Date.now()) {
+      return null;
+    }
+
+    await this.voidUnpaidFutureInvoicesInTransaction(
+      client,
+      subscription,
+      effectiveAt
+    );
+
+    const transition = transitionSubscription(
+      {
+        id: subscription.id,
+        organizationId: subscription.organization_id,
+        planId: subscription.plan_id,
+        planVersionId: subscription.plan_version_id,
+        status: subscription.status,
+        version: subscription.version
+      },
+      "CANCELLED",
+      "Scheduled subscription cancellation reached period end."
+    );
+
+    await client.query(
+      `UPDATE organization_subscriptions
+       SET status = 'CANCELLED',
+           cancel_at_period_end = false,
+           version = $2,
+           updated_at = now()
+       WHERE organization_id = $1`,
+      [organizationId, transition.subscription.version]
+    );
+
+    await this.insertSystemAudit(client, {
+      organizationId,
+      action: "SUBSCRIPTION_SCHEDULED_CANCELLATION_APPLIED",
+      targetType: "SAAS_SUBSCRIPTION",
+      targetKey: subscription.id,
+      beforeState: {
+        status: subscription.status,
+        version: subscription.version,
+        cancelAtPeriodEnd: true,
+        effectiveAt: effectiveAt.toISOString()
+      },
+      afterState: {
+        status: "CANCELLED",
+        version: transition.subscription.version,
+        cancelAtPeriodEnd: false
+      },
+      reason: "Scheduled subscription cancellation reached period end."
+    });
+
+    return {
+      from: subscription.status,
+      to: "CANCELLED",
+      version: transition.subscription.version
+    };
+  }
+
+  private async voidUnpaidFutureInvoicesInTransaction(
+    client: PoolClient,
+    subscription: SubscriptionBillingRow,
+    effectiveAt: Date
+  ): Promise<string[]> {
+    const invoiceResult = await client.query<InvoiceRow>(
+      this.invoiceSelectSql(
+        `WHERE i.organization_id = $1
+           AND i.subscription_id = $2
+           AND i.period_start >= $3
+           AND i.status <> 'VOID'
+         ORDER BY i.period_start, i.id
+         FOR UPDATE OF i`
+      ),
+      [
+        subscription.organization_id,
+        subscription.id,
+        effectiveAt
+      ]
+    );
+
+    const funded = invoiceResult.rows.find(
+      (invoice) => Number(invoice.paid_amount_vnd) > 0
+    );
+    if (funded) {
+      throw new SubscriptionBillingConflictError(
+        "Cannot schedule/apply cancellation because a future billing period already has allocated payment."
+      );
+    }
+
+    const ids = invoiceResult.rows.map((invoice) => invoice.id);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    await client.query(
+      `UPDATE saas_subscription_invoices
+       SET status = 'VOID',
+           paid_at = NULL,
+           void_reason = 'SCHEDULED_CANCELLATION',
+           voided_at = now(),
+           updated_at = now()
+       WHERE organization_id = $1
+         AND id = ANY($2::uuid[])`,
+      [subscription.organization_id, ids]
+    );
+
+    return ids;
+  }
+
+  private async reopenCancellationVoidedInvoicesInTransaction(
+    client: PoolClient,
+    subscription: SubscriptionBillingRow,
+    effectiveAt: Date
+  ): Promise<string[]> {
+    const result = await client.query<QueryResultRow & { id: string }>(
+      `UPDATE saas_subscription_invoices
+       SET status = 'OPEN',
+           void_reason = NULL,
+           voided_at = NULL,
+           updated_at = now()
+       WHERE organization_id = $1
+         AND subscription_id = $2
+         AND period_start >= $3
+         AND status = 'VOID'
+         AND void_reason = 'SCHEDULED_CANCELLATION'
+       RETURNING id::text`,
+      [
+        subscription.organization_id,
+        subscription.id,
+        effectiveAt
+      ]
+    );
+
+    return result.rows.map((row) => row.id);
+  }
+
   private async activatePaidPeriodInTransaction(
     client: PoolClient,
     organizationId: string
