@@ -199,7 +199,9 @@ export class SaasBillingWebhookInboxService {
            processing_attempts,
            processed_at,
            last_error_code,
-           last_error_message
+           last_error_message,
+           payment_id::text,
+           normalized_payment_fingerprint
          FROM saas_billing_webhook_events
          CROSS JOIN LATERAL (
            SELECT (value #>> '{}')::int AS timeout_seconds
