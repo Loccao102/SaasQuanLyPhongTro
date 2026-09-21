@@ -66,7 +66,20 @@ export type CmsOrganization = {
   staff: number;
   subscriptionStatus: string;
   subscriptionVersion: number | null;
+  billingInterval: "MONTHLY" | "YEARLY" | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  trialEndsAt: string | null;
   planCode: string | null;
+  latestInvoice: {
+    id: string;
+    status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+    amountVnd: number;
+    dueAt: string | null;
+    paidAt: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+  } | null;
   roomLimit: number | null;
   staffLimit: number | null;
   automationQuota: number | null;
@@ -75,6 +88,37 @@ export type CmsOrganization = {
   automationQuotaSource: "PLAN" | "OVERRIDE" | null;
   automationUsed: number;
   automationReserved: number;
+};
+
+export type CmsBillingSettlement = {
+  invoice: {
+    id: string;
+    organizationId: string;
+    subscriptionId: string;
+    billingInterval: "MONTHLY" | "YEARLY";
+    periodStart: string;
+    periodEnd: string;
+    amountVnd: number;
+    status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+    dueAt: string;
+    paidAt: string | null;
+  };
+  payment: {
+    id: string;
+    invoiceId: string;
+    amountVnd: number;
+    status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+    source: "MANUAL" | "PROVIDER";
+    provider: string | null;
+    occurredAt: string;
+  };
+  subscription: {
+    organizationId: string;
+    status: CmsSubscriptionStatus;
+    version: number;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+  };
 };
 
 export type CmsAuditEvent = {
@@ -336,6 +380,22 @@ export const cmsApi = {
         method: "PATCH",
         headers: { "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify({ status, reason })
+      }
+    ),
+
+  recordSubscriptionPayment: (
+    organizationId: string,
+    invoiceId: string,
+    reason: string
+  ) =>
+    request<CmsBillingSettlement>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/billing/payments/manual",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ invoiceId, reason })
       }
     )
 };
