@@ -131,6 +131,13 @@ export interface SubscriptionPaymentAllocationView {
   createdAt: string;
 }
 
+export interface ProviderPaymentIngestionView {
+  payment: SubscriptionPaymentView;
+  invoice: SubscriptionInvoiceView | null;
+  allocation: SubscriptionPaymentAllocationView | null;
+  matchedBy: "PAYMENT_REFERENCE" | null;
+}
+
 export interface BillingSettlementView {
   invoice: SubscriptionInvoiceView;
   payment: SubscriptionPaymentView;
@@ -293,6 +300,257 @@ export class SubscriptionBillingService {
     );
 
     return this.mapInvoice(inserted.rows[0]!);
+  }
+
+  ingestProviderPayment(input: {
+    provider: string;
+    providerTransactionId: string;
+    amountVnd: number;
+    occurredAt: string;
+    paymentReference?: string | null;
+    metadata?: unknown;
+  }): Promise<ProviderPaymentIngestionView> {
+    return this.database.withTransaction((client) =>
+      this.ingestProviderPaymentInTransaction(client, input)
+    );
+  }
+
+  async ingestProviderPaymentInTransaction(
+    client: PoolClient,
+    input: {
+      provider: string;
+      providerTransactionId: string;
+      amountVnd: number;
+      occurredAt: string;
+      paymentReference?: string | null;
+      metadata?: unknown;
+    }
+  ): Promise<ProviderPaymentIngestionView> {
+    const provider = input.provider.trim();
+    const providerTransactionId = input.providerTransactionId.trim();
+    const paymentReference = input.paymentReference?.trim() || null;
+
+    if (!provider || !providerTransactionId) {
+      throw new SubscriptionBillingConflictError(
+        "Provider and providerTransactionId are required."
+      );
+    }
+    if (!Number.isInteger(input.amountVnd) || input.amountVnd <= 0) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment amount must be a positive integer VND amount."
+      );
+    }
+
+    const occurredAt = new Date(input.occurredAt);
+    if (Number.isNaN(occurredAt.getTime())) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment occurredAt must be a valid date-time."
+      );
+    }
+
+    const existingResult = await client.query<PaymentRow>(
+      this.paymentSelectSql(
+        "WHERE p.provider = $1 AND p.provider_transaction_id = $2"
+      ),
+      [provider, providerTransactionId]
+    );
+    const existing = existingResult.rows[0];
+    if (existing) {
+      if (
+        Number(existing.amount_vnd) !== input.amountVnd ||
+        existing.source !== "PROVIDER"
+      ) {
+        throw new SubscriptionBillingConflictError(
+          "Provider transaction id was reused with different payment content."
+        );
+      }
+      return this.providerIngestionViewForPayment(client, existing);
+    }
+
+    let invoice: InvoiceRow | null = null;
+    if (paymentReference) {
+      const invoiceResult = await client.query<InvoiceRow>(
+        this.invoiceSelectSql(
+          "WHERE i.payment_reference = $1 FOR UPDATE OF i"
+        ),
+        [paymentReference]
+      );
+      invoice = invoiceResult.rows[0] ?? null;
+    }
+
+    const safeToAllocate =
+      invoice !== null &&
+      invoice.status !== "VOID" &&
+      invoice.status !== "PAID" &&
+      Number(invoice.remaining_amount_vnd) > 0 &&
+      input.amountVnd <= Number(invoice.remaining_amount_vnd);
+
+    const organizationId = invoice?.organization_id ?? null;
+    const subscriptionId = invoice?.subscription_id ?? null;
+    const reconciliationStatus = safeToAllocate
+      ? "ALLOCATED"
+      : "REVIEW_REQUIRED";
+
+    const paymentResult = await client.query<PaymentRow>(
+      `WITH inserted AS (
+         INSERT INTO saas_subscription_payments (
+           organization_id,
+           subscription_id,
+           amount_vnd,
+           status,
+           reconciliation_status,
+           source,
+           provider,
+           provider_transaction_id,
+           idempotency_key,
+           occurred_at,
+           metadata
+         )
+         VALUES (
+           $1,
+           $2,
+           $3,
+           'SUCCEEDED',
+           $4,
+           'PROVIDER',
+           $5,
+           $6,
+           $7,
+           $8,
+           $9::jsonb
+         )
+         RETURNING *
+       )
+       SELECT
+         p.id::text,
+         p.organization_id::text,
+         p.subscription_id::text,
+         p.amount_vnd::text,
+         p.status,
+         p.reconciliation_status,
+         p.source,
+         p.provider,
+         p.provider_transaction_id,
+         p.idempotency_key,
+         p.occurred_at,
+         p.recorded_by_user_id::text,
+         p.metadata,
+         p.created_at,
+         '0'::text AS allocated_amount_vnd,
+         p.amount_vnd::text AS unallocated_amount_vnd
+       FROM inserted p`,
+      [
+        organizationId,
+        subscriptionId,
+        input.amountVnd,
+        reconciliationStatus,
+        provider,
+        providerTransactionId,
+        "provider:" + provider + ":" + providerTransactionId,
+        occurredAt,
+        JSON.stringify({
+          ...(typeof input.metadata === "object" &&
+          input.metadata !== null &&
+          !Array.isArray(input.metadata)
+            ? input.metadata
+            : {}),
+          paymentReference
+        })
+      ]
+    );
+    const payment = paymentResult.rows[0]!;
+
+    if (!safeToAllocate || !invoice) {
+      return {
+        payment: this.mapPayment(payment),
+        invoice: invoice ? this.mapInvoice(invoice) : null,
+        allocation: null,
+        matchedBy: invoice ? "PAYMENT_REFERENCE" : null
+      };
+    }
+
+    const allocationResult = await client.query<AllocationRow>(
+      `INSERT INTO saas_subscription_payment_allocations (
+         organization_id,
+         payment_id,
+         invoice_id,
+         amount_vnd,
+         allocated_by_user_id,
+         reason
+       )
+       VALUES ($1, $2, $3, $4, NULL, $5)
+       RETURNING
+         id::text,
+         organization_id::text,
+         payment_id::text,
+         invoice_id::text,
+         amount_vnd::text,
+         allocated_by_user_id::text,
+         reason,
+         created_at`,
+      [
+        invoice.organization_id,
+        payment.id,
+        invoice.id,
+        input.amountVnd,
+        "Auto-matched unique SaaS payment reference " +
+          invoice.payment_reference
+      ]
+    );
+    const allocation = allocationResult.rows[0]!;
+
+    const remainingAfter =
+      Number(invoice.remaining_amount_vnd) - input.amountVnd;
+    const invoiceStatus =
+      remainingAfter === 0 ? "PAID" : "PARTIALLY_PAID";
+
+    await client.query(
+      `UPDATE saas_subscription_invoices
+       SET status = $3,
+           paid_at = CASE
+             WHEN $3 = 'PAID' THEN COALESCE(paid_at, $4)
+             ELSE NULL
+           END,
+           updated_at = now()
+       WHERE organization_id = $1
+         AND id = $2`,
+      [
+        invoice.organization_id,
+        invoice.id,
+        invoiceStatus,
+        occurredAt
+      ]
+    );
+
+    if (invoiceStatus === "PAID") {
+      await this.activatePaidPeriodInTransaction(
+        client,
+        invoice.organization_id
+      );
+    }
+
+    await this.insertSystemAudit(client, {
+      organizationId: invoice.organization_id,
+      action: "SUBSCRIPTION_PROVIDER_PAYMENT_ALLOCATED",
+      targetType: "SAAS_SUBSCRIPTION_INVOICE",
+      targetKey: invoice.id,
+      beforeState: {
+        invoiceStatus: invoice.status,
+        paidAmountVnd: Number(invoice.paid_amount_vnd),
+        remainingAmountVnd: Number(invoice.remaining_amount_vnd)
+      },
+      afterState: {
+        invoiceStatus,
+        remainingAmountVnd: remainingAfter,
+        paymentId: payment.id,
+        allocationId: allocation.id,
+        provider,
+        providerTransactionId
+      },
+      reason: "Unique provider payment reference auto-match."
+    });
+
+    return this.providerIngestionViewForPayment(client, payment);
   }
 
   async recordManualPaymentInTransaction(
@@ -923,6 +1181,54 @@ export class SubscriptionBillingService {
       from: subscription.status,
       to: target,
       version: transition.subscription.version
+    };
+  }
+
+  private async providerIngestionViewForPayment(
+    client: PoolClient,
+    payment: PaymentRow
+  ): Promise<ProviderPaymentIngestionView> {
+    const refreshedPaymentResult = await client.query<PaymentRow>(
+      this.paymentSelectSql("WHERE p.id = $1"),
+      [payment.id]
+    );
+    const refreshedPayment = refreshedPaymentResult.rows[0];
+    if (!refreshedPayment) {
+      throw new SubscriptionBillingNotFoundError(
+        "Provider payment was not found after ingestion."
+      );
+    }
+
+    const allocationResult = await client.query<AllocationRow>(
+      this.allocationSelectSql(
+        "WHERE a.payment_id = $1 ORDER BY a.created_at LIMIT 1"
+      ),
+      [payment.id]
+    );
+    const allocation = allocationResult.rows[0] ?? null;
+
+    if (!allocation) {
+      return {
+        payment: this.mapPayment(refreshedPayment),
+        invoice: null,
+        allocation: null,
+        matchedBy: null
+      };
+    }
+
+    const invoiceResult = await client.query<InvoiceRow>(
+      this.invoiceSelectSql(
+        "WHERE i.id = $1 AND i.organization_id = $2"
+      ),
+      [allocation.invoice_id, allocation.organization_id]
+    );
+    const invoice = invoiceResult.rows[0] ?? null;
+
+    return {
+      payment: this.mapPayment(refreshedPayment),
+      invoice: invoice ? this.mapInvoice(invoice) : null,
+      allocation: this.mapAllocation(allocation),
+      matchedBy: "PAYMENT_REFERENCE"
     };
   }
 
