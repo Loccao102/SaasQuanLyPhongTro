@@ -17,6 +17,7 @@ import type {
   PlatformPrincipal,
   ProvisionSubscriptionInput,
   RevokeEntitlementOverrideInput,
+  RetryNotificationJobInput,
   TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
   UpdatePlanInput,
@@ -173,8 +174,18 @@ export class CmsController {
   }
 
   @Post("jobs/:jobId/retry")
-  retryJob(@Req() request: CmsRequest, @Param("jobId") jobId: string) {
-    return this.cms.retryJob(this.principal(request), jobId);
+  retryJob(
+    @Req() request: CmsRequest,
+    @Param("jobId") jobId: string,
+    @Body() input: RetryNotificationJobInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.retryJob(
+      this.principal(request),
+      jobId,
+      input,
+      idempotencyKey
+    );
   }
 
   @Get("logs")
