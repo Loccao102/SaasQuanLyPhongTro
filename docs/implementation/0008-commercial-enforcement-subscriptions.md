@@ -9,7 +9,7 @@ Implemented:
 - subscription lifecycle transitions with optimistic version;
 - automatic default trial/grace duration from system settings;
 - platform idempotency + audit around CMS subscription commands;
-- CMS Organizations controls for provision/transition;
+- CMS Organizations controls for provision/transition/change-plan;
 - shared commercial write policy for tenant commands;
 - room-limit enforcement on room creation;
 - staff-limit enforcement on membership activation;
@@ -36,6 +36,8 @@ CMS requires:
 - expectedVersion for transitions.
 
 Platform audit and command receipt are written in the same PostgreSQL transaction as the subscription change.
+
+Immediate plan change snapshots the target plan's current version and increments subscription version. It deliberately has no charge/refund side effect. A downgrade is allowed even when current usage exceeds the new limit; existing data remains and future increases are blocked.
 
 ## Tenant Enforcement
 
@@ -68,6 +70,6 @@ Integration tests cover:
 - payment provider and subscription invoice/payment records;
 - automated renewal collection;
 - scheduler that moves PAST_DUE -> GRACE_PERIOD -> SUSPENDED;
-- plan upgrade/downgrade command;
+- self-service paid upgrade/downgrade checkout;
 - scheduled future plan changes;
 - monthly automation quota reservation/consumption ledger.
