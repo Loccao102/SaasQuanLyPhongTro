@@ -1,4 +1,8 @@
 import type {
+  ClaimedBillingWebhookEvent,
+  NormalizedBillingWebhookPayment
+} from "./billing-webhook-types.js";
+import type {
   ClaimedNotificationJob,
   NotificationProviderResult
 } from "./notification-types.js";
@@ -20,6 +24,57 @@ export class InternalWorkerApiClient {
         "INTERNAL_WORKER_TOKEN must be configured with at least 16 characters."
       );
     }
+  }
+
+  claimBillingWebhook(
+    provider: string
+  ): Promise<ClaimedBillingWebhookEvent | null> {
+    return this.request<ClaimedBillingWebhookEvent | null>(
+      "/internal/billing-webhooks/claim",
+      { provider }
+    );
+  }
+
+  completeBillingWebhookPayment(
+    eventId: string,
+    payment: NormalizedBillingWebhookPayment
+  ): Promise<{
+    event: {
+      id: string;
+      processingStatus: string;
+      paymentId: string | null;
+    };
+    ingestion: {
+      payment: { id: string; reconciliationStatus: string };
+    };
+    replayed: boolean;
+  }> {
+    return this.request(
+      "/internal/billing-webhooks/" +
+        encodeURIComponent(eventId) +
+        "/payment",
+      payment
+    );
+  }
+
+  completeBillingWebhookOutcome(
+    eventId: string,
+    input: {
+      outcome: "REVIEW_REQUIRED" | "IGNORED" | "FAILED";
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }
+  ): Promise<{
+    id: string;
+    processingStatus: string;
+    paymentId: string | null;
+  }> {
+    return this.request(
+      "/internal/billing-webhooks/" +
+        encodeURIComponent(eventId) +
+        "/outcome",
+      input
+    );
   }
 
   billingSweep(limit: number): Promise<{
