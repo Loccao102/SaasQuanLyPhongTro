@@ -103,8 +103,7 @@ CREATE TABLE saas_subscription_payment_allocations (
     ON DELETE RESTRICT,
   FOREIGN KEY (organization_id, invoice_id)
     REFERENCES saas_subscription_invoices (organization_id, id)
-    ON DELETE RESTRICT,
-  UNIQUE (payment_id, invoice_id)
+    ON DELETE RESTRICT
 );
 
 CREATE INDEX saas_subscription_payment_allocations_invoice_idx
