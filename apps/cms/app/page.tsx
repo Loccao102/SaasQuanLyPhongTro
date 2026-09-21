@@ -1515,28 +1515,32 @@ export default function CmsPage() {
                           </td>
                           <td>{provider.reason ?? "—"}</td>
                           <td>
-                            <button
-                              className={
-                                provider.status === "ACTIVE"
-                                  ? "text-button text-button--danger"
-                                  : "text-button"
-                              }
-                              type="button"
-                              onClick={() =>
-                                setModal({
-                                  kind: "notificationProviderControl",
-                                  provider,
-                                  targetStatus:
-                                    provider.status === "ACTIVE"
-                                      ? "PAUSED"
-                                      : "ACTIVE"
-                                })
-                              }
-                            >
-                              {provider.status === "ACTIVE"
-                                ? "Pause"
-                                : "Resume"}
-                            </button>
+                            {hasPermission("platform.jobs.manage") ? (
+                              <button
+                                className={
+                                  provider.status === "ACTIVE"
+                                    ? "text-button text-button--danger"
+                                    : "text-button"
+                                }
+                                type="button"
+                                onClick={() =>
+                                  setModal({
+                                    kind: "notificationProviderControl",
+                                    provider,
+                                    targetStatus:
+                                      provider.status === "ACTIVE"
+                                        ? "PAUSED"
+                                        : "ACTIVE"
+                                  })
+                                }
+                              >
+                                {provider.status === "ACTIVE"
+                                  ? "Pause"
+                                  : "Resume"}
+                              </button>
+                            ) : (
+                              <span className="cms-note">Read-only</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1642,8 +1646,9 @@ export default function CmsPage() {
                             ) : null}
                           </td>
                           <td>
-                            {job.status === "FAILED" ||
-                            job.status === "MANUAL_REVIEW" ? (
+                            {(job.status === "FAILED" ||
+                              job.status === "MANUAL_REVIEW") &&
+                            hasPermission("platform.jobs.manage") ? (
                               <button
                                 className="text-button"
                                 type="button"
