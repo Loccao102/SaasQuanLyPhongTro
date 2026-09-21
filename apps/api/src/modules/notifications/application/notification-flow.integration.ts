@@ -69,7 +69,15 @@ async function cleanup(pool: Pool): Promise<void> {
     "DELETE FROM organization_memberships WHERE organization_id = $1",
     [organizationId]
   );
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
+  await pool.query(
+    "DELETE FROM notification_worker_heartbeats WHERE worker_id = $1",
+    ["notification-integration-worker"]
+  );
+  await pool.query(
+    "DELETE FROM notification_provider_controls WHERE provider = $1",
+    ["PLAYWRIGHT_ZALO"]
+  );
+    await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [actorUserId]);
 }
 
@@ -193,6 +201,44 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     assert.deepEqual(replayedCampaign, campaign);
     assert.equal(campaign.totalRecipients, 2);
     assert.equal(campaign.queued, 2);
+
+    await operations.reportHeartbeat({
+      workerId: "notification-integration-worker",
+      provider: "PLAYWRIGHT_ZALO",
+      status: "HEALTHY",
+      metadata: { test: true }
+    });
+
+    const providerHealth = await operations.listProviders();
+    const healthyProvider = providerHealth.find(
+      (item) => item.provider === "PLAYWRIGHT_ZALO"
+    );
+    assert.ok(healthyProvider);
+    assert.equal(healthyProvider.status, "ACTIVE");
+    assert.equal(healthyProvider.healthyWorkers, 1);
+
+    const pausedProvider = await database.withTransaction((client) =>
+      operations.setProviderControlInTransaction(client, {
+        provider: "PLAYWRIGHT_ZALO",
+        status: "PAUSED",
+        reason: "Integration maintenance",
+        actorUserId
+      })
+    );
+    assert.equal(pausedProvider.after.status, "PAUSED");
+
+    const pausedClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
+    assert.equal(pausedClaim, null);
+
+    const resumedProvider = await database.withTransaction((client) =>
+      operations.setProviderControlInTransaction(client, {
+        provider: "PLAYWRIGHT_ZALO",
+        status: "ACTIVE",
+        reason: "Integration maintenance complete",
+        actorUserId
+      })
+    );
+    assert.equal(resumedProvider.after.status, "ACTIVE");
 
     const quotaAfterCampaign = await fixturePool.query<{
       reserved_actions: number;
