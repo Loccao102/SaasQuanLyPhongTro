@@ -3,6 +3,7 @@ import test from "node:test";
 import { Pool } from "pg";
 import { SubscriptionManagementService } from "../commercial/application/subscription-management.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { NotificationOperationsService } from "../notifications/application/notification-operations.service.js";
 import { CmsService } from "./cms.service.js";
 import type { PlatformPrincipal } from "./cms.types.js";
 
@@ -62,7 +63,8 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
   const database = new DatabaseService();
   const service = new CmsService(
     database,
-    new SubscriptionManagementService()
+    new SubscriptionManagementService(),
+    new NotificationOperationsService(database)
   );
 
   try {
