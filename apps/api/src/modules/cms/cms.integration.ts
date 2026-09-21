@@ -12,6 +12,7 @@ const organizationId = "92000000-0000-0000-0000-000000000001";
 const planId = "93000000-0000-0000-0000-000000000001";
 const planVersionId = "94000000-0000-0000-0000-000000000001";
 const testSettingKey = "cms_integration_flag";
+const testProvider = "PLAYWRIGHT_ZALO";
 
 const principal: PlatformPrincipal = {
   userId,
@@ -308,6 +309,53 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
       [organizationId]
     );
     assert.equal(subscriptionAudits.rows[0]?.count, 3);
+
+    const firstProviderPause =
+      await service.updateNotificationProviderControl(
+        principal,
+        testProvider,
+        {
+          status: "PAUSED",
+          reason: "Integration provider maintenance"
+        },
+        "cms-provider-control-001"
+      );
+    const replayedProviderPause =
+      await service.updateNotificationProviderControl(
+        principal,
+        testProvider,
+        {
+          status: "PAUSED",
+          reason: "Integration provider maintenance"
+        },
+        "cms-provider-control-001"
+      );
+
+    assert.deepEqual(replayedProviderPause, firstProviderPause);
+    assert.equal(
+      (firstProviderPause as { status: string }).status,
+      "PAUSED"
+    );
+
+    const providerControlAudit = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE actor_user_id = $1
+         AND action = 'NOTIFICATION_PROVIDER_CONTROL_UPDATED'
+         AND target_key = $2`,
+      [userId, testProvider]
+    );
+    assert.equal(providerControlAudit.rows[0]?.count, 1);
+
+    await service.updateNotificationProviderControl(
+      principal,
+      testProvider,
+      {
+        status: "ACTIVE",
+        reason: "Integration provider maintenance complete"
+      },
+      "cms-provider-control-002"
+    );
 
     const firstOverride = await service.setEntitlementOverride(
       principal,
