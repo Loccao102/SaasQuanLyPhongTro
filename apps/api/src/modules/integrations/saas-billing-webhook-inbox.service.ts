@@ -191,6 +191,7 @@ export class SaasBillingWebhookInboxService {
            headers,
            received_at,
            processing_started_at,
+           processing_attempts,
            processed_at,
            last_error_code,
            last_error_message
