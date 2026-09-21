@@ -1071,3 +1071,67 @@ test("CMS scheduled subscription cancellation is idempotent, auditable and rever
     await fixturePool.end();
   }
 });
+
+
+test("CMS dashboard reads branding and display formats from DB settings", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const service = new CmsService(
+    database,
+    new SubscriptionManagementService(),
+    new SubscriptionBillingService(database),
+    new NotificationOperationsService(database),
+    new SaasBillingWebhookInboxService(database)
+  );
+  const principal: PlatformPrincipal = {
+    userId: "97000000-0000-0000-0000-000000000001",
+    role: "PLATFORM_ADMIN"
+  };
+
+  try {
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '"PropOps DB Test"'::jsonb
+       WHERE key = 'brand_product_name'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '14'::jsonb
+       WHERE key = 'dashboard_lease_expiry_days'`
+    );
+
+    const dashboard = await service.getDashboard(principal);
+
+    assert.equal(dashboard.branding.productName, "PropOps DB Test");
+    assert.equal(dashboard.branding.descriptor, "SaaS Quản lý Phòng Trọ");
+    assert.equal(dashboard.display.locale, "vi-VN");
+    assert.equal(dashboard.display.currencyCode, "VND");
+    assert.equal(dashboard.windows.leaseExpiryDays, 14);
+    assert.equal(dashboard.windows.recentHours, 24);
+    assert.ok(dashboard.organizations.total >= 0);
+    assert.ok(dashboard.assets.activeRooms >= 0);
+    assert.ok(dashboard.assets.occupiedRooms >= 0);
+    assert.ok(dashboard.assets.vacantRooms >= 0);
+    assert.ok(dashboard.assets.occupancyRatePercent >= 0);
+    assert.ok(dashboard.commercial.activePlans >= 0);
+    assert.ok(dashboard.automation.queuedJobs >= 0);
+    assert.ok(Array.isArray(dashboard.topOrganizations));
+    assert.ok(Array.isArray(dashboard.planDistribution));
+  } finally {
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '"PropOps"'::jsonb
+       WHERE key = 'brand_product_name'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '30'::jsonb
+       WHERE key = 'dashboard_lease_expiry_days'`
+    );
+    await database.onModuleDestroy();
+    await fixturePool.end();
+  }
+});
