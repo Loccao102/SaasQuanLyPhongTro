@@ -31,7 +31,15 @@
 - paid-period activation and recovery to ACTIVE;
 - bounded `processDueBatch()` scheduler;
 - authenticated internal billing sweep endpoint;
-- separate BILLING worker role.
+- separate BILLING worker role;
+- isolated BILLING_WEBHOOK worker role;
+- provider-neutral webhook adapter contract;
+- transaction-safe raw-event -> normalized payment processing;
+- stale PROCESSING reclaim with attempt history;
+- replay-safe event/payment fingerprint linkage;
+- CMS webhook inbox observability and audited requeue;
+- raw-body capture for signature verification;
+- dev-only HMAC ingress adapter + endpoint for end-to-end plumbing tests.
 
 ## Financial invariants
 
@@ -62,8 +70,8 @@ The confirmation shows exact organization, invoice, period, balances and consequ
 
 ## Pending
 
-- provider-specific public webhook adapters/signature verification (for example SePay);
-- asynchronous webhook parsing worker/adapter implementation;
+- production provider-specific public webhook adapter/signature verifier (for example SePay);
+- production provider-specific normalization adapter;
 - refund/credit-balance policy;
 - provider transaction search;
 - scheduled cancellation-at-period-end;
