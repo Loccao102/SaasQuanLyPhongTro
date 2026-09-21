@@ -58,9 +58,17 @@ CREATE TABLE saas_billing_webhook_events (
   processed_at timestamptz,
   last_error_code text,
   last_error_message text,
+  payment_id uuid UNIQUE
+    REFERENCES saas_subscription_payments(id) ON DELETE RESTRICT,
+  normalized_payment_fingerprint text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (provider, provider_event_id)
+  UNIQUE (provider, provider_event_id),
+  CHECK (
+    (payment_id IS NULL AND normalized_payment_fingerprint IS NULL)
+    OR
+    (payment_id IS NOT NULL AND normalized_payment_fingerprint IS NOT NULL)
+  )
 );
 
 CREATE INDEX saas_billing_webhook_events_processing_idx
