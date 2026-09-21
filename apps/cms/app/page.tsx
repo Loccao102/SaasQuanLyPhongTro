@@ -19,6 +19,7 @@ import {
   type CmsEntitlementOverride,
   type CmsJobsStatus,
   type CmsNotificationJob,
+  type CmsNotificationProvider,
   type CmsOrganization,
   type CmsPlan,
   type CmsSetting,
@@ -45,6 +46,11 @@ type ModalState =
   | { kind: "transitionSubscription"; organization: CmsOrganization }
   | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
   | { kind: "retryNotificationJob"; job: CmsNotificationJob }
+  | {
+      kind: "notificationProviderControl";
+      provider: CmsNotificationProvider;
+      targetStatus: "ACTIVE" | "PAUSED";
+    }
   | null;
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -63,9 +69,15 @@ function statusTone(status: string): Tone {
     return "success";
   }
   if (
-    ["PAST_DUE", "GRACE_PERIOD", "RUNNING", "RETRY", "WARN", "DEGRADED"].includes(
-      status
-    )
+    [
+      "PAST_DUE",
+      "GRACE_PERIOD",
+      "RUNNING",
+      "RETRY",
+      "WARN",
+      "DEGRADED",
+      "PAUSED"
+    ].includes(status)
   ) {
     return "warning";
   }
@@ -320,6 +332,14 @@ export default function CmsPage() {
 
       if (modal.kind === "retryNotificationJob") {
         await cmsApi.retryNotificationJob(modal.job.id, reason);
+      }
+
+      if (modal.kind === "notificationProviderControl") {
+        await cmsApi.updateNotificationProviderControl(
+          modal.provider.provider,
+          modal.targetStatus,
+          reason
+        );
       }
 
       const [nextAudit, nextDashboard, nextOrganizations, nextJobs] =
@@ -851,6 +871,73 @@ export default function CmsPage() {
                 </strong>
                 <span>{jobsStatus?.reason}</span>
               </div>
+              {jobsStatus?.connected && jobsStatus.providers.length > 0 ? (
+                <div className="cms-table-wrap">
+                  <table className="cms-table">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Control</th>
+                        <th>Workers</th>
+                        <th>Last heartbeat</th>
+                        <th>Reason</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobsStatus.providers.map((provider) => (
+                        <tr key={provider.provider}>
+                          <td>
+                            <strong>{provider.provider}</strong>
+                          </td>
+                          <td>
+                            <StatusBadge tone={statusTone(provider.status)}>
+                              {provider.status}
+                            </StatusBadge>
+                          </td>
+                          <td>
+                            {provider.healthyWorkers} healthy /{" "}
+                            {provider.degradedWorkers} degraded
+                            <small>{provider.workerCount} registered</small>
+                          </td>
+                          <td>
+                            {provider.lastSeenAt
+                              ? new Date(provider.lastSeenAt).toLocaleString(
+                                  "vi-VN"
+                                )
+                              : "—"}
+                          </td>
+                          <td>{provider.reason ?? "—"}</td>
+                          <td>
+                            <button
+                              className={
+                                provider.status === "ACTIVE"
+                                  ? "text-button text-button--danger"
+                                  : "text-button"
+                              }
+                              type="button"
+                              onClick={() =>
+                                setModal({
+                                  kind: "notificationProviderControl",
+                                  provider,
+                                  targetStatus:
+                                    provider.status === "ACTIVE"
+                                      ? "PAUSED"
+                                      : "ACTIVE"
+                                })
+                              }
+                            >
+                              {provider.status === "ACTIVE"
+                                ? "Pause"
+                                : "Resume"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
               {jobsStatus?.connected && jobsStatus.entries.length === 0 ? (
                 <div className="empty-state">Chưa có notification job.</div>
               ) : null}
@@ -1221,6 +1308,21 @@ export default function CmsPage() {
                   {modal.job.recipientDisplayName ?? modal.job.recipientKey}. Job{" "}
                   {modal.job.status} sẽ quay lại QUEUED; quota đã consume trước đó
                   không bị trừ thêm khi worker claim retry.
+                </p>
+              </>
+            )}
+
+            {modal.kind === "notificationProviderControl" && (
+              <>
+                <h2>
+                  {modal.targetStatus === "PAUSED" ? "Pause" : "Resume"}{" "}
+                  notification provider
+                </h2>
+                <p className="modal-warning">
+                  {modal.provider.provider} · {modal.provider.status}
+                  {" → "}
+                  {modal.targetStatus}. Khi PAUSED, worker vẫn heartbeat nhưng API
+                  sẽ không claim job mới cho provider này.
                 </p>
               </>
             )}
