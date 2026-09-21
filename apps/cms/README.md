@@ -42,7 +42,7 @@ Connected to PostgreSQL/API now:
 - SaaS plan versions and limits;
 - organization/room/staff inspection;
 - entitlement overrides;
-- subscription provision + lifecycle transitions;
+- subscription provision + lifecycle transitions + immediate plan changes;
 - platform audit;
 - dashboard counts.
 
@@ -51,7 +51,8 @@ Explicitly pending:
 - durable Jobs/Queue integration;
 - Loki/observability integration;
 - subscription payment collection / renewal scheduler;
-- plan upgrade/downgrade command;
+- self-service paid upgrade/downgrade checkout;
+- scheduled future plan changes;
 - automation quota reservation/consumption ledger.
 
 CMS does not own a separate business database and browser code never selects the platform user id.
