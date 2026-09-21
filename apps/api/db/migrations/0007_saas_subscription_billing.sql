@@ -20,7 +20,7 @@ CREATE TABLE saas_subscription_invoices (
   period_end timestamptz NOT NULL,
   amount_vnd bigint NOT NULL CHECK (amount_vnd >= 0),
   status text NOT NULL DEFAULT 'OPEN'
-    CHECK (status IN ('OPEN', 'OVERDUE', 'PAID', 'VOID')),
+    CHECK (status IN ('OPEN', 'PARTIALLY_PAID', 'PAID', 'VOID')),
   issued_at timestamptz NOT NULL DEFAULT now(),
   due_at timestamptz NOT NULL,
   paid_at timestamptz,
@@ -38,8 +38,9 @@ CREATE TABLE saas_subscription_invoices (
   CHECK (paid_at IS NULL OR status = 'PAID')
 );
 
-CREATE INDEX saas_subscription_invoices_status_due_idx
-  ON saas_subscription_invoices (status, due_at, organization_id);
+CREATE INDEX saas_subscription_invoices_due_idx
+  ON saas_subscription_invoices (due_at, organization_id)
+  WHERE status IN ('OPEN', 'PARTIALLY_PAID');
 
 CREATE INDEX saas_subscription_invoices_org_period_idx
   ON saas_subscription_invoices (
@@ -52,10 +53,15 @@ CREATE TABLE saas_subscription_payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,
   subscription_id uuid NOT NULL,
-  invoice_id uuid NOT NULL,
   amount_vnd bigint NOT NULL CHECK (amount_vnd > 0),
   status text NOT NULL
     CHECK (status IN ('SUCCEEDED', 'FAILED', 'REFUNDED')),
+  reconciliation_status text NOT NULL DEFAULT 'UNALLOCATED'
+    CHECK (reconciliation_status IN (
+      'UNALLOCATED',
+      'ALLOCATED',
+      'REVIEW_REQUIRED'
+    )),
   source text NOT NULL
     CHECK (source IN ('MANUAL', 'PROVIDER')),
   provider text,
@@ -68,9 +74,7 @@ CREATE TABLE saas_subscription_payments (
   FOREIGN KEY (organization_id, subscription_id)
     REFERENCES organization_subscriptions (organization_id, id)
     ON DELETE RESTRICT,
-  FOREIGN KEY (organization_id, invoice_id)
-    REFERENCES saas_subscription_invoices (organization_id, id)
-    ON DELETE RESTRICT,
+  UNIQUE (organization_id, id),
   UNIQUE (organization_id, idempotency_key)
 );
 
@@ -79,11 +83,42 @@ CREATE UNIQUE INDEX saas_subscription_payments_provider_tx_uidx
   WHERE provider IS NOT NULL
     AND provider_transaction_id IS NOT NULL;
 
-CREATE INDEX saas_subscription_payments_invoice_idx
+CREATE INDEX saas_subscription_payments_org_time_idx
   ON saas_subscription_payments (
     organization_id,
-    invoice_id,
     occurred_at DESC
+  );
+
+CREATE TABLE saas_subscription_payment_allocations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  payment_id uuid NOT NULL,
+  invoice_id uuid NOT NULL,
+  amount_vnd bigint NOT NULL CHECK (amount_vnd > 0),
+  allocated_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  reason text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (organization_id, payment_id)
+    REFERENCES saas_subscription_payments (organization_id, id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY (organization_id, invoice_id)
+    REFERENCES saas_subscription_invoices (organization_id, id)
+    ON DELETE RESTRICT,
+  UNIQUE (payment_id, invoice_id)
+);
+
+CREATE INDEX saas_subscription_payment_allocations_invoice_idx
+  ON saas_subscription_payment_allocations (
+    organization_id,
+    invoice_id,
+    created_at
+  );
+
+CREATE INDEX saas_subscription_payment_allocations_payment_idx
+  ON saas_subscription_payment_allocations (
+    organization_id,
+    payment_id,
+    created_at
   );
 
 INSERT INTO system_settings (
