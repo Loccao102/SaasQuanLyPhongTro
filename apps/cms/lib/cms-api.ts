@@ -71,7 +71,8 @@ export type CmsOrganization = {
   roomLimitSource: "PLAN" | "OVERRIDE" | null;
   staffLimitSource: "PLAN" | "OVERRIDE" | null;
   automationQuotaSource: "PLAN" | "OVERRIDE" | null;
-  automationUsed: number | null;
+  automationUsed: number;
+  automationReserved: number;
 };
 
 export type CmsAuditEvent = {
