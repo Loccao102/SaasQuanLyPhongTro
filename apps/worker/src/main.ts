@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { InternalWorkerApiClient } from "./internal-api-client.js";
-import type { NotificationProviderResult } from "./notification-types.js";
+import { fatalProviderPauseReason } from "./provider-health.js";
 import { executeProviderSafely } from "./provider-execution.js";
 import { loadProvider } from "./provider-registry.js";
 
@@ -16,29 +16,6 @@ function positiveInteger(
     throw new Error(name + " must be a positive integer.");
   }
   return value;
-}
-
-function fatalProviderReason(
-  result: NotificationProviderResult
-): string | null {
-  if (
-    result.kind !== "MANUAL_REVIEW" &&
-    result.kind !== "UNKNOWN"
-  ) {
-    return null;
-  }
-
-  const code = result.errorCode ?? "";
-  if (
-    code === "AUTH_REQUIRED" ||
-    code === "SESSION_EXPIRED" ||
-    code === "CAPTCHA" ||
-    code === "PROVIDER_UI_BROKEN"
-  ) {
-    return code + ": " + (result.errorMessage ?? "provider requires attention");
-  }
-
-  return null;
 }
 
 async function main(): Promise<void> {
@@ -99,7 +76,7 @@ async function main(): Promise<void> {
 
       const result = await executeProviderSafely(provider, job);
       const completion = await api.complete(job, result);
-      const pauseProviderReason = fatalProviderReason(result);
+      const pauseProviderReason = fatalProviderPauseReason(result);
 
       if (pauseProviderReason) {
         await api.heartbeat({
