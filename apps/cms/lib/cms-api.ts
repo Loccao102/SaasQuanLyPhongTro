@@ -4,6 +4,11 @@ export type CmsDashboard = {
   settingCount: number;
   activePlanCount: number;
   platformAudit24h: number;
+  delinquentOrganizationCount: number;
+  unpaidInvoiceCount: number;
+  overdueInvoiceCount: number;
+  outstandingVnd: number;
+  overdueVnd: number;
 };
 
 export type CmsSetting = {
