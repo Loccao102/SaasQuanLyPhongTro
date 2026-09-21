@@ -938,6 +938,51 @@ export default function CmsPage() {
                   </table>
                 </div>
               ) : null}
+              {jobsStatus?.connected && jobsStatus.workers.length > 0 ? (
+                <div className="cms-table-wrap">
+                  <table className="cms-table">
+                    <thead>
+                      <tr>
+                        <th>Worker</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Last seen</th>
+                        <th>Last error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobsStatus.workers.map((worker) => (
+                        <tr key={worker.workerId}>
+                          <td>
+                            <strong>{worker.workerId}</strong>
+                            <small>
+                              started{" "}
+                              {new Date(worker.startedAt).toLocaleString(
+                                "vi-VN"
+                              )}
+                            </small>
+                          </td>
+                          <td>{worker.provider}</td>
+                          <td>
+                            <StatusBadge tone={statusTone(worker.status)}>
+                              {worker.status}
+                            </StatusBadge>
+                          </td>
+                          <td>
+                            {new Date(worker.lastSeenAt).toLocaleString("vi-VN")}
+                          </td>
+                          <td>
+                            {worker.lastErrorCode ?? "—"}
+                            {worker.lastErrorMessage ? (
+                              <small>{worker.lastErrorMessage}</small>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
               {jobsStatus?.connected && jobsStatus.entries.length === 0 ? (
                 <div className="empty-state">Chưa có notification job.</div>
               ) : null}
