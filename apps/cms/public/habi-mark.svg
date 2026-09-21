@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="habiMint" x1="14" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35C6A8"/>
+      <stop offset="1" stop-color="#1AA68C"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#F7FAF9"/>
+  <path d="M14 45.5V25.5C14 19.7 18.7 15 24.5 15H27V26.5H37V15H39.5C45.3 15 50 19.7 50 25.5V45.5C50 49.1 47.1 52 43.5 52H37V37H27V52H20.5C16.9 52 14 49.1 14 45.5Z" fill="#25355C"/>
+  <path d="M27 26.5H37V37H27V26.5Z" fill="url(#habiMint)"/>
+  <path d="M18.5 24.5C22.8 19.6 27.2 17.2 32 17.2C36.8 17.2 41.2 19.6 45.5 24.5" stroke="#35C6A8" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="46.5" cy="17.5" r="5.5" fill="#FFB36B"/>
+</svg>
