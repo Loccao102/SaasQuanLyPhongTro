@@ -32,6 +32,9 @@
 - bounded `processDueBatch()` scheduler;
 - authenticated internal billing sweep endpoint;
 - separate BILLING worker role;
+- scheduled cancellation-at-period-end with reversible renewal invoice voiding;
+- scheduler application of period-end cancellation;
+- funded future-period guard before cancellation schedule;
 - isolated BILLING_WEBHOOK worker role;
 - provider-neutral webhook adapter contract;
 - transaction-safe raw-event -> normalized payment processing;
@@ -74,6 +77,5 @@ The confirmation shows exact organization, invoice, period, balances and consequ
 - production provider-specific normalization adapter;
 - refund/credit-balance policy;
 - provider transaction search;
-- scheduled cancellation-at-period-end;
 - payment reminder notifications;
 - external invoice/tax/legal document requirements.
