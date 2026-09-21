@@ -20,6 +20,7 @@ import type {
   RecordSubscriptionPaymentInput,
   RequeueBillingWebhookInput,
   RevokeEntitlementOverrideInput,
+  SetSubscriptionCancellationInput,
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
@@ -111,6 +112,21 @@ export class CmsController {
     @Headers("idempotency-key") idempotencyKey?: string
   ) {
     return this.cms.transitionSubscription(
+      this.principal(request),
+      organizationId,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("organizations/:organizationId/subscription/cancellation")
+  setSubscriptionCancellation(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Body() input: SetSubscriptionCancellationInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.setSubscriptionCancellation(
       this.principal(request),
       organizationId,
       input,
