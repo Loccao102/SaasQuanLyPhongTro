@@ -63,6 +63,22 @@ export interface AutomationQuotaConsumption {
   createdAt: string;
 }
 
+export interface ReserveAutomationQuotaInput {
+  organizationId: string;
+  idempotencyKey: string;
+  sourceType: string;
+  sourceId?: string | null;
+  requestedActions: number;
+  metadata?: unknown;
+}
+
+export interface ConsumeAutomationQuotaInput {
+  organizationId: string;
+  reservationId: string;
+  consumptionKey: string;
+  quantity: number;
+}
+
 export class AutomationQuotaExceededError extends Error {
   constructor(
     public readonly committed: number,
@@ -112,14 +128,18 @@ export class AutomationQuotaService {
     private readonly commercialPolicy: CommercialPolicyService
   ) {}
 
-  async reserve(input: {
-    organizationId: string;
-    idempotencyKey: string;
-    sourceType: string;
-    sourceId?: string | null;
-    requestedActions: number;
-    metadata?: unknown;
-  }): Promise<AutomationQuotaReservation> {
+  reserve(
+    input: ReserveAutomationQuotaInput
+  ): Promise<AutomationQuotaReservation> {
+    return this.database.withTransaction((client) =>
+      this.reserveInTransaction(client, input)
+    );
+  }
+
+  async reserveInTransaction(
+    client: PoolClient,
+    input: ReserveAutomationQuotaInput
+  ): Promise<AutomationQuotaReservation> {
     const idempotencyKey = normalizeKey(input.idempotencyKey, "idempotencyKey");
     const sourceType = input.sourceType.trim();
     const sourceId = input.sourceId?.trim() || null;
@@ -129,315 +149,328 @@ export class AutomationQuotaService {
     }
     this.assertPositiveInteger(input.requestedActions, "requestedActions");
 
-    return this.database.withTransaction(async (client) => {
-      await this.commercialPolicy.lockOrganizationForMutation(
-        client,
-        input.organizationId
-      );
+    await this.commercialPolicy.lockOrganizationForMutation(
+      client,
+      input.organizationId
+    );
 
-      const existing = await this.findReservationByKey(
-        client,
+    const existing = await this.findReservationByKey(
+      client,
+      input.organizationId,
+      idempotencyKey
+    );
+    if (existing) {
+      if (
+        existing.requested_actions !== input.requestedActions ||
+        existing.source_type !== sourceType ||
+        existing.source_id !== sourceId
+      ) {
+        throw new AutomationQuotaIdempotencyConflictError();
+      }
+      return this.mapReservation(existing);
+    }
+
+    const policy = await this.commercialPolicy.loadPolicy(
+      client,
+      input.organizationId
+    );
+    this.commercialPolicy.assertWriteAllowed(policy);
+
+    const window = await this.currentPeriod(client);
+    await client.query(
+      `INSERT INTO automation_quota_periods (
+         organization_id, period_start, period_end
+       )
+       VALUES ($1, $2::date, $3::date)
+       ON CONFLICT (organization_id, period_start) DO NOTHING`,
+      [input.organizationId, window.periodStart, window.periodEnd]
+    );
+
+    const periodResult = await client.query<PeriodRow>(
+      `SELECT
+         period_start::text,
+         period_end::text,
+         reserved_actions,
+         consumed_actions
+       FROM automation_quota_periods
+       WHERE organization_id = $1
+         AND period_start = $2::date
+       FOR UPDATE`,
+      [input.organizationId, window.periodStart]
+    );
+    const period = periodResult.rows[0]!;
+    const committed = period.reserved_actions + period.consumed_actions;
+    const limit = policy.entitlements.automationActionsMonthly;
+
+    if (committed + input.requestedActions > limit) {
+      throw new AutomationQuotaExceededError(
+        committed,
+        input.requestedActions,
+        limit
+      );
+    }
+
+    const inserted = await client.query<ReservationRow>(
+      `INSERT INTO automation_quota_reservations (
+         organization_id,
+         period_start,
+         idempotency_key,
+         source_type,
+         source_id,
+         requested_actions,
+         metadata
+       )
+       VALUES ($1, $2::date, $3, $4, $5, $6, $7::jsonb)
+       RETURNING
+         id::text,
+         organization_id::text,
+         period_start::text,
+         $8::text AS period_end,
+         idempotency_key,
+         source_type,
+         source_id,
+         requested_actions,
+         consumed_actions,
+         released_actions,
+         status,
+         metadata,
+         created_at,
+         updated_at`,
+      [
         input.organizationId,
-        idempotencyKey
-      );
-      if (existing) {
-        if (
-          existing.requested_actions !== input.requestedActions ||
-          existing.source_type !== sourceType ||
-          existing.source_id !== sourceId
-        ) {
-          throw new AutomationQuotaIdempotencyConflictError();
-        }
-        return this.mapReservation(existing);
-      }
+        window.periodStart,
+        idempotencyKey,
+        sourceType,
+        sourceId,
+        input.requestedActions,
+        JSON.stringify(input.metadata ?? {}),
+        window.periodEnd
+      ]
+    );
 
-      const policy = await this.commercialPolicy.loadPolicy(
-        client,
-        input.organizationId
-      );
-      this.commercialPolicy.assertWriteAllowed(policy);
+    await client.query(
+      `UPDATE automation_quota_periods
+       SET reserved_actions = reserved_actions + $3,
+           updated_at = now()
+       WHERE organization_id = $1
+         AND period_start = $2::date`,
+      [input.organizationId, window.periodStart, input.requestedActions]
+    );
 
-      const window = await this.currentPeriod(client);
-      await client.query(
-        `INSERT INTO automation_quota_periods (
-           organization_id, period_start, period_end
-         )
-         VALUES ($1, $2::date, $3::date)
-         ON CONFLICT (organization_id, period_start) DO NOTHING`,
-        [input.organizationId, window.periodStart, window.periodEnd]
-      );
-
-      const periodResult = await client.query<PeriodRow>(
-        `SELECT
-           period_start::text,
-           period_end::text,
-           reserved_actions,
-           consumed_actions
-         FROM automation_quota_periods
-         WHERE organization_id = $1
-           AND period_start = $2::date
-         FOR UPDATE`,
-        [input.organizationId, window.periodStart]
-      );
-      const period = periodResult.rows[0]!;
-      const committed = period.reserved_actions + period.consumed_actions;
-      const limit = policy.entitlements.automationActionsMonthly;
-
-      if (committed + input.requestedActions > limit) {
-        throw new AutomationQuotaExceededError(
-          committed,
-          input.requestedActions,
-          limit
-        );
-      }
-
-      const inserted = await client.query<ReservationRow>(
-        `INSERT INTO automation_quota_reservations (
-           organization_id,
-           period_start,
-           idempotency_key,
-           source_type,
-           source_id,
-           requested_actions,
-           metadata
-         )
-         VALUES ($1, $2::date, $3, $4, $5, $6, $7::jsonb)
-         RETURNING
-           id::text,
-           organization_id::text,
-           period_start::text,
-           $8::text AS period_end,
-           idempotency_key,
-           source_type,
-           source_id,
-           requested_actions,
-           consumed_actions,
-           released_actions,
-           status,
-           metadata,
-           created_at,
-           updated_at`,
-        [
-          input.organizationId,
-          window.periodStart,
-          idempotencyKey,
-          sourceType,
-          sourceId,
-          input.requestedActions,
-          JSON.stringify(input.metadata ?? {}),
-          window.periodEnd
-        ]
-      );
-
-      await client.query(
-        `UPDATE automation_quota_periods
-         SET reserved_actions = reserved_actions + $3,
-             updated_at = now()
-         WHERE organization_id = $1
-           AND period_start = $2::date`,
-        [input.organizationId, window.periodStart, input.requestedActions]
-      );
-
-      return this.mapReservation(inserted.rows[0]!);
-    });
+    return this.mapReservation(inserted.rows[0]!);
   }
 
-  async consume(input: {
-    organizationId: string;
-    reservationId: string;
-    consumptionKey: string;
-    quantity: number;
-  }): Promise<{
+  consume(input: ConsumeAutomationQuotaInput): Promise<{
+    reservation: AutomationQuotaReservation;
+    consumption: AutomationQuotaConsumption;
+  }> {
+    return this.database.withTransaction((client) =>
+      this.consumeInTransaction(client, input)
+    );
+  }
+
+  async consumeInTransaction(
+    client: PoolClient,
+    input: ConsumeAutomationQuotaInput
+  ): Promise<{
     reservation: AutomationQuotaReservation;
     consumption: AutomationQuotaConsumption;
   }> {
     const consumptionKey = normalizeKey(input.consumptionKey, "consumptionKey");
     this.assertPositiveInteger(input.quantity, "quantity");
 
-    return this.database.withTransaction(async (client) => {
-      await this.commercialPolicy.lockOrganizationForMutation(
-        client,
-        input.organizationId
-      );
+    await this.commercialPolicy.lockOrganizationForMutation(
+      client,
+      input.organizationId
+    );
 
-      const reservation = await this.findReservationForUpdate(
-        client,
-        input.organizationId,
-        input.reservationId
-      );
-      if (!reservation) {
-        throw new AutomationQuotaReservationNotFoundError();
+    const reservation = await this.findReservationForUpdate(
+      client,
+      input.organizationId,
+      input.reservationId
+    );
+    if (!reservation) {
+      throw new AutomationQuotaReservationNotFoundError();
+    }
+
+    const existingConsumption = await client.query<ConsumptionRow>(
+      `SELECT
+         id::text,
+         organization_id::text,
+         reservation_id::text,
+         consumption_key,
+         quantity,
+         created_at
+       FROM automation_quota_consumptions
+       WHERE organization_id = $1
+         AND reservation_id = $2
+         AND consumption_key = $3`,
+      [input.organizationId, input.reservationId, consumptionKey]
+    );
+    const existing = existingConsumption.rows[0];
+    if (existing) {
+      if (existing.quantity !== input.quantity) {
+        throw new AutomationQuotaIdempotencyConflictError();
       }
-
-      const existingConsumption = await client.query<ConsumptionRow>(
-        `SELECT
-           id::text,
-           organization_id::text,
-           reservation_id::text,
-           consumption_key,
-           quantity,
-           created_at
-         FROM automation_quota_consumptions
-         WHERE organization_id = $1
-           AND reservation_id = $2
-           AND consumption_key = $3`,
-        [input.organizationId, input.reservationId, consumptionKey]
-      );
-      const existing = existingConsumption.rows[0];
-      if (existing) {
-        if (existing.quantity !== input.quantity) {
-          throw new AutomationQuotaIdempotencyConflictError();
-        }
-        return {
-          reservation: this.mapReservation(reservation),
-          consumption: this.mapConsumption(existing)
-        };
-      }
-
-      const policy = await this.commercialPolicy.loadPolicy(
-        client,
-        input.organizationId
-      );
-      this.commercialPolicy.assertWriteAllowed(policy);
-
-      if (reservation.status !== "OPEN") {
-        throw new AutomationQuotaConsumptionConflictError(
-          "Quota reservation is not open."
-        );
-      }
-
-      const remaining =
-        reservation.requested_actions -
-        reservation.consumed_actions -
-        reservation.released_actions;
-      if (input.quantity > remaining) {
-        throw new AutomationQuotaConsumptionConflictError(
-          "Consumption exceeds remaining reserved actions."
-        );
-      }
-
-      const consumptionResult = await client.query<ConsumptionRow>(
-        `INSERT INTO automation_quota_consumptions (
-           organization_id,
-           reservation_id,
-           consumption_key,
-           quantity
-         )
-         VALUES ($1, $2, $3, $4)
-         RETURNING
-           id::text,
-           organization_id::text,
-           reservation_id::text,
-           consumption_key,
-           quantity,
-           created_at`,
-        [
-          input.organizationId,
-          input.reservationId,
-          consumptionKey,
-          input.quantity
-        ]
-      );
-
-      const nextConsumed = reservation.consumed_actions + input.quantity;
-      const accounted = nextConsumed + reservation.released_actions;
-      const nextStatus =
-        accounted === reservation.requested_actions ? "COMPLETED" : "OPEN";
-
-      await client.query(
-        `UPDATE automation_quota_reservations
-         SET consumed_actions = $3,
-             status = $4,
-             updated_at = now()
-         WHERE organization_id = $1
-           AND id = $2`,
-        [
-          input.organizationId,
-          input.reservationId,
-          nextConsumed,
-          nextStatus
-        ]
-      );
-
-      await client.query(
-        `UPDATE automation_quota_periods
-         SET reserved_actions = reserved_actions - $3,
-             consumed_actions = consumed_actions + $3,
-             updated_at = now()
-         WHERE organization_id = $1
-           AND period_start = $2::date`,
-        [input.organizationId, reservation.period_start, input.quantity]
-      );
-
-      const updated = await this.findReservationForUpdate(
-        client,
-        input.organizationId,
-        input.reservationId
-      );
-
       return {
-        reservation: this.mapReservation(updated!),
-        consumption: this.mapConsumption(consumptionResult.rows[0]!)
+        reservation: this.mapReservation(reservation),
+        consumption: this.mapConsumption(existing)
       };
-    });
+    }
+
+    const policy = await this.commercialPolicy.loadPolicy(
+      client,
+      input.organizationId
+    );
+    this.commercialPolicy.assertWriteAllowed(policy);
+
+    if (reservation.status !== "OPEN") {
+      throw new AutomationQuotaConsumptionConflictError(
+        "Quota reservation is not open."
+      );
+    }
+
+    const remaining =
+      reservation.requested_actions -
+      reservation.consumed_actions -
+      reservation.released_actions;
+    if (input.quantity > remaining) {
+      throw new AutomationQuotaConsumptionConflictError(
+        "Consumption exceeds remaining reserved actions."
+      );
+    }
+
+    const consumptionResult = await client.query<ConsumptionRow>(
+      `INSERT INTO automation_quota_consumptions (
+         organization_id,
+         reservation_id,
+         consumption_key,
+         quantity
+       )
+       VALUES ($1, $2, $3, $4)
+       RETURNING
+         id::text,
+         organization_id::text,
+         reservation_id::text,
+         consumption_key,
+         quantity,
+         created_at`,
+      [
+        input.organizationId,
+        input.reservationId,
+        consumptionKey,
+        input.quantity
+      ]
+    );
+
+    const nextConsumed = reservation.consumed_actions + input.quantity;
+    const accounted = nextConsumed + reservation.released_actions;
+    const nextStatus =
+      accounted === reservation.requested_actions ? "COMPLETED" : "OPEN";
+
+    await client.query(
+      `UPDATE automation_quota_reservations
+       SET consumed_actions = $3,
+           status = $4,
+           updated_at = now()
+       WHERE organization_id = $1
+         AND id = $2`,
+      [
+        input.organizationId,
+        input.reservationId,
+        nextConsumed,
+        nextStatus
+      ]
+    );
+
+    await client.query(
+      `UPDATE automation_quota_periods
+       SET reserved_actions = reserved_actions - $3,
+           consumed_actions = consumed_actions + $3,
+           updated_at = now()
+       WHERE organization_id = $1
+         AND period_start = $2::date`,
+      [input.organizationId, reservation.period_start, input.quantity]
+    );
+
+    const updated = await this.findReservationForUpdate(
+      client,
+      input.organizationId,
+      input.reservationId
+    );
+
+    return {
+      reservation: this.mapReservation(updated!),
+      consumption: this.mapConsumption(consumptionResult.rows[0]!)
+    };
   }
 
-  async release(input: {
+  release(input: {
     organizationId: string;
     reservationId: string;
   }): Promise<AutomationQuotaReservation> {
-    return this.database.withTransaction(async (client) => {
-      await this.commercialPolicy.lockOrganizationForMutation(
-        client,
-        input.organizationId
-      );
+    return this.database.withTransaction((client) =>
+      this.releaseInTransaction(client, input)
+    );
+  }
 
-      const reservation = await this.findReservationForUpdate(
-        client,
-        input.organizationId,
-        input.reservationId
-      );
-      if (!reservation) {
-        throw new AutomationQuotaReservationNotFoundError();
-      }
+  async releaseInTransaction(
+    client: PoolClient,
+    input: {
+      organizationId: string;
+      reservationId: string;
+    }
+  ): Promise<AutomationQuotaReservation> {
+    await this.commercialPolicy.lockOrganizationForMutation(
+      client,
+      input.organizationId
+    );
 
-      if (reservation.status !== "OPEN") {
-        return this.mapReservation(reservation);
-      }
+    const reservation = await this.findReservationForUpdate(
+      client,
+      input.organizationId,
+      input.reservationId
+    );
+    if (!reservation) {
+      throw new AutomationQuotaReservationNotFoundError();
+    }
 
-      const remaining =
-        reservation.requested_actions -
-        reservation.consumed_actions -
-        reservation.released_actions;
+    if (reservation.status !== "OPEN") {
+      return this.mapReservation(reservation);
+    }
 
+    const remaining =
+      reservation.requested_actions -
+      reservation.consumed_actions -
+      reservation.released_actions;
+
+    await client.query(
+      `UPDATE automation_quota_reservations
+       SET released_actions = released_actions + $3,
+           status = 'RELEASED',
+           updated_at = now()
+       WHERE organization_id = $1
+         AND id = $2`,
+      [input.organizationId, input.reservationId, remaining]
+    );
+
+    if (remaining > 0) {
       await client.query(
-        `UPDATE automation_quota_reservations
-         SET released_actions = released_actions + $3,
-             status = 'RELEASED',
+        `UPDATE automation_quota_periods
+         SET reserved_actions = reserved_actions - $3,
              updated_at = now()
          WHERE organization_id = $1
-           AND id = $2`,
-        [input.organizationId, input.reservationId, remaining]
+           AND period_start = $2::date`,
+        [input.organizationId, reservation.period_start, remaining]
       );
+    }
 
-      if (remaining > 0) {
-        await client.query(
-          `UPDATE automation_quota_periods
-           SET reserved_actions = reserved_actions - $3,
-               updated_at = now()
-           WHERE organization_id = $1
-             AND period_start = $2::date`,
-          [input.organizationId, reservation.period_start, remaining]
-        );
-      }
-
-      const updated = await this.findReservationForUpdate(
-        client,
-        input.organizationId,
-        input.reservationId
-      );
-      return this.mapReservation(updated!);
-    });
+    const updated = await this.findReservationForUpdate(
+      client,
+      input.organizationId,
+      input.reservationId
+    );
+    return this.mapReservation(updated!);
   }
 
   private async currentPeriod(
