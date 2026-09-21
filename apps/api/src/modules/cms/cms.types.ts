@@ -48,3 +48,9 @@ export interface TransitionSubscriptionInput {
   expectedVersion?: number;
   reason?: string;
 }
+
+export interface ChangeSubscriptionPlanInput {
+  targetPlanCode?: string;
+  expectedVersion?: number;
+  reason?: string;
+}
