@@ -41,6 +41,7 @@ type ModalState =
   | { kind: "revokeEntitlement"; override: CmsEntitlementOverride }
   | { kind: "provisionSubscription"; organization: CmsOrganization }
   | { kind: "transitionSubscription"; organization: CmsOrganization }
+  | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
   | null;
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -246,6 +247,24 @@ export default function CmsPage() {
         ) as CmsSubscriptionStatus;
         await cmsApi.transitionSubscription(modal.organization.id, {
           to,
+          expectedVersion,
+          reason
+        });
+      }
+
+      if (modal.kind === "changeSubscriptionPlan") {
+        const expectedVersion = modal.organization.subscriptionVersion;
+        if (expectedVersion === null) {
+          throw new Error("Subscription version is missing. Refresh and retry.");
+        }
+
+        const targetPlanCode = String(data.get("targetPlanCode") ?? "").trim();
+        if (!targetPlanCode) {
+          throw new Error("Target plan is required.");
+        }
+
+        await cmsApi.changeSubscriptionPlan(modal.organization.id, {
+          targetPlanCode,
           expectedVersion,
           reason
         });
@@ -661,22 +680,41 @@ export default function CmsPage() {
                                 >
                                   Provision
                                 </button>
-                              ) : subscriptionTargets(org.subscriptionStatus)
-                                  .length > 0 ? (
-                                <button
-                                  className="text-button"
-                                  type="button"
-                                  onClick={() =>
-                                    setModal({
-                                      kind: "transitionSubscription",
-                                      organization: org
-                                    })
-                                  }
-                                >
-                                  Transition
-                                </button>
                               ) : (
-                                <span className="cms-note">Terminal</span>
+                                <div className="table-actions">
+                                  {subscriptionTargets(org.subscriptionStatus)
+                                    .length > 0 ? (
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      onClick={() =>
+                                        setModal({
+                                          kind: "transitionSubscription",
+                                          organization: org
+                                        })
+                                      }
+                                    >
+                                      Transition
+                                    </button>
+                                  ) : null}
+                                  {org.subscriptionStatus !== "CANCELLED" ? (
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      disabled={plans.length === 0}
+                                      onClick={() =>
+                                        setModal({
+                                          kind: "changeSubscriptionPlan",
+                                          organization: org
+                                        })
+                                      }
+                                    >
+                                      Change plan
+                                    </button>
+                                  ) : (
+                                    <span className="cms-note">Terminal</span>
+                                  )}
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -977,6 +1015,29 @@ export default function CmsPage() {
                         {status}
                       </option>
                     ))}
+                  </select>
+                </label>
+              </>
+            )}
+
+            {modal.kind === "changeSubscriptionPlan" && (
+              <>
+                <h2>Change subscription plan</h2>
+                <p className="modal-warning">
+                  {modal.organization.name} · current plan{" "}
+                  {modal.organization.planCode ?? "—"}. This command changes the
+                  plan-version snapshot only; it does not charge or refund money.
+                </p>
+                <label>
+                  Target plan
+                  <select name="targetPlanCode" required>
+                    {plans
+                      .filter((plan) => plan.status === "ACTIVE")
+                      .map((plan) => (
+                        <option value={plan.code} key={plan.code}>
+                          {plan.name} · v{plan.version}
+                        </option>
+                      ))}
                   </select>
                 </label>
               </>
