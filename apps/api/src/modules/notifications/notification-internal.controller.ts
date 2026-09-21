@@ -9,7 +9,7 @@ import {
 import { NotificationOperationsService } from "./application/notification-operations.service.js";
 import { NotificationWorkerService } from "./application/notification-worker.service.js";
 import type { NotificationProviderResult } from "./domain/notification-provider.js";
-import { InternalWorkerGuard } from "./internal-worker.guard.js";
+import { InternalServiceGuard } from "../internal/internal-service.guard.js";
 
 type ClaimInput = {
   provider?: string;
@@ -109,7 +109,7 @@ function parseProviderResult(value: unknown): NotificationProviderResult {
 }
 
 @Controller("internal/notifications")
-@UseGuards(InternalWorkerGuard)
+@UseGuards(InternalServiceGuard)
 export class NotificationInternalController {
   constructor(
     private readonly worker: NotificationWorkerService,
