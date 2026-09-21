@@ -1,0 +1,24 @@
+<svg width="256" height="72" viewBox="0 0 256 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(2 4)">
+    <defs>
+      <linearGradient id="roof" x1="8" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#0F2D4A"/>
+        <stop offset="0.55" stop-color="#0B6E8E"/>
+        <stop offset="1" stop-color="#14B8A6"/>
+      </linearGradient>
+      <linearGradient id="swoosh" x1="8" y1="50" x2="58" y2="28" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#0B6E8E"/>
+        <stop offset="1" stop-color="#14B8A6"/>
+      </linearGradient>
+    </defs>
+    <path d="M9 28.5L29.5 11.5L49 27.5V47H42V30.8L29.5 20.5L16 31.4V47.5H9V28.5Z" fill="url(#roof)"/>
+    <rect x="19.5" y="36" width="5.5" height="11.5" rx="1.5" fill="#14B8A6"/>
+    <rect x="27.5" y="30.5" width="5.5" height="17" rx="1.5" fill="#19A7B7"/>
+    <rect x="35.5" y="24" width="5.5" height="23.5" rx="1.5" fill="#E7F7F5"/>
+    <path d="M7 49C18.5 54 32.5 53.4 43.2 46.3C49.6 42 53.5 36.1 55.2 30.4C55.5 40.5 51.6 49.3 43.6 54.8C32.5 62.3 17.2 59.9 7 49Z" fill="url(#swoosh)"/>
+    <circle cx="46.5" cy="13.5" r="5.5" fill="#F59E0B"/>
+  </g>
+  <text x="70" y="38" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="800" letter-spacing="-1.4" fill="#0F2D4A">Prop</text>
+  <text x="136" y="38" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="800" letter-spacing="-1.4" fill="#14B8A6">Ops</text>
+  <text x="72" y="56" font-family="Inter, Arial, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.15" fill="#64748B">SAAS QUẢN LÝ PHÒNG TRỌ</text>
+</svg>
