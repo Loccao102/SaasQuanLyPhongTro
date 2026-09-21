@@ -1,20 +1,20 @@
 :root {
-  --color-bg: #f6f7f9;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
   --color-surface-soft: #f9fafb;
-  --color-text: #181b20;
-  --color-text-muted: #6b7280;
-  --color-border: #e5e7eb;
-  --color-primary: #2457e6;
-  --color-primary-soft: #eef3ff;
-  --color-success: #198754;
-  --color-success-soft: #edf8f2;
-  --color-warning: #b26a00;
-  --color-warning-soft: #fff7e8;
+  --color-text: #0f2d4a;
+  --color-text-muted: #64748b;
+  --color-border: #dbe5ee;
+  --color-primary: #0b6e8e;
+  --color-primary-soft: #e8f7f7;
+  --color-success: #0f9f83;
+  --color-success-soft: #e8f8f4;
+  --color-warning: #b86b00;
+  --color-warning-soft: #fff7e6;
   --color-danger: #c43d3d;
   --color-danger-soft: #fff0f0;
-  --color-info: #3461c9;
-  --color-info-soft: #eef4ff;
+  --color-info: #0b6e8e;
+  --color-info-soft: #e9f5f8;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
@@ -28,7 +28,7 @@ body { margin: 0; min-height: 100vh; }
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
-:focus-visible { outline: 3px solid rgb(36 87 230 / 28%); outline-offset: 2px; }
+:focus-visible { outline: 3px solid rgb(20 184 166 / 30%); outline-offset: 2px; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; }
 .status-badge--neutral { background: #f1f3f5; color: #4b5563; }
 .status-badge--success { background: var(--color-success-soft); color: var(--color-success); }
@@ -38,7 +38,7 @@ a { color: inherit; }
 .metric-card { position: relative; min-width: 0; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
 .metric-card__dot { position: absolute; top: 21px; right: 20px; width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; }
 .metric-card__dot--success { background: var(--color-success); }
-.metric-card__dot--warning { background: #d18a1b; }
+.metric-card__dot--warning { background: #f59e0b; }
 .metric-card__dot--danger { background: var(--color-danger); }
 .metric-card__dot--info { background: var(--color-info); }
 .metric-card__label, .metric-card__detail { margin: 0; color: var(--color-text-muted); }
