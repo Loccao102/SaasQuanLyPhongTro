@@ -338,6 +338,11 @@ export class SubscriptionBillingService {
         "Void subscription invoice cannot be paid."
       );
     }
+    if (invoice.status === "PAID") {
+      throw new SubscriptionBillingConflictError(
+        "Subscription invoice is already paid."
+      );
+    }
     if (Number(invoice.amount_vnd) !== input.amountVnd) {
       throw new SubscriptionBillingConflictError(
         "Payment amount must exactly match the subscription invoice amount."
