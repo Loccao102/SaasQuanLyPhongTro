@@ -1,7 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type {
   BillingWebhookAdapter,
-  BillingWebhookAdapterResult,
   ClaimedBillingWebhookEvent,
   NormalizedBillingWebhookPayment
 } from "./billing-webhook-types.js";
@@ -22,10 +21,11 @@ export interface BillingWebhookWorkerApi {
 
   completeBillingWebhookOutcome(
     eventId: string,
-    input: Extract<
-      BillingWebhookAdapterResult,
-      { kind: "REVIEW_REQUIRED" | "IGNORED" | "FAILED" }
-    >
+    input: {
+      outcome: "REVIEW_REQUIRED" | "IGNORED" | "FAILED";
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }
   ): Promise<unknown>;
 }
 
@@ -49,7 +49,11 @@ export async function processBillingWebhookOnce(
     return true;
   }
 
-  await api.completeBillingWebhookOutcome(event.id, result);
+  await api.completeBillingWebhookOutcome(event.id, {
+    outcome: result.kind,
+    errorCode: result.errorCode ?? null,
+    errorMessage: result.errorMessage ?? null
+  });
   return true;
 }
 
