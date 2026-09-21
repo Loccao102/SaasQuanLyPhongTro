@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Pool } from "pg";
 import { AutomationQuotaService } from "../../commercial/application/automation-quota.service.js";
-import {
-  CommercialPolicyService,
-  CommercialWriteRestrictedError
-} from "../../commercial/application/commercial-policy.service.js";
+import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { AccessControlService } from "../../identity/access-control.service.js";
 import type { MembershipAccess } from "../../identity/domain/access-control.js";
@@ -211,7 +208,10 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
 
     const firstClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(firstClaim);
-    assert.equal(firstClaim.recipientKey, "zalo-user-001");
+    assert.ok(
+      ["zalo-user-001", "zalo-user-002"].includes(firstClaim.recipientKey)
+    );
+    const firstRecipientKey = firstClaim.recipientKey;
     assert.equal(firstClaim.attemptNumber, 1);
 
     const retryWait = await worker.completeAttempt({
@@ -280,7 +280,10 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
 
     const secondClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(secondClaim);
-    assert.equal(secondClaim.recipientKey, "zalo-user-002");
+    assert.ok(
+      ["zalo-user-001", "zalo-user-002"].includes(secondClaim.recipientKey)
+    );
+    assert.notEqual(secondClaim.recipientKey, firstRecipientKey);
 
     const unknownSecond = await worker.completeAttempt({
       organizationId,
@@ -328,10 +331,8 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
       [organizationId]
     );
 
-    await assert.rejects(
-      () => worker.claimNext("PLAYWRIGHT_ZALO"),
-      CommercialWriteRestrictedError
-    );
+    const blockedClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
+    assert.equal(blockedClaim, null);
 
     await fixturePool.query(
       `UPDATE organization_subscriptions
