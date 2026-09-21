@@ -20,6 +20,7 @@ import type {
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
+  UpdateNotificationProviderControlInput,
   UpdatePlanInput,
   UpdateSettingInput
 } from "./cms.types.js";
@@ -171,6 +172,21 @@ export class CmsController {
   @Get("jobs")
   listJobs(@Req() request: CmsRequest) {
     return this.cms.getJobsIntegrationStatus(this.principal(request));
+  }
+
+  @Patch("jobs/providers/:provider/control")
+  updateNotificationProviderControl(
+    @Req() request: CmsRequest,
+    @Param("provider") provider: string,
+    @Body() input: UpdateNotificationProviderControlInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.updateNotificationProviderControl(
+      this.principal(request),
+      provider,
+      input,
+      idempotencyKey
+    );
   }
 
   @Post("jobs/:jobId/retry")
