@@ -56,6 +56,12 @@ export interface ChangeSubscriptionPlanInput {
   reason?: string;
 }
 
+export interface SetSubscriptionCancellationInput {
+  cancelAtPeriodEnd?: boolean;
+  expectedVersion?: number;
+  reason?: string;
+}
+
 export interface RetryNotificationJobInput {
   reason?: string;
 }
