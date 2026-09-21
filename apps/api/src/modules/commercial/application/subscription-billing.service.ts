@@ -174,12 +174,17 @@ export class SubscriptionBillingService {
       return null;
     }
 
-    const periodEnd = new Date(periodStart);
-    if (subscription.billing_interval === "YEARLY") {
-      periodEnd.setUTCFullYear(periodEnd.getUTCFullYear() + 1);
-    } else {
-      periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
-    }
+    const periodEndResult = await client.query<
+      QueryResultRow & { period_end: Date }
+    >(
+      `SELECT CASE
+         WHEN $2 = 'YEARLY'
+           THEN $1::timestamptz + interval '1 year'
+         ELSE $1::timestamptz + interval '1 month'
+       END AS period_end`,
+      [periodStart, subscription.billing_interval]
+    );
+    const periodEnd = periodEndResult.rows[0]!.period_end;
 
     const amount =
       subscription.billing_interval === "YEARLY"
