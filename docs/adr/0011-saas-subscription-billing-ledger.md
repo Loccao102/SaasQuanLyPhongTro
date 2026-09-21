@@ -46,7 +46,9 @@ Payment Transaction
 
 `saas_subscription_payment_allocations` applies one payment transaction to one or more invoices and allows multiple payment transactions per invoice.
 
-Partial payment is supported from the beginning. Manual allocation currently rejects overpayment rather than silently creating credit.
+Partial payment is supported from the beginning. Payment allocations are append-only financial history; idempotency protects retries instead of a one-row-per-payment/invoice uniqueness shortcut.
+
+Manual allocation currently rejects allocation beyond the payment's unallocated balance or the invoice's remaining balance rather than silently creating credit.
 
 ### Invoice state and overdue
 
@@ -89,6 +91,29 @@ When an effective paid period is activated:
 - trial/past-due/grace timestamps clear;
 - subscription optimistic version increments.
 
+### Provider event inbox and matching
+
+Provider-specific adapters do not mutate SaaS invoices directly.
+
+Raw provider callbacks are first persisted in `saas_billing_webhook_events` with:
+- provider + provider event id uniqueness;
+- raw body + SHA-256 fingerprint;
+- signature status;
+- processing lifecycle and errors.
+
+Only `VERIFIED` events are eligible for automatic processing. `INVALID` events are retained as IGNORED; `NOT_CONFIGURED` events are retained as REVIEW_REQUIRED.
+
+Each SaaS invoice has a unique `payment_reference`.
+
+A normalized provider payment becomes a PaymentTransaction before reconciliation. Safe automatic allocation requires:
+- exact unique payment reference;
+- invoice still has remaining balance;
+- incoming amount does not exceed invoice remaining balance.
+
+No match, paid/void target, or overpayment creates/keeps a provider PaymentTransaction in `REVIEW_REQUIRED` without changing invoice balance.
+
+Provider transaction replay requires the same provider transaction id, amount, occurred-at instant and payment reference.
+
 ### Runtime boundary
 
 The same `@propops/worker` artifact supports isolated deployment roles:
@@ -101,9 +126,15 @@ The billing worker calls authenticated `/api/internal/billing/sweep`. It never w
 
 ### CMS manual reconciliation
 
-CMS may record a verified manual payment only through the Billing application service.
+CMS supports two explicit financial workflows through the Billing application service:
 
-The command requires:
+1. Record a verified manual payment directly against a known SaaS invoice.
+2. Reconcile a provider PaymentTransaction in `REVIEW_REQUIRED` by allocating an explicit integer VND amount to a selected SaaS invoice.
+
+Provider reconciliation preserves the original provider transaction and appends PaymentAllocation history. Cross-organization allocation is rejected server-side.
+
+Manual payment recording requires:
+
 - `platform.billing.manage`;
 - invoice ID;
 - exact integer VND amount received;
@@ -114,8 +145,8 @@ Every operator command and financial allocation is auditable.
 
 ## Consequences
 
-- Payment-provider webhooks can later persist provider transactions without changing invoice/subscription schemas.
-- Partial payments and multiple transfers are supported without migration redesign.
-- A future unmatched provider transaction can remain UNALLOCATED or REVIEW_REQUIRED.
+- Provider webhook inbox persistence and normalized PaymentTransaction ingestion are already provider-neutral.
+- Partial payments, multiple transfers and append-only reconciliation allocations are supported without migration redesign.
+- Unmatched/unsafe provider transactions remain REVIEW_REQUIRED until an operator reconciles them.
 - Current manual reconciliation intentionally rejects overpayment until a credit-balance policy is defined.
 - Billing scheduling is horizontally repeatable because invoice uniqueness, organization locks and explicit state transitions make duplicate sweeps safe.
