@@ -12,6 +12,9 @@ psql "$DATABASE_URL" -f apps/api/db/migrations/0002_leasing_contract_lifecycle.s
 psql "$DATABASE_URL" -f apps/api/db/migrations/0003_cms_commercial_foundation.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0004_automation_quota_foundation.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0005_notification_jobs_foundation.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0006_notification_provider_operations.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0007_saas_subscription_billing.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
 psql "$DATABASE_URL" -f apps/api/db/seeds/cms_dev_operator.sql
 ```
 
@@ -45,6 +48,9 @@ Connected to PostgreSQL/API now:
 - organization/room/staff inspection;
 - entitlement overrides;
 - subscription provision + lifecycle transitions + immediate plan changes;
+- SaaS subscription billing periods, invoices, balances and manual payments;
+- provider payment REVIEW_REQUIRED reconciliation queue;
+- audited/idempotent append-only payment allocation;
 - durable notification Jobs/Queue inspection + audited manual retry;
 - automation quota reservation/consumption inspection;
 - platform audit;
@@ -53,7 +59,7 @@ Connected to PostgreSQL/API now:
 Explicitly pending:
 - real login/session middleware (local dev uses a server-side dev principal);
 - Loki/observability integration;
-- subscription payment collection / renewal scheduler;
+- provider-specific payment webhook adapter/signature verification;
 - self-service paid upgrade/downgrade checkout;
 - scheduled future plan changes;
 - production notification provider adapter (Playwright Zalo or official API).
