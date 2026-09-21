@@ -118,9 +118,10 @@ Provider transaction replay requires the same provider transaction id, amount, o
 
 The same `@propops/worker` artifact supports isolated deployment roles:
 - `WORKER_ROLE=NOTIFICATION`;
-- `WORKER_ROLE=BILLING`.
+- `WORKER_ROLE=BILLING`;
+- `WORKER_ROLE=BILLING_WEBHOOK`.
 
-These roles are separate processes. Playwright/browser failure therefore cannot stop SaaS billing progression.
+These roles are separate processes. Playwright/browser failure cannot stop SaaS billing progression, and provider webhook parsing failure cannot stop the subscription scheduler.
 
 The billing worker calls authenticated `/api/internal/billing/sweep`. It never writes PostgreSQL directly.
 
