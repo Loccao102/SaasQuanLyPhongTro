@@ -52,6 +52,7 @@ Baseline platform capabilities:
 - `platform.settings.manage`;
 - `platform.plans.manage`;
 - `platform.entitlements.manage`;
+- `platform.subscriptions.manage`;
 - `platform.organizations.inspect`;
 - `platform.jobs.manage`;
 - `platform.audit.read`;
@@ -61,7 +62,7 @@ Rules:
 - UI visibility is not authorization; backend always enforces platform permission.
 - CMS never writes PostgreSQL directly.
 - No generic SQL editor or raw secret viewer.
-- Settings/plan/job retry mutations require audit with actor, target, before/after, reason and timestamp.
+- Settings/plan/subscription/entitlement/job retry mutations require audit with actor, target, before/after, reason and timestamp.
 - Cross-organization reads exist only through explicit `/api/cms/*` endpoints/application services.
 - Tenant OWNER/ADMIN does not automatically become a CMS/platform principal.
 
@@ -97,7 +98,7 @@ Ghi audit cho:
 - thay đổi bank/integration config;
 - admin impersonation nếu có;
 - thay đổi role/scope và các thao tác quyền hạn nhạy cảm;
-- CMS settings/plan/job retry mutations.
+- CMS settings/plan/subscription/entitlement/job retry mutations.
 
 ## Webhooks
 
