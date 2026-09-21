@@ -17,6 +17,8 @@ import {
   type CmsAuditEvent,
   type CmsDashboard,
   type CmsEntitlementOverride,
+  type CmsJobsStatus,
+  type CmsNotificationJob,
   type CmsOrganization,
   type CmsPlan,
   type CmsSetting,
@@ -42,6 +44,7 @@ type ModalState =
   | { kind: "provisionSubscription"; organization: CmsOrganization }
   | { kind: "transitionSubscription"; organization: CmsOrganization }
   | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
+  | { kind: "retryNotificationJob"; job: CmsNotificationJob }
   | null;
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -109,7 +112,7 @@ export default function CmsPage() {
   const [organizations, setOrganizations] = useState<CmsOrganization[]>([]);
   const [entitlementOverrides, setEntitlementOverrides] = useState<CmsEntitlementOverride[]>([]);
   const [audit, setAudit] = useState<CmsAuditEvent[]>([]);
-  const [jobsStatus, setJobsStatus] = useState<IntegrationStatus | null>(null);
+  const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
   const [logsStatus, setLogsStatus] = useState<IntegrationStatus | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [loading, setLoading] = useState(true);
@@ -315,14 +318,21 @@ export default function CmsPage() {
         );
       }
 
-      const [nextAudit, nextDashboard, nextOrganizations] = await Promise.all([
-        cmsApi.audit(),
-        cmsApi.dashboard(),
-        cmsApi.organizations()
-      ]);
+      if (modal.kind === "retryNotificationJob") {
+        await cmsApi.retryNotificationJob(modal.job.id, reason);
+      }
+
+      const [nextAudit, nextDashboard, nextOrganizations, nextJobs] =
+        await Promise.all([
+          cmsApi.audit(),
+          cmsApi.dashboard(),
+          cmsApi.organizations(),
+          cmsApi.jobs()
+        ]);
       setAudit(nextAudit);
       setDashboard(nextDashboard);
       setOrganizations(nextOrganizations);
+      setJobsStatus(nextJobs);
       setModal(null);
     } catch (saveError) {
       setError(
@@ -825,15 +835,99 @@ export default function CmsPage() {
 
           {!loading && view === "jobs" && (
             <section className="cms-panel">
-              <SectionHeader title="Operational jobs" />
+              <SectionHeader
+                title="Operational jobs"
+                action={
+                  <span className="cms-note">
+                    Durable queue state · manual retry audited
+                  </span>
+                }
+              />
               <div className="cms-state">
                 <strong>
                   {jobsStatus?.connected
-                    ? "Job integration connected"
+                    ? "Notification job persistence connected"
                     : "Job persistence chưa được nối"}
                 </strong>
                 <span>{jobsStatus?.reason}</span>
               </div>
+              {jobsStatus?.connected && jobsStatus.entries.length === 0 ? (
+                <div className="empty-state">Chưa có notification job.</div>
+              ) : null}
+              {jobsStatus?.connected && jobsStatus.entries.length > 0 ? (
+                <div className="cms-table-wrap">
+                  <table className="cms-table">
+                    <thead>
+                      <tr>
+                        <th>Organization / recipient</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                        <th>Verification</th>
+                        <th>Provider</th>
+                        <th>Last error</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobsStatus.entries.map((job) => (
+                        <tr key={job.id}>
+                          <td>
+                            <strong>{job.organizationName}</strong>
+                            <small>
+                              {job.recipientDisplayName ?? job.recipientKey} ·{" "}
+                              {job.campaignId}
+                            </small>
+                          </td>
+                          <td>
+                            <StatusBadge tone={statusTone(job.status)}>
+                              {job.status}
+                            </StatusBadge>
+                            <small>{job.campaignStatus}</small>
+                          </td>
+                          <td>
+                            {job.attemptCount} / {job.maxAttempts}
+                            {job.nextAttemptAt ? (
+                              <small>
+                                next{" "}
+                                {new Date(job.nextAttemptAt).toLocaleString(
+                                  "vi-VN"
+                                )}
+                              </small>
+                            ) : null}
+                          </td>
+                          <td>{job.verificationState}</td>
+                          <td>{job.provider}</td>
+                          <td>
+                            {job.lastErrorCode ?? "—"}
+                            {job.lastErrorMessage ? (
+                              <small>{job.lastErrorMessage}</small>
+                            ) : null}
+                          </td>
+                          <td>
+                            {job.status === "FAILED" ||
+                            job.status === "MANUAL_REVIEW" ? (
+                              <button
+                                className="text-button"
+                                type="button"
+                                onClick={() =>
+                                  setModal({
+                                    kind: "retryNotificationJob",
+                                    job
+                                  })
+                                }
+                              >
+                                Retry
+                              </button>
+                            ) : (
+                              <span className="cms-note">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </section>
           )}
 
@@ -1115,6 +1209,18 @@ export default function CmsPage() {
                   {modal.override.organizationName} · {modal.override.key} ={" "}
                   {pretty(modal.override.value)} sẽ quay về giá trị từ plan sau
                   khi revoke.
+                </p>
+              </>
+            )}
+
+            {modal.kind === "retryNotificationJob" && (
+              <>
+                <h2>Retry notification job</h2>
+                <p className="modal-warning">
+                  {modal.job.organizationName} ·{" "}
+                  {modal.job.recipientDisplayName ?? modal.job.recipientKey}. Job{" "}
+                  {modal.job.status} sẽ quay lại QUEUED; quota đã consume trước đó
+                  không bị trừ thêm khi worker claim retry.
                 </p>
               </>
             )}
