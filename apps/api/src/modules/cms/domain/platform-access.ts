@@ -12,6 +12,7 @@ export const platformPermissions = [
   "platform.settings.manage",
   "platform.plans.manage",
   "platform.entitlements.manage",
+  "platform.subscriptions.manage",
   "platform.organizations.inspect",
   "platform.jobs.read",
   "platform.jobs.manage",
