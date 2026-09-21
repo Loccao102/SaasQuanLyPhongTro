@@ -12,6 +12,7 @@ import {
 import { CmsPlatformGuard } from "./cms-platform.guard.js";
 import { CmsService } from "./cms.service.js";
 import type {
+  AllocateProviderPaymentInput,
   ChangeSubscriptionPlanInput,
   CmsRequest,
   PlatformPrincipal,
