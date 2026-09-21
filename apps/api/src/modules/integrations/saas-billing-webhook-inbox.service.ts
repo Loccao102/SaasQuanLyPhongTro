@@ -255,6 +255,79 @@ export class SaasBillingWebhookInboxService {
     });
   }
 
+  async requeueInTransaction(
+    client: PoolClient,
+    eventId: string
+  ): Promise<{
+    before: SaasBillingWebhookEventView;
+    after: SaasBillingWebhookEventView;
+  }> {
+    const result = await client.query<WebhookEventRow>(
+      this.eventSelectSql("WHERE id = $1 FOR UPDATE"),
+      [eventId]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new BillingWebhookConflictError(
+        "Billing webhook event was not found."
+      );
+    }
+
+    if (row.signature_status !== "VERIFIED") {
+      throw new BillingWebhookConflictError(
+        "Only signature-verified billing webhooks can be requeued."
+      );
+    }
+    if (
+      row.processing_status !== "FAILED" &&
+      row.processing_status !== "REVIEW_REQUIRED"
+    ) {
+      throw new BillingWebhookConflictError(
+        "Only FAILED or REVIEW_REQUIRED billing webhooks can be requeued."
+      );
+    }
+    if (row.payment_id !== null) {
+      throw new BillingWebhookConflictError(
+        "Webhook event already has a linked payment and cannot be requeued."
+      );
+    }
+
+    const before = this.mapEvent(row);
+    const updated = await client.query<WebhookEventRow>(
+      `UPDATE saas_billing_webhook_events
+       SET processing_status = 'RECEIVED',
+           processing_started_at = NULL,
+           processed_at = NULL,
+           last_error_code = NULL,
+           last_error_message = NULL,
+           updated_at = now()
+       WHERE id = $1
+       RETURNING
+         id::text,
+         provider,
+         provider_event_id,
+         signature_status,
+         processing_status,
+         raw_body,
+         raw_body_sha256,
+         headers,
+         received_at,
+         processing_started_at,
+         processing_attempts,
+         processed_at,
+         last_error_code,
+         last_error_message,
+         payment_id::text,
+         normalized_payment_fingerprint`,
+      [eventId]
+    );
+
+    return {
+      before,
+      after: this.mapEvent(updated.rows[0]!)
+    };
+  }
+
   complete(input: {
     eventId: string;
     outcome: "PROCESSED" | "REVIEW_REQUIRED" | "IGNORED" | "FAILED";
