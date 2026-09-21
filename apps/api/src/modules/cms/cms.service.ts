@@ -11,7 +11,8 @@ import {
   SubscriptionBillingConflictError,
   SubscriptionBillingNotFoundError,
   SubscriptionBillingService,
-  type BillingSettlementView
+  type BillingSettlementView,
+  type SubscriptionCancellationScheduleView
 } from "../commercial/application/subscription-billing.service.js";
 import {
   ConcurrentSubscriptionUpdateError,
@@ -1057,7 +1058,7 @@ export class CmsService {
     organizationId: string,
     input: SetSubscriptionCancellationInput,
     idempotencyKey: string | undefined
-  ) {
+  ): Promise<SubscriptionCancellationScheduleView> {
     this.requirePermission(principal, "platform.subscriptions.manage");
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
@@ -1097,7 +1098,7 @@ export class CmsService {
             "Idempotency-Key was already used with a different request."
           );
         }
-        return receipt.response;
+        return receipt.response as SubscriptionCancellationScheduleView;
       }
 
       try {
