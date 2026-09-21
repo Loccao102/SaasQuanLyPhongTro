@@ -1094,7 +1094,7 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
   try {
     await fixturePool.query(
       `UPDATE system_settings
-       SET value = '"PropOps DB Test"'::jsonb
+       SET value = '"Habi DB Test"'::jsonb
        WHERE key = 'brand_product_name'`
     );
     await fixturePool.query(
@@ -1106,7 +1106,7 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
     const dashboard = await service.getDashboard(principal);
 
     assert.equal(dashboard.branding.productName, "PropOps DB Test");
-    assert.equal(dashboard.branding.descriptor, "SaaS Quản lý Phòng Trọ");
+    assert.equal(dashboard.branding.descriptor, "SaaS vận hành nhà cho thuê");
     assert.equal(dashboard.display.locale, "vi-VN");
     assert.equal(dashboard.display.currencyCode, "VND");
     assert.equal(dashboard.windows.leaseExpiryDays, 14);
@@ -1123,7 +1123,7 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
   } finally {
     await fixturePool.query(
       `UPDATE system_settings
-       SET value = '"PropOps"'::jsonb
+       SET value = '"Habi"'::jsonb
        WHERE key = 'brand_product_name'`
     );
     await fixturePool.query(
