@@ -4,11 +4,35 @@ export type CmsDashboard = {
   settingCount: number;
   activePlanCount: number;
   platformAudit24h: number;
-  delinquentOrganizationCount: number;
-  unpaidInvoiceCount: number;
-  overdueInvoiceCount: number;
-  outstandingVnd: number;
-  overdueVnd: number;
+  delinquentOrganizationCount: number | null;
+  unpaidInvoiceCount: number | null;
+  overdueInvoiceCount: number | null;
+  outstandingVnd: number | null;
+  overdueVnd: number | null;
+};
+
+export type CmsPlatformPermission =
+  | "platform.cms.read"
+  | "platform.settings.manage"
+  | "platform.plans.manage"
+  | "platform.entitlements.manage"
+  | "platform.subscriptions.manage"
+  | "platform.billing.read"
+  | "platform.billing.manage"
+  | "platform.organizations.inspect"
+  | "platform.jobs.read"
+  | "platform.jobs.manage"
+  | "platform.audit.read"
+  | "platform.logs.read";
+
+export type CmsBootstrap = {
+  userId: string;
+  role:
+    | "PLATFORM_ADMIN"
+    | "SUPPORT_OPERATOR"
+    | "OPS_OPERATOR"
+    | "READ_ONLY_AUDITOR";
+  permissions: CmsPlatformPermission[];
 };
 
 export type CmsSetting = {
@@ -301,6 +325,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const cmsApi = {
+  bootstrap: () => request<CmsBootstrap>("/bootstrap"),
   dashboard: () => request<CmsDashboard>("/dashboard"),
   settings: () => request<CmsSetting[]>("/settings"),
   plans: () => request<CmsPlan[]>("/plans"),
