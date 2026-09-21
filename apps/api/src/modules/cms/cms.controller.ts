@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -162,6 +163,24 @@ export class CmsController {
       input,
       idempotencyKey
     );
+  }
+
+  @Get("billing/provider-payments")
+  searchProviderPayments(
+    @Req() request: CmsRequest,
+    @Query("q") query?: string,
+    @Query("provider") provider?: string,
+    @Query("status") status?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string
+  ) {
+    return this.cms.searchProviderPayments(this.principal(request), {
+      query,
+      provider,
+      reconciliationStatus: status,
+      limit: limit === undefined ? undefined : Number(limit),
+      cursor
+    });
   }
 
   @Get("billing/reconciliation")
