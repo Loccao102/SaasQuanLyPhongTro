@@ -84,3 +84,14 @@ test("past due and grace remain full access while suspended is read only", () =>
   assert.equal(subscriptionAccessMode("SUSPENDED"), "READ_ONLY");
   assert.equal(subscriptionAccessMode("CANCELLED"), "READ_ONLY");
 });
+
+test("expired trial can enter past due before grace handling", () => {
+  const result = transitionSubscription(
+    subscription({ status: "TRIALING" }),
+    "PAST_DUE",
+    "Trial expired without a settled renewal invoice"
+  );
+
+  assert.equal(result.subscription.status, "PAST_DUE");
+  assert.equal(result.subscription.version, 2);
+});
