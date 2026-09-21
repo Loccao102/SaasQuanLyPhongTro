@@ -1,4 +1,4 @@
-# SaaS Quản Lý Phòng Trọ — Prop-Ops
+# Habi — SaaS vận hành nhà cho thuê
 
 Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, tập trung vào hai luồng cốt lõi:
 
