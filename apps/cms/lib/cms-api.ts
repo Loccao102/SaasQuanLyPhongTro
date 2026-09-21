@@ -125,10 +125,34 @@ export type CmsNotificationJob = {
   updatedAt: string;
 };
 
+export type CmsNotificationProvider = {
+  provider: string;
+  status: "ACTIVE" | "PAUSED";
+  reason: string | null;
+  controlUpdatedAt: string | null;
+  workerCount: number;
+  healthyWorkers: number;
+  degradedWorkers: number;
+  lastSeenAt: string | null;
+};
+
+export type CmsNotificationWorker = {
+  workerId: string;
+  provider: string;
+  status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
+  startedAt: string;
+  lastSeenAt: string;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  metadata: unknown;
+};
+
 export type CmsJobsStatus = {
   connected: boolean;
   reason: string;
   entries: CmsNotificationJob[];
+  providers: CmsNotificationProvider[];
+  workers: CmsNotificationWorker[];
 };
 
 export type IntegrationStatus = {
@@ -296,5 +320,19 @@ export const cmsApi = {
       method: "POST",
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ reason })
-    })
+    }),
+
+  updateNotificationProviderControl: (
+    provider: string,
+    status: "ACTIVE" | "PAUSED",
+    reason: string
+  ) =>
+    request<CmsNotificationProvider>(
+      "/jobs/providers/" + encodeURIComponent(provider) + "/control",
+      {
+        method: "PATCH",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ status, reason })
+      }
+    )
 };
