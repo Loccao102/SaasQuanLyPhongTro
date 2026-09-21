@@ -16,12 +16,14 @@ import {
   cmsApi,
   type CmsAuditEvent,
   type CmsBillingReconciliation,
+  type CmsBootstrap,
   type CmsDashboard,
   type CmsEntitlementOverride,
   type CmsJobsStatus,
   type CmsNotificationJob,
   type CmsNotificationProvider,
   type CmsOrganization,
+  type CmsPlatformPermission,
   type CmsProviderPaymentReview,
   type CmsPlan,
   type CmsSetting,
@@ -61,16 +63,32 @@ type ModalState =
     }
   | null;
 
-const navItems: Array<{ id: View; label: string }> = [
+const navItems: Array<{
+  id: View;
+  label: string;
+  permission?: CmsPlatformPermission;
+}> = [
   { id: "dashboard", label: "Tổng quan" },
   { id: "settings", label: "Cấu hình" },
   { id: "plans", label: "Gói & giới hạn" },
-  { id: "organizations", label: "Organizations" },
-  { id: "billing", label: "SaaS Billing" },
-  { id: "entitlements", label: "Entitlement overrides" },
-  { id: "jobs", label: "Jobs / Queue" },
-  { id: "logs", label: "Technical logs" },
-  { id: "audit", label: "Audit log" }
+  {
+    id: "organizations",
+    label: "Organizations",
+    permission: "platform.organizations.inspect"
+  },
+  {
+    id: "billing",
+    label: "SaaS Billing",
+    permission: "platform.billing.read"
+  },
+  {
+    id: "entitlements",
+    label: "Entitlement overrides",
+    permission: "platform.organizations.inspect"
+  },
+  { id: "jobs", label: "Jobs / Queue", permission: "platform.jobs.read" },
+  { id: "logs", label: "Technical logs", permission: "platform.logs.read" },
+  { id: "audit", label: "Audit log", permission: "platform.audit.read" }
 ];
 
 function statusTone(status: string): Tone {
@@ -152,6 +170,7 @@ function pretty(value: unknown): string {
 
 export default function CmsPage() {
   const [view, setView] = useState<View>("dashboard");
+  const [bootstrap, setBootstrap] = useState<CmsBootstrap | null>(null);
   const [dashboard, setDashboard] = useState<CmsDashboard | null>(null);
   const [settings, setSettings] = useState<CmsSetting[]>([]);
   const [plans, setPlans] = useState<CmsPlan[]>([]);
@@ -171,6 +190,12 @@ export default function CmsPage() {
     setLoading(true);
     setError(null);
     try {
+      const nextBootstrap = await cmsApi.bootstrap();
+      setBootstrap(nextBootstrap);
+
+      const can = (permission: CmsPlatformPermission) =>
+        nextBootstrap.permissions.includes(permission);
+
       const [
         nextDashboard,
         nextSettings,
@@ -182,16 +207,29 @@ export default function CmsPage() {
         nextBillingReconciliation,
         nextLogs
       ] = await Promise.all([
-          cmsApi.dashboard(),
-          cmsApi.settings(),
-          cmsApi.plans(),
-          cmsApi.organizations(),
-          cmsApi.entitlementOverrides(),
-          cmsApi.audit(),
-          cmsApi.jobs(),
-          cmsApi.billingReconciliation(),
-          cmsApi.logs()
-        ]);
+        cmsApi.dashboard(),
+        cmsApi.settings(),
+        cmsApi.plans(),
+        can("platform.organizations.inspect")
+          ? cmsApi.organizations()
+          : Promise.resolve([]),
+        can("platform.organizations.inspect")
+          ? cmsApi.entitlementOverrides()
+          : Promise.resolve([]),
+        can("platform.audit.read")
+          ? cmsApi.audit()
+          : Promise.resolve([]),
+        can("platform.jobs.read")
+          ? cmsApi.jobs()
+          : Promise.resolve(null),
+        can("platform.billing.read")
+          ? cmsApi.billingReconciliation()
+          : Promise.resolve(null),
+        can("platform.logs.read")
+          ? cmsApi.logs()
+          : Promise.resolve(null)
+      ]);
+
       setDashboard(nextDashboard);
       setSettings(nextSettings);
       setPlans(nextPlans);
@@ -215,6 +253,33 @@ export default function CmsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const hasPermission = useCallback(
+    (permission: CmsPlatformPermission) =>
+      bootstrap?.permissions.includes(permission) ?? false,
+    [bootstrap]
+  );
+
+  const visibleNavItems = useMemo(
+    () =>
+      bootstrap
+        ? navItems.filter(
+            (item) =>
+              item.permission === undefined ||
+              bootstrap.permissions.includes(item.permission)
+          )
+        : navItems.filter((item) => item.id === "dashboard"),
+    [bootstrap]
+  );
+
+  useEffect(() => {
+    if (
+      bootstrap &&
+      !visibleNavItems.some((item) => item.id === view)
+    ) {
+      setView("dashboard");
+    }
+  }, [bootstrap, visibleNavItems, view]);
 
   const planByCode = useMemo(
     () => new Map(plans.map((item) => [item.code, item])),
@@ -507,7 +572,7 @@ export default function CmsPage() {
           </div>
         </div>
         <nav className="cms-nav" aria-label="CMS navigation">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               className={
                 view === item.id
@@ -526,8 +591,12 @@ export default function CmsPage() {
         </nav>
         <div className="cms-sidebar__footer">
           <span>Platform principal</span>
-          <strong>Server-authorized</strong>
-          <small>Local dev uses CMS_DEV_USER_ID on the API only.</small>
+          <strong>{bootstrap?.role ?? "Authorizing…"}</strong>
+          <small>
+            {bootstrap
+              ? String(bootstrap.permissions.length) + " capabilities"
+              : "Loading platform capabilities…"}
+          </small>
         </div>
       </aside>
 
@@ -539,7 +608,7 @@ export default function CmsPage() {
         <header className="cms-topbar">
           <div>
             <span className="cms-eyebrow">INTERNAL SAAS OPERATIONS</span>
-            <h1>{navItems.find((item) => item.id === view)?.label}</h1>
+            <h1>{visibleNavItems.find((item) => item.id === view)?.label}</h1>
           </div>
           <button className="secondary-button" type="button" onClick={() => void load()}>
             Refresh
