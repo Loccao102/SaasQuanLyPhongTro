@@ -1,5 +1,8 @@
 BEGIN;
 
+DELETE FROM system_settings
+WHERE key = 'billing_webhook_processing_timeout_seconds';
+
 DROP TABLE IF EXISTS saas_billing_webhook_events;
 
 ALTER TABLE saas_subscription_payments
