@@ -25,6 +25,11 @@ import {
 import { InvalidSubscriptionTransitionError } from "../commercial/domain/subscription-lifecycle.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
+  BillingWebhookConflictError,
+  SaasBillingWebhookInboxService,
+  type SaasBillingWebhookEventView
+} from "../integrations/saas-billing-webhook-inbox.service.js";
+import {
   NotificationJobRetryConflictError,
   NotificationOperationsService
 } from "../notifications/application/notification-operations.service.js";
@@ -40,6 +45,7 @@ import type {
   PlatformPrincipal,
   ProvisionSubscriptionInput,
   RecordSubscriptionPaymentInput,
+  RequeueBillingWebhookInput,
   RevokeEntitlementOverrideInput,
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
@@ -195,7 +201,8 @@ export class CmsService {
     private readonly db: DatabaseService,
     private readonly subscriptionManagement: SubscriptionManagementService,
     private readonly subscriptionBilling: SubscriptionBillingService,
-    private readonly notificationOperations: NotificationOperationsService
+    private readonly notificationOperations: NotificationOperationsService,
+    private readonly billingWebhookInbox: SaasBillingWebhookInboxService
   ) {}
 
   getBootstrap(principal: PlatformPrincipal) {
@@ -1355,6 +1362,77 @@ export class CmsService {
           throw new NotFoundException(error.message);
         }
         if (error instanceof SubscriptionBillingConflictError) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+    });
+  }
+
+  async requeueBillingWebhook(
+    principal: PlatformPrincipal,
+    eventId: string,
+    input: RequeueBillingWebhookInput,
+    idempotencyKey: string | undefined
+  ): Promise<SaasBillingWebhookEventView> {
+    this.requirePermission(principal, "platform.billing.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const normalizedEventId = eventId.trim();
+
+    if (!normalizedEventId) {
+      throw new BadRequestException("eventId is required.");
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "BILLING_WEBHOOK_REQUEUED",
+      eventId: normalizedEventId,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response as SaasBillingWebhookEventView;
+      }
+
+      try {
+        const requeue = await this.billingWebhookInbox.requeueInTransaction(
+          client,
+          normalizedEventId
+        );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "BILLING_WEBHOOK_REQUEUED",
+          targetType: "SAAS_BILLING_WEBHOOK_EVENT",
+          targetKey: normalizedEventId,
+          organizationId: null,
+          beforeState: requeue.before,
+          afterState: requeue.after,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "BILLING_WEBHOOK_REQUEUED",
+          fingerprint,
+          requeue.after
+        );
+
+        return requeue.after;
+      } catch (error) {
+        if (error instanceof BillingWebhookConflictError) {
           throw new ConflictException(error.message);
         }
         throw error;
