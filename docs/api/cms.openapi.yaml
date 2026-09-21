@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.6.0
+  version: 0.7.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -190,6 +190,25 @@ paths:
       summary: List durable notification jobs for platform operations
       responses:
         "200": { description: Durable notification job state and provider diagnostics }
+  /jobs/providers/{provider}/control:
+    patch:
+      summary: Pause or resume a notification provider globally
+      parameters:
+        - { in: path, name: provider, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [ACTIVE, PAUSED] }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Provider control updated or idempotent replay }
+        "409": { description: Idempotency conflict }
   /jobs/{jobId}/retry:
     post:
       summary: Audit and requeue a FAILED or MANUAL_REVIEW notification job
