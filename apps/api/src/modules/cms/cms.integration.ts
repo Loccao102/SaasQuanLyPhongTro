@@ -14,6 +14,7 @@ const planId = "93000000-0000-0000-0000-000000000001";
 const planVersionId = "94000000-0000-0000-0000-000000000001";
 const testSettingKey = "cms_integration_flag";
 const testProvider = "PLAYWRIGHT_ZALO";
+const billingWebhookProvider = "CMS_TEST_BANK";
 
 const principal: PlatformPrincipal = {
   userId,
@@ -32,6 +33,10 @@ async function cleanup(pool: Pool): Promise<void> {
   await pool.query(
     "DELETE FROM organization_entitlement_overrides WHERE organization_id = $1",
     [organizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_billing_webhook_events WHERE provider = $1",
+    [billingWebhookProvider]
   );
   await pool.query(
     "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
@@ -574,6 +579,32 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(reviewPayment.allocation, null);
     assert.equal(reviewPayment.invoice?.id, reconciliationInvoiceId);
 
+    await fixturePool.query(
+      `INSERT INTO saas_billing_webhook_events (
+         provider,
+         provider_event_id,
+         signature_status,
+         processing_status,
+         raw_body,
+         raw_body_sha256,
+         processing_attempts,
+         last_error_code,
+         last_error_message
+       )
+       VALUES (
+         $1,
+         'cms-webhook-review-001',
+         'VERIFIED',
+         'REVIEW_REQUIRED',
+         '{"fixture":true}',
+         repeat('a', 64),
+         1,
+         'CMS_TEST_REVIEW',
+         'Integration fixture requires review'
+       )`,
+      [billingWebhookProvider]
+    );
+
     const reconciliationBefore =
       await service.getBillingReconciliation(principal);
     const queuedPayment = reconciliationBefore.reviewPayments.find(
@@ -587,6 +618,20 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
         (invoice) => invoice.id === reconciliationInvoiceId
       )
     );
+    assert.equal(
+      reconciliationBefore.webhookInbox.summary.reviewRequired,
+      1
+    );
+    const webhookReviewEvent =
+      reconciliationBefore.webhookInbox.events.find(
+        (event) =>
+          event.provider === billingWebhookProvider &&
+          event.providerEventId === "cms-webhook-review-001"
+      );
+    assert.ok(webhookReviewEvent);
+    assert.equal(webhookReviewEvent.processingStatus, "REVIEW_REQUIRED");
+    assert.equal(webhookReviewEvent.processingAttempts, 1);
+    assert.equal(webhookReviewEvent.paymentId, null);
 
     const firstReconciliation = await service.allocateProviderPayment(
       principal,
