@@ -12,6 +12,7 @@ import {
 import { CmsPlatformGuard } from "./cms-platform.guard.js";
 import { CmsService } from "./cms.service.js";
 import type {
+  ChangeSubscriptionPlanInput,
   CmsRequest,
   PlatformPrincipal,
   ProvisionSubscriptionInput,
@@ -100,6 +101,21 @@ export class CmsController {
     @Headers("idempotency-key") idempotencyKey?: string
   ) {
     return this.cms.transitionSubscription(
+      this.principal(request),
+      organizationId,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("organizations/:organizationId/subscription/change-plan")
+  changeSubscriptionPlan(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Body() input: ChangeSubscriptionPlanInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.changeSubscriptionPlan(
       this.principal(request),
       organizationId,
       input,
