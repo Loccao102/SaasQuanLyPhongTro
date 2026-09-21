@@ -1,11 +1,11 @@
 :root {
-  --color-bg: #f8fafc;
+  --color-bg: #f7faf9;
   --color-surface: #ffffff;
   --color-surface-soft: #f9fafb;
-  --color-text: #0f2d4a;
+  --color-text: #25355c;
   --color-text-muted: #64748b;
   --color-border: #dbe5ee;
-  --color-primary: #0b6e8e;
+  --color-primary: #2f6f8f;
   --color-primary-soft: #e8f7f7;
   --color-success: #0f9f83;
   --color-success-soft: #e8f8f4;
@@ -13,7 +13,7 @@
   --color-warning-soft: #fff7e6;
   --color-danger: #c43d3d;
   --color-danger-soft: #fff0f0;
-  --color-info: #0b6e8e;
+  --color-info: #2f6f8f;
   --color-info-soft: #e9f5f8;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -38,7 +38,7 @@ a { color: inherit; }
 .metric-card { position: relative; min-width: 0; padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); }
 .metric-card__dot { position: absolute; top: 21px; right: 20px; width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; }
 .metric-card__dot--success { background: var(--color-success); }
-.metric-card__dot--warning { background: #f59e0b; }
+.metric-card__dot--warning { background: #ffb36b; }
 .metric-card__dot--danger { background: var(--color-danger); }
 .metric-card__dot--info { background: var(--color-info); }
 .metric-card__label, .metric-card__detail { margin: 0; color: var(--color-text-muted); }
