@@ -145,6 +145,37 @@ type AuditRow = QueryResultRow & {
   reason: string;
 };
 
+type BillingWebhookRow = QueryResultRow & {
+  id: string;
+  provider: string;
+  provider_event_id: string;
+  signature_status: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
+  processing_status:
+    | "RECEIVED"
+    | "PROCESSING"
+    | "PROCESSED"
+    | "REVIEW_REQUIRED"
+    | "IGNORED"
+    | "FAILED";
+  processing_attempts: number;
+  received_at: Date;
+  processing_started_at: Date | null;
+  processed_at: Date | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  payment_id: string | null;
+  is_stale: boolean;
+};
+
+type BillingWebhookSummaryRow = QueryResultRow & {
+  received_count: string;
+  processing_count: string;
+  review_required_count: string;
+  failed_count: string;
+  stale_processing_count: string;
+  processed_24h_count: string;
+};
+
 type EntitlementOverrideRow = QueryResultRow & {
   id: string;
   organization_id: string;
@@ -1114,14 +1145,125 @@ export class CmsService {
   async getBillingReconciliation(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.billing.read");
 
-    const [reviewPayments, invoices] = await Promise.all([
+    const [
+      reviewPayments,
+      invoices,
+      webhookEvents,
+      webhookSummary
+    ] = await Promise.all([
       this.subscriptionBilling.listProviderPaymentReviews(),
-      this.subscriptionBilling.listReconciliationInvoices()
+      this.subscriptionBilling.listReconciliationInvoices(),
+      this.db.query<BillingWebhookRow>(
+        `WITH timeout_config AS (
+           SELECT (value #>> '{}')::int AS timeout_seconds
+           FROM system_settings
+           WHERE key = 'billing_webhook_processing_timeout_seconds'
+         )
+         SELECT
+           e.id::text,
+           e.provider,
+           e.provider_event_id,
+           e.signature_status,
+           e.processing_status,
+           e.processing_attempts,
+           e.received_at,
+           e.processing_started_at,
+           e.processed_at,
+           e.last_error_code,
+           e.last_error_message,
+           e.payment_id::text,
+           (
+             e.processing_status = 'PROCESSING'
+             AND e.processing_started_at IS NOT NULL
+             AND e.processing_started_at <=
+               now() - make_interval(
+                 secs => timeout_config.timeout_seconds
+               )
+           ) AS is_stale
+         FROM saas_billing_webhook_events e
+         CROSS JOIN timeout_config
+         WHERE e.processing_status IN (
+           'RECEIVED',
+           'PROCESSING',
+           'REVIEW_REQUIRED',
+           'FAILED'
+         )
+         ORDER BY e.received_at DESC, e.id DESC
+         LIMIT 100`
+      ),
+      this.db.query<BillingWebhookSummaryRow>(
+        `WITH timeout_config AS (
+           SELECT (value #>> '{}')::int AS timeout_seconds
+           FROM system_settings
+           WHERE key = 'billing_webhook_processing_timeout_seconds'
+         )
+         SELECT
+           count(*) FILTER (
+             WHERE processing_status = 'RECEIVED'
+           )::text AS received_count,
+           count(*) FILTER (
+             WHERE processing_status = 'PROCESSING'
+           )::text AS processing_count,
+           count(*) FILTER (
+             WHERE processing_status = 'REVIEW_REQUIRED'
+           )::text AS review_required_count,
+           count(*) FILTER (
+             WHERE processing_status = 'FAILED'
+           )::text AS failed_count,
+           count(*) FILTER (
+             WHERE processing_status = 'PROCESSING'
+               AND processing_started_at IS NOT NULL
+               AND processing_started_at <=
+                 now() - make_interval(
+                   secs => timeout_config.timeout_seconds
+                 )
+           )::text AS stale_processing_count,
+           count(*) FILTER (
+             WHERE processing_status = 'PROCESSED'
+               AND processed_at >= now() - interval '24 hours'
+           )::text AS processed_24h_count
+         FROM saas_billing_webhook_events
+         CROSS JOIN timeout_config`
+      )
     ]);
+
+    const summary = webhookSummary.rows[0];
 
     return {
       reviewPayments,
-      invoices
+      invoices,
+      webhookInbox: {
+        summary: {
+          received: Number(summary?.received_count ?? 0),
+          processing: Number(summary?.processing_count ?? 0),
+          reviewRequired: Number(
+            summary?.review_required_count ?? 0
+          ),
+          failed: Number(summary?.failed_count ?? 0),
+          staleProcessing: Number(
+            summary?.stale_processing_count ?? 0
+          ),
+          processed24h: Number(
+            summary?.processed_24h_count ?? 0
+          )
+        },
+        events: webhookEvents.rows.map((row) => ({
+          id: row.id,
+          provider: row.provider,
+          providerEventId: row.provider_event_id,
+          signatureStatus: row.signature_status,
+          processingStatus: row.processing_status,
+          processingAttempts: row.processing_attempts,
+          receivedAt: row.received_at.toISOString(),
+          processingStartedAt:
+            row.processing_started_at?.toISOString() ?? null,
+          processedAt: row.processed_at?.toISOString() ?? null,
+          lastErrorCode: row.last_error_code,
+          lastErrorMessage: row.last_error_message,
+          paymentId: row.payment_id,
+          isStale: row.is_stale
+        }))
+      }
     };
   }
 
