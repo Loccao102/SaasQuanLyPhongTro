@@ -44,6 +44,8 @@ CMS routes may perform cross-organization reads only after server-side platform 
 - Settings: registration, maintenance, trial/grace, automation/provider config.
 - Plans & limits: prices, room/staff limits, automation quota, feature availability.
 - Organization inspection: subscription, usage vs entitlement, health summaries.
+- Subscription operations: provision from current plan version and audited lifecycle transitions.
+- Entitlement overrides: organization-specific limit/feature exceptions with optional expiry.
 - Operations: job status, retry/manual review, provider health.
 - Logs/Audit: technical logs via observability; durable structured platform audit.
 
