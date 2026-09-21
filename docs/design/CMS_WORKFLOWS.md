@@ -18,9 +18,11 @@ Understand system/customer state, safely change configuration, recover operation
 2. Cấu hình
 3. Gói & giới hạn
 4. Organizations
-5. Jobs / Queue
-6. Technical logs
-7. Audit log
+5. SaaS Billing
+6. Entitlement overrides
+7. Jobs / Queue
+8. Technical logs
+9. Audit log
 
 ## Settings
 
@@ -36,6 +38,24 @@ Show current/proposed values, affected dimension, effective-date/price-version p
 
 Show identity, subscription, plan, usage vs limits, operational alerts and audit/activity. Over-limit never deletes existing rooms.
 
+## SaaS Billing
+
+Primary job: understand subscription collection exposure and safely reconcile provider money without rewriting provider transactions.
+
+Review queue flow: inspect provider/transaction/reference/amount -> inspect exact-reference suggestion if present -> choose target SaaS invoice -> enter explicit allocation amount -> review payment/invoice balances -> provide audit reason -> Allocate payment -> observe updated balances and audit receipt.
+
+Financial safeguards:
+- only `platform.billing.read` may inspect reconciliation data;
+- only `platform.billing.manage` may allocate;
+- original provider PaymentTransaction is preserved;
+- PaymentAllocation is append-only;
+- allocation cannot exceed payment unallocated balance or invoice remaining balance;
+- payment already assigned to organization A cannot be allocated to organization B;
+- unsafe or ambiguous matches remain REVIEW_REQUIRED;
+- duplicate operator submit is idempotent.
+
+Loaded states include empty review queue, no open invoices, exact reference suggestion, unmatched reference, partially allocated payment, overdue invoice, server validation error and successful reconciliation.
+
 ## Jobs
 
 Manual retry: inspect error/prior attempts -> verify retryable -> reason -> idempotent command -> resulting state. Bulk retry must show target count and partial-success summary.
@@ -50,7 +70,7 @@ Read-only: actor, action, target, before/after, reason, timestamp.
 
 ## Foundation limitation
 
-Current slice implements loaded/mock interaction paths. Real loading/empty/error/permission/conflict handling arrives with API integration and must be implemented before production release.
+CMS is API-backed. Remaining production gaps are real login/session middleware, finer UI permission gates, observability integration and provider-specific payment/notification adapters.
 
 ## Responsive/accessibility
 
