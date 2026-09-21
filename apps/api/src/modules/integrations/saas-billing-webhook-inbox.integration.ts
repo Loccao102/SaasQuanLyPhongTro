@@ -65,6 +65,14 @@ test("billing webhook inbox persists raw events idempotently and gates processin
     });
     assert.equal(invalid.processingStatus, "IGNORED");
 
+    const unconfigured = await inbox.persist({
+      provider,
+      providerEventId: "event-unconfigured",
+      signatureStatus: "NOT_CONFIGURED",
+      rawBody: '{"transaction":"tx-unconfigured"}'
+    });
+    assert.equal(unconfigured.processingStatus, "REVIEW_REQUIRED");
+
     const claimed = await inbox.claimNext(provider);
     assert.ok(claimed);
     assert.equal(claimed.id, first.id);
@@ -107,7 +115,8 @@ test("billing webhook inbox persists raw events idempotently and gates processin
       counts.rows.map((row) => [row.processing_status, row.count]),
       [
         ["IGNORED", 1],
-        ["PROCESSED", 1]
+        ["PROCESSED", 1],
+        ["REVIEW_REQUIRED", 1]
       ]
     );
   } finally {
