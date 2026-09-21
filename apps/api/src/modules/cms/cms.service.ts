@@ -10,6 +10,7 @@ import {
 import type { PoolClient, QueryResultRow } from "pg";
 import {
   ConcurrentSubscriptionUpdateError,
+  InvalidSubscriptionPlanChangeError,
   InvalidSubscriptionProvisioningError,
   SubscriptionAlreadyExistsError,
   SubscriptionManagementService,
@@ -25,6 +26,7 @@ import {
   type EntitlementValue
 } from "../commercial/domain/entitlements.js";
 import type {
+  ChangeSubscriptionPlanInput,
   PlatformPrincipal,
   ProvisionSubscriptionInput,
   RevokeEntitlementOverrideInput,
@@ -692,6 +694,80 @@ export class CmsService {
     });
   }
 
+  async changeSubscriptionPlan(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    input: ChangeSubscriptionPlanInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.subscriptions.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const targetPlanCode = input.targetPlanCode?.trim() ?? "";
+    const expectedVersion = input.expectedVersion;
+
+    if (targetPlanCode.length === 0) {
+      throw new BadRequestException("targetPlanCode is required.");
+    }
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new BadRequestException("expectedVersion must be a positive integer.");
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "SUBSCRIPTION_PLAN_CHANGED",
+      organizationId,
+      targetPlanCode,
+      expectedVersion,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const change = await this.subscriptionManagement.changePlan(client, {
+          organizationId,
+          targetPlanCode,
+          expectedVersion: Number(expectedVersion)
+        });
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "SUBSCRIPTION_PLAN_CHANGED",
+          targetType: "ORGANIZATION_SUBSCRIPTION",
+          targetKey: organizationId,
+          organizationId,
+          beforeState: change.before,
+          afterState: change.after,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "SUBSCRIPTION_PLAN_CHANGED",
+          fingerprint,
+          change.after
+        );
+        return change.after;
+      } catch (error) {
+        this.rethrowSubscriptionError(error);
+      }
+    });
+  }
+
   async listEntitlementOverrides(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.organizations.inspect");
     const result = await this.db.query<EntitlementOverrideRow>(
@@ -1037,6 +1113,7 @@ export class CmsService {
 
   private rethrowSubscriptionError(error: unknown): never {
     if (
+      error instanceof InvalidSubscriptionPlanChangeError ||
       error instanceof InvalidSubscriptionProvisioningError ||
       error instanceof InvalidSubscriptionTransitionError
     ) {
