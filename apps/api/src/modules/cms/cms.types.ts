@@ -76,3 +76,7 @@ export interface AllocateProviderPaymentInput {
   amountVnd?: number;
   reason?: string;
 }
+
+export interface RequeueBillingWebhookInput {
+  reason?: string;
+}
