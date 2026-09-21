@@ -73,8 +73,11 @@ export type CmsOrganization = {
   planCode: string | null;
   latestInvoice: {
     id: string;
-    status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+    status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
     amountVnd: number;
+    paidAmountVnd: number;
+    remainingAmountVnd: number;
+    isOverdue: boolean;
     dueAt: string | null;
     paidAt: string | null;
     periodStart: string | null;
@@ -99,18 +102,33 @@ export type CmsBillingSettlement = {
     periodStart: string;
     periodEnd: string;
     amountVnd: number;
-    status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+    paidAmountVnd: number;
+    remainingAmountVnd: number;
+    status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+    isOverdue: boolean;
     dueAt: string;
     paidAt: string | null;
   };
   payment: {
     id: string;
-    invoiceId: string;
     amountVnd: number;
+    allocatedAmountVnd: number;
+    unallocatedAmountVnd: number;
     status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+    reconciliationStatus:
+      | "UNALLOCATED"
+      | "ALLOCATED"
+      | "REVIEW_REQUIRED";
     source: "MANUAL" | "PROVIDER";
     provider: string | null;
     occurredAt: string;
+  };
+  allocation: {
+    id: string;
+    paymentId: string;
+    invoiceId: string;
+    amountVnd: number;
+    reason: string;
   };
   subscription: {
     organizationId: string;
@@ -386,6 +404,7 @@ export const cmsApi = {
   recordSubscriptionPayment: (
     organizationId: string,
     invoiceId: string,
+    amountVnd: number,
     reason: string
   ) =>
     request<CmsBillingSettlement>(
@@ -395,7 +414,7 @@ export const cmsApi = {
       {
         method: "POST",
         headers: { "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({ invoiceId, reason })
+        body: JSON.stringify({ invoiceId, amountVnd, reason })
       }
     )
 };
