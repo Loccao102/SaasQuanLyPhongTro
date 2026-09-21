@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.4.0
+  version: 0.5.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -116,6 +116,28 @@ paths:
         "200": { description: Transitioned subscription or idempotent replay }
         "400": { description: Invalid lifecycle transition }
         "404": { description: Subscription not found }
+        "409": { description: Optimistic version or idempotency conflict }
+  /organizations/{organizationId}/subscription/change-plan:
+    post:
+      summary: Change subscription to the current version of a target plan without payment side effects
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetPlanCode, expectedVersion, reason]
+              properties:
+                targetPlanCode: { type: string }
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Subscription plan snapshot changed or idempotent replay }
+        "400": { description: Invalid/cancelled/no-op plan change }
+        "404": { description: Subscription or target plan not found }
         "409": { description: Optimistic version or idempotency conflict }
   /entitlement-overrides:
     get:
