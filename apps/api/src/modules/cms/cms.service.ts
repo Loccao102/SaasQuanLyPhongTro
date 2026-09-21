@@ -10,7 +10,8 @@ import type { PoolClient, QueryResultRow } from "pg";
 import {
   SubscriptionBillingConflictError,
   SubscriptionBillingNotFoundError,
-  SubscriptionBillingService
+  SubscriptionBillingService,
+  type BillingSettlementView
 } from "../commercial/application/subscription-billing.service.js";
 import {
   ConcurrentSubscriptionUpdateError,
@@ -1013,7 +1014,7 @@ export class CmsService {
     organizationId: string,
     input: RecordSubscriptionPaymentInput,
     idempotencyKey: string | undefined
-  ) {
+  ): Promise<BillingSettlementView> {
     this.requirePermission(principal, "platform.billing.manage");
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
@@ -1049,7 +1050,7 @@ export class CmsService {
             "Idempotency-Key was already used with a different request."
           );
         }
-        return receipt.response;
+        return receipt.response as BillingSettlementView;
       }
 
       try {
@@ -1129,7 +1130,7 @@ export class CmsService {
     paymentId: string,
     input: AllocateProviderPaymentInput,
     idempotencyKey: string | undefined
-  ) {
+  ): Promise<BillingSettlementView> {
     this.requirePermission(principal, "platform.billing.manage");
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
@@ -1168,7 +1169,7 @@ export class CmsService {
             "Idempotency-Key was already used with a different request."
           );
         }
-        return receipt.response;
+        return receipt.response as BillingSettlementView;
       }
 
       try {
