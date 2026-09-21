@@ -34,6 +34,7 @@ import {
   type EntitlementValue
 } from "../commercial/domain/entitlements.js";
 import type {
+  AllocateProviderPaymentInput,
   ChangeSubscriptionPlanInput,
   PlatformPrincipal,
   ProvisionSubscriptionInput,
@@ -1068,6 +1069,115 @@ export class CmsService {
           principal.userId,
           commandKey,
           "SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY",
+          fingerprint,
+          settlement
+        );
+        return settlement;
+      } catch (error) {
+        if (error instanceof SubscriptionBillingNotFoundError) {
+          throw new NotFoundException(error.message);
+        }
+        if (error instanceof SubscriptionBillingConflictError) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+    });
+  }
+
+  async getBillingReconciliation(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.billing.read");
+
+    const [reviewPayments, invoices] = await Promise.all([
+      this.subscriptionBilling.listProviderPaymentReviews(),
+      this.subscriptionBilling.listReconciliationInvoices()
+    ]);
+
+    return {
+      reviewPayments,
+      invoices
+    };
+  }
+
+  async allocateProviderPayment(
+    principal: PlatformPrincipal,
+    paymentId: string,
+    input: AllocateProviderPaymentInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.billing.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const invoiceId = input.invoiceId?.trim() ?? "";
+    const amountVnd = input.amountVnd;
+
+    if (!paymentId.trim()) {
+      throw new BadRequestException("paymentId is required.");
+    }
+    if (!invoiceId) {
+      throw new BadRequestException("invoiceId is required.");
+    }
+    if (!Number.isInteger(amountVnd) || Number(amountVnd) <= 0) {
+      throw new BadRequestException(
+        "amountVnd must be a positive integer VND amount."
+      );
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "SUBSCRIPTION_PROVIDER_PAYMENT_RECONCILED_MANUALLY",
+      paymentId,
+      invoiceId,
+      amountVnd,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const settlement =
+          await this.subscriptionBilling.allocateProviderPaymentInTransaction(
+            client,
+            {
+              paymentId,
+              invoiceId,
+              amountVnd: Number(amountVnd),
+              allocatedByUserId: principal.userId,
+              reason
+            }
+          );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "SUBSCRIPTION_PROVIDER_PAYMENT_RECONCILED_MANUALLY",
+          targetType: "SAAS_SUBSCRIPTION_PAYMENT",
+          targetKey: paymentId,
+          organizationId: settlement.invoice.organizationId,
+          beforeState: {
+            paymentId,
+            invoiceId,
+            amountVnd
+          },
+          afterState: settlement,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "SUBSCRIPTION_PROVIDER_PAYMENT_RECONCILED_MANUALLY",
           fingerprint,
           settlement
         );
