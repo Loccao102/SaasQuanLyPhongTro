@@ -156,6 +156,16 @@ export interface BillingSettlementView {
   };
 }
 
+export interface SubscriptionCancellationScheduleView {
+  organizationId: string;
+  subscriptionId: string;
+  status: SubscriptionStatus;
+  version: number;
+  cancelAtPeriodEnd: boolean;
+  effectiveAt: string | null;
+  voidedInvoiceIds: string[];
+}
+
 export class SubscriptionBillingConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -199,7 +209,10 @@ export class SubscriptionBillingService {
       organizationId
     );
 
-    if (subscription.status === "CANCELLED") {
+    if (
+      subscription.status === "CANCELLED" ||
+      subscription.cancel_at_period_end
+    ) {
       return null;
     }
 
@@ -1121,6 +1134,124 @@ export class SubscriptionBillingService {
     );
   }
 
+  async setCancellationScheduleInTransaction(
+    client: PoolClient,
+    input: {
+      organizationId: string;
+      cancelAtPeriodEnd: boolean;
+      expectedVersion: number;
+      reason: string;
+    }
+  ): Promise<SubscriptionCancellationScheduleView> {
+    const reason = input.reason.trim();
+    if (reason.length < 3) {
+      throw new SubscriptionBillingConflictError(
+        "Subscription cancellation reason is required."
+      );
+    }
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new SubscriptionBillingConflictError(
+        "expectedVersion must be a positive integer."
+      );
+    }
+
+    await this.lockOrganization(client, input.organizationId);
+    const subscription = await this.loadSubscriptionForUpdate(
+      client,
+      input.organizationId
+    );
+
+    if (
+      subscription.status !== "ACTIVE" &&
+      subscription.status !== "TRIALING"
+    ) {
+      throw new SubscriptionBillingConflictError(
+        "Scheduled cancellation is only available for ACTIVE or TRIALING subscriptions."
+      );
+    }
+    if (subscription.version !== input.expectedVersion) {
+      throw new SubscriptionBillingConflictError(
+        "Subscription changed since it was loaded."
+      );
+    }
+    if (
+      subscription.cancel_at_period_end === input.cancelAtPeriodEnd
+    ) {
+      throw new SubscriptionBillingConflictError(
+        input.cancelAtPeriodEnd
+          ? "Subscription cancellation is already scheduled."
+          : "Subscription cancellation is not scheduled."
+      );
+    }
+
+    const effectiveAt =
+      subscription.status === "TRIALING"
+        ? subscription.trial_ends_at
+        : subscription.current_period_end;
+
+    if (!effectiveAt) {
+      throw new SubscriptionBillingConfigurationError(
+        "Subscription does not have a cancellation period end."
+      );
+    }
+
+    let voidedInvoiceIds: string[] = [];
+    if (input.cancelAtPeriodEnd) {
+      voidedInvoiceIds =
+        await this.voidUnpaidFutureInvoicesInTransaction(
+          client,
+          subscription,
+          effectiveAt
+        );
+    }
+
+    const updatedVersion = subscription.version + 1;
+    await client.query(
+      `UPDATE organization_subscriptions
+       SET cancel_at_period_end = $2,
+           version = $3,
+           updated_at = now()
+       WHERE organization_id = $1`,
+      [
+        input.organizationId,
+        input.cancelAtPeriodEnd,
+        updatedVersion
+      ]
+    );
+
+    await this.insertSystemAudit(client, {
+      organizationId: input.organizationId,
+      action: input.cancelAtPeriodEnd
+        ? "SUBSCRIPTION_CANCELLATION_SCHEDULED"
+        : "SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED",
+      targetType: "SAAS_SUBSCRIPTION",
+      targetKey: subscription.id,
+      beforeState: {
+        status: subscription.status,
+        version: subscription.version,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end
+      },
+      afterState: {
+        status: subscription.status,
+        version: updatedVersion,
+        cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+        effectiveAt: effectiveAt.toISOString(),
+        voidedInvoiceIds
+      },
+      reason
+    });
+
+    return {
+      organizationId: subscription.organization_id,
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      version: updatedVersion,
+      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+      effectiveAt: effectiveAt.toISOString(),
+      voidedInvoiceIds
+    };
+  }
+
   async processDueBatch(
     limit = 100
   ): Promise<{
@@ -1149,16 +1280,36 @@ export class SubscriptionBillingService {
        WHERE s.status <> 'CANCELLED'
          AND (
            (
-             s.status = 'TRIALING'
-             AND s.trial_ends_at IS NOT NULL
-             AND s.trial_ends_at <=
-               now() + make_interval(days => bs.lead_days)
+             s.cancel_at_period_end = false
+             AND (
+               (
+                 s.status = 'TRIALING'
+                 AND s.trial_ends_at IS NOT NULL
+                 AND s.trial_ends_at <=
+                   now() + make_interval(days => bs.lead_days)
+               )
+               OR (
+                 s.status <> 'TRIALING'
+                 AND s.current_period_end IS NOT NULL
+                 AND s.current_period_end <=
+                   now() + make_interval(days => bs.lead_days)
+               )
+             )
            )
            OR (
-             s.status <> 'TRIALING'
-             AND s.current_period_end IS NOT NULL
-             AND s.current_period_end <=
-               now() + make_interval(days => bs.lead_days)
+             s.cancel_at_period_end = true
+             AND (
+               (
+                 s.status = 'TRIALING'
+                 AND s.trial_ends_at IS NOT NULL
+                 AND s.trial_ends_at <= now()
+               )
+               OR (
+                 s.status <> 'TRIALING'
+                 AND s.current_period_end IS NOT NULL
+                 AND s.current_period_end <= now()
+               )
+             )
            )
            OR (
              s.status = 'PAST_DUE'
@@ -1241,6 +1392,19 @@ export class SubscriptionBillingService {
         client,
         organizationId
       );
+      const cancellation =
+        await this.applyScheduledCancellationInTransaction(
+          client,
+          organizationId
+        );
+      if (cancellation) {
+        return {
+          invoice,
+          activatedPaidPeriod: false,
+          transition: cancellation
+        };
+      }
+
       const activatedPaidPeriod =
         await this.activatePaidPeriodInTransaction(
           client,
