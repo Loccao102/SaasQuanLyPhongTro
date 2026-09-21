@@ -6,6 +6,7 @@ WHERE key IN (
   'past_due_warning_days'
 );
 
+DROP TABLE IF EXISTS saas_subscription_payment_allocations;
 DROP TABLE IF EXISTS saas_subscription_payments;
 DROP TABLE IF EXISTS saas_subscription_invoices;
 
