@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: Prop-Ops Internal Notification Worker API
+  version: 0.1.0
+  description: Server-to-server API for separate notification worker runtimes.
+servers:
+  - url: /api/internal/notifications
+security:
+  - workerBearer: []
+paths:
+  /heartbeat:
+    post:
+      summary: Report worker/provider health and optionally request provider pause
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, provider, status]
+              properties:
+                workerId: { type: string }
+                provider: { type: string }
+                status: { type: string, enum: [STARTING, HEALTHY, DEGRADED, STOPPING] }
+                lastErrorCode: { type: [string, "null"] }
+                lastErrorMessage: { type: [string, "null"] }
+                metadata: { type: object }
+                pauseProviderReason: { type: [string, "null"] }
+      responses:
+        "200": { description: Heartbeat recorded }
+        "401": { description: Invalid/missing internal worker token }
+  /claim:
+    post:
+      summary: Claim one due notification job for a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider: { type: string }
+      responses:
+        "200": { description: Claimed job or null when no eligible work exists }
+        "401": { description: Invalid/missing internal worker token }
+  /{jobId}/complete:
+    post:
+      summary: Complete one running notification attempt with provider evidence
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, attemptNumber, result]
+              properties:
+                organizationId: { type: string, format: uuid }
+                attemptNumber: { type: integer, minimum: 1 }
+                result:
+                  type: object
+                  required: [kind]
+                  properties:
+                    kind:
+                      type: string
+                      enum: [SENT_CONFIRMED, TRANSIENT_FAILURE, PERMANENT_FAILURE, MANUAL_REVIEW, UNKNOWN]
+                    recipientVerified: { type: boolean }
+                    sendVerified: { type: boolean }
+                    providerReference: { type: [string, "null"] }
+                    errorCode: { type: [string, "null"] }
+                    errorMessage: { type: [string, "null"] }
+                    evidence: { type: object }
+      responses:
+        "200": { description: Attempt completed and durable job/campaign state updated }
+        "400": { description: Invalid provider result payload }
+        "401": { description: Invalid/missing internal worker token }
+components:
+  securitySchemes:
+    workerBearer:
+      type: http
+      scheme: bearer
