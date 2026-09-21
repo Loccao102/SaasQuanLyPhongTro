@@ -636,20 +636,20 @@ export class CmsService {
       Number(commercial.suspended ?? 0);
 
     const branding = {
-      productName: stringSetting("brand_product_name", "PropOps"),
+      productName: stringSetting("brand_product_name", "Habi"),
       descriptor: stringSetting(
         "brand_product_descriptor",
-        "SaaS Quản lý Phòng Trọ"
+        "SaaS vận hành nhà cho thuê"
       ),
       tagline: stringSetting(
         "brand_tagline",
-        "Vận hành hiệu quả · Kiến tạo giá trị bền vững"
+        "Nhà gọn. Việc trôi."
       ),
       palette: jsonSetting("brand_palette", {
-        navy: "#0F2D4A",
-        teal: "#14B8A6",
-        amber: "#F59E0B",
-        background: "#F8FAFC",
+        navy: "#25355C",
+        teal: "#35C6A8",
+        amber: "#FFB36B",
+        background: "#F7FAF9",
         surface: "#FFFFFF"
       })
     };
