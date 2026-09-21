@@ -227,24 +227,21 @@ export class SubscriptionManagementService {
 
     const transition = transitionSubscription(state, input.to, input.reason);
 
-    let graceEndsAt: string | null | undefined;
+    let nextGraceEndsAt = current.grace_ends_at?.toISOString() ?? null;
     if (input.to === "GRACE_PERIOD") {
-      graceEndsAt = await this.defaultFutureTimestamp(
+      nextGraceEndsAt = await this.defaultFutureTimestamp(
         client,
         "grace_period_days"
       );
     } else if (input.to === "ACTIVE") {
-      graceEndsAt = null;
+      nextGraceEndsAt = null;
     }
 
     const updatedResult = await client.query<SubscriptionRow>(
       `UPDATE organization_subscriptions
        SET status = $2,
            version = $3,
-           grace_ends_at = CASE
-             WHEN $4::text IS NULL THEN grace_ends_at
-             ELSE $4::timestamptz
-           END,
+           grace_ends_at = $4::timestamptz,
            trial_ends_at = CASE
              WHEN $2 = 'ACTIVE' THEN NULL
              ELSE trial_ends_at
@@ -268,23 +265,12 @@ export class SubscriptionManagementService {
         input.organizationId,
         transition.subscription.status,
         transition.subscription.version,
-        graceEndsAt === undefined ? "__UNCHANGED__" : graceEndsAt,
+        nextGraceEndsAt,
         current.plan_code
       ]
     );
 
-    const updated = updatedResult.rows[0]!;
-    if (graceEndsAt === undefined) {
-      updated.grace_ends_at = current.grace_ends_at;
-      await client.query(
-        `UPDATE organization_subscriptions
-         SET grace_ends_at = $2
-         WHERE organization_id = $1`,
-        [input.organizationId, current.grace_ends_at]
-      );
-    }
-
-    return this.mapRow(updated);
+    return this.mapRow(updatedResult.rows[0]!);
   }
 
   private async defaultFutureTimestamp(
