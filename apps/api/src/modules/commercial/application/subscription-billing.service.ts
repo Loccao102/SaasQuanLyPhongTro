@@ -375,23 +375,19 @@ export class SubscriptionBillingService {
     const params: unknown[] = [];
 
     if (query) {
-      const escapedQuery = query.replace(
-        /[\\%_]/g,
-        (match) => "\\" + match
-      );
-      params.push("%" + escapedQuery + "%");
+      params.push(query);
       const placeholder = "$" + String(params.length);
       clauses.push(
         "(" +
-          "p.id::text ILIKE " +
+          "position(lower(" +
           placeholder +
-          " ESCAPE '\\\\' OR " +
-          "p.provider_transaction_id ILIKE " +
+          ") in lower(p.id::text)) > 0 OR " +
+          "position(lower(" +
           placeholder +
-          " ESCAPE '\\\\' OR " +
-          "COALESCE(p.metadata ->> 'paymentReference', '') ILIKE " +
+          ") in lower(COALESCE(p.provider_transaction_id, ''))) > 0 OR " +
+          "position(lower(" +
           placeholder +
-          " ESCAPE '\\\\'" +
+          ") in lower(COALESCE(p.metadata ->> 'paymentReference', ''))) > 0" +
           ")"
       );
     }
