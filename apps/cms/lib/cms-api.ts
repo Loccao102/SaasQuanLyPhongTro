@@ -210,9 +210,42 @@ export type CmsReconciliationInvoice = {
   paidAt: string | null;
 };
 
+export type CmsBillingWebhookEvent = {
+  id: string;
+  provider: string;
+  providerEventId: string;
+  signatureStatus: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
+  processingStatus:
+    | "RECEIVED"
+    | "PROCESSING"
+    | "PROCESSED"
+    | "REVIEW_REQUIRED"
+    | "IGNORED"
+    | "FAILED";
+  processingAttempts: number;
+  receivedAt: string;
+  processingStartedAt: string | null;
+  processedAt: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  paymentId: string | null;
+  isStale: boolean;
+};
+
 export type CmsBillingReconciliation = {
   reviewPayments: CmsProviderPaymentReview[];
   invoices: CmsReconciliationInvoice[];
+  webhookInbox: {
+    summary: {
+      received: number;
+      processing: number;
+      reviewRequired: number;
+      failed: number;
+      staleProcessing: number;
+      processed24h: number;
+    };
+    events: CmsBillingWebhookEvent[];
+  };
 };
 
 export type CmsAuditEvent = {
