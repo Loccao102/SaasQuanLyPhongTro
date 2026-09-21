@@ -9,6 +9,7 @@ import {
 
 const organizationId = "d1000000-0000-0000-0000-000000000001";
 const operatorUserId = "d2000000-0000-0000-0000-000000000001";
+const batchOrganizationId = "d1000000-0000-0000-0000-000000000002";
 
 async function cleanup(pool: Pool): Promise<void> {
   await pool.query(
@@ -33,6 +34,33 @@ async function cleanup(pool: Pool): Promise<void> {
   );
   await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [operatorUserId]);
+}
+
+async function cleanupBatch(pool: Pool): Promise<void> {
+  await pool.query(
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
+    [batchOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
+    [batchOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
+    [batchOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM platform_audit_events WHERE organization_id = $1",
+    [batchOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organization_subscriptions WHERE organization_id = $1",
+    [batchOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organizations WHERE id = $1",
+    [batchOrganizationId]
+  );
 }
 
 test("subscription billing supports partial allocations, delinquency and idempotent recovery", async () => {
@@ -278,6 +306,105 @@ test("subscription billing supports partial allocations, delinquency and idempot
   } finally {
     await database.onModuleDestroy();
     await cleanup(fixturePool);
+    await fixturePool.end();
+  }
+});
+
+
+test("bounded billing sweep creates one renewal invoice and is repeat-safe", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const billing = new SubscriptionBillingService(database);
+
+  try {
+    await cleanupBatch(fixturePool);
+
+    await fixturePool.query(
+      `INSERT INTO organizations (
+         id, slug, name, organization_type, status
+       )
+       VALUES (
+         $1,
+         'billing-batch-org',
+         'Billing Batch Org',
+         'INDIVIDUAL',
+         'ACTIVE'
+       )`,
+      [batchOrganizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status,
+         billing_interval,
+         current_period_start,
+         current_period_end
+       )
+       SELECT
+         $1,
+         p.id,
+         p.current_version_id,
+         'ACTIVE',
+         'MONTHLY',
+         now() - interval '27 days',
+         now() + interval '3 days'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [batchOrganizationId]
+    );
+
+    const firstSweep = await billing.processDueBatch(50);
+    const firstResult = firstSweep.results.find(
+      (item) => item.organizationId === batchOrganizationId
+    );
+    assert.ok(firstResult);
+    assert.equal(firstResult.ok, true);
+    assert.ok(firstResult.invoiceId);
+    assert.equal(firstResult.transition, null);
+    assert.equal(firstResult.activatedPaidPeriod, false);
+
+    const invoicesAfterFirst = await billing.listInvoices(
+      batchOrganizationId
+    );
+    assert.equal(invoicesAfterFirst.length, 1);
+    assert.equal(invoicesAfterFirst[0]?.status, "OPEN");
+    assert.equal(invoicesAfterFirst[0]?.isOverdue, false);
+
+    const secondSweep = await billing.processDueBatch(50);
+    const secondResult = secondSweep.results.find(
+      (item) => item.organizationId === batchOrganizationId
+    );
+    assert.ok(secondResult);
+    assert.equal(secondResult.invoiceId, firstResult.invoiceId);
+
+    const invoiceCount = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM saas_subscription_invoices
+       WHERE organization_id = $1`,
+      [batchOrganizationId]
+    );
+    assert.equal(invoiceCount.rows[0]?.count, 1);
+
+    const subscription = await fixturePool.query<{
+      status: string;
+      version: number;
+    }>(
+      `SELECT status, version
+       FROM organization_subscriptions
+       WHERE organization_id = $1`,
+      [batchOrganizationId]
+    );
+    assert.equal(subscription.rows[0]?.status, "ACTIVE");
+    assert.equal(subscription.rows[0]?.version, 1);
+  } finally {
+    await database.onModuleDestroy();
+    await cleanupBatch(fixturePool);
     await fixturePool.end();
   }
 });
