@@ -369,13 +369,24 @@ export class SubscriptionBillingService {
 
     let invoice: InvoiceRow | null = null;
     if (paymentReference) {
-      const invoiceResult = await client.query<InvoiceRow>(
+      const lookupResult = await client.query<InvoiceRow>(
         this.invoiceSelectSql(
-          "WHERE i.payment_reference = $1 FOR UPDATE OF i"
+          "WHERE i.payment_reference = $1"
         ),
         [paymentReference]
       );
-      invoice = invoiceResult.rows[0] ?? null;
+      const lookup = lookupResult.rows[0] ?? null;
+
+      if (lookup) {
+        await this.lockOrganization(client, lookup.organization_id);
+        const invoiceResult = await client.query<InvoiceRow>(
+          this.invoiceSelectSql(
+            "WHERE i.organization_id = $1 AND i.id = $2 FOR UPDATE OF i"
+          ),
+          [lookup.organization_id, lookup.id]
+        );
+        invoice = invoiceResult.rows[0] ?? null;
+      }
     }
 
     const safeToAllocate =
