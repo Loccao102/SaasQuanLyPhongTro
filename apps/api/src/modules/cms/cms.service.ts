@@ -94,6 +94,8 @@ type OrganizationRow = QueryResultRow & {
   room_limit_source: string | null;
   staff_limit_source: string | null;
   automation_quota_source: string | null;
+  automation_reserved: number;
+  automation_consumed: number;
 };
 
 type AuditRow = QueryResultRow & {
@@ -449,7 +451,9 @@ export class CmsService {
            WHEN automation_override.value IS NOT NULL THEN 'OVERRIDE'
            WHEN pv.automation_quota IS NOT NULL THEN 'PLAN'
            ELSE NULL
-         END AS automation_quota_source
+         END AS automation_quota_source,
+         COALESCE(automation_usage.reserved_actions, 0)::int AS automation_reserved,
+         COALESCE(automation_usage.consumed_actions, 0)::int AS automation_consumed
        FROM organizations o
        LEFT JOIN LATERAL (
          SELECT u.display_name
@@ -507,6 +511,22 @@ export class CmsService {
          ORDER BY eo.created_at DESC
          LIMIT 1
        ) automation_override ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           aqp.reserved_actions,
+           aqp.consumed_actions
+         FROM automation_quota_periods aqp
+         JOIN LATERAL (
+           SELECT value #>> '{}' AS timezone
+           FROM system_settings
+           WHERE key = 'automation_quota_timezone'
+         ) quota_timezone ON true
+         WHERE aqp.organization_id = o.id
+           AND timezone(quota_timezone.timezone, now())::date >= aqp.period_start
+           AND timezone(quota_timezone.timezone, now())::date < aqp.period_end
+         ORDER BY aqp.period_start DESC
+         LIMIT 1
+       ) automation_usage ON true
        ORDER BY o.created_at DESC, o.id DESC`
     );
 
@@ -527,7 +547,8 @@ export class CmsService {
       roomLimitSource: row.room_limit_source,
       staffLimitSource: row.staff_limit_source,
       automationQuotaSource: row.automation_quota_source,
-      automationUsed: null
+      automationUsed: row.automation_consumed,
+      automationReserved: row.automation_reserved
     }));
   }
 
