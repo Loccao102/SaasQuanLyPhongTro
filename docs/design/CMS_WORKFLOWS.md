@@ -38,6 +38,16 @@ Show current/proposed values, affected dimension, effective-date/price-version p
 
 Show identity, subscription, plan, usage vs limits, operational alerts and audit/activity. Over-limit never deletes existing rooms.
 
+## Subscription cancellation
+
+For ACTIVE/TRIALING organizations, platform admins have two distinct controls:
+- immediate status transition to CANCELLED for forced termination;
+- **Cancel at period end** for normal non-renewal.
+
+Scheduled cancellation keeps access through the current period, suppresses renewal invoice creation, and voids only unpaid renewal invoices with `void_reason=SCHEDULED_CANCELLATION`. Undo reopens only those cancellation-voided invoices. A future billing period with allocated money blocks scheduling until refund/credit handling is resolved.
+
+The command requires optimistic subscription version, audit reason and idempotency key.
+
 ## SaaS Billing
 
 Primary job: understand subscription collection exposure and safely reconcile provider money without rewriting provider transactions.
