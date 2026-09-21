@@ -15,12 +15,14 @@ import {
 import {
   cmsApi,
   type CmsAuditEvent,
+  type CmsBillingReconciliation,
   type CmsDashboard,
   type CmsEntitlementOverride,
   type CmsJobsStatus,
   type CmsNotificationJob,
   type CmsNotificationProvider,
   type CmsOrganization,
+  type CmsProviderPaymentReview,
   type CmsPlan,
   type CmsSetting,
   type CmsSubscriptionStatus,
@@ -32,6 +34,7 @@ type View =
   | "settings"
   | "plans"
   | "organizations"
+  | "billing"
   | "entitlements"
   | "jobs"
   | "logs"
@@ -46,6 +49,10 @@ type ModalState =
   | { kind: "transitionSubscription"; organization: CmsOrganization }
   | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
   | { kind: "manualSubscriptionPayment"; organization: CmsOrganization }
+  | {
+      kind: "allocateProviderPayment";
+      payment: CmsProviderPaymentReview;
+    }
   | { kind: "retryNotificationJob"; job: CmsNotificationJob }
   | {
       kind: "notificationProviderControl";
@@ -59,6 +66,7 @@ const navItems: Array<{ id: View; label: string }> = [
   { id: "settings", label: "Cấu hình" },
   { id: "plans", label: "Gói & giới hạn" },
   { id: "organizations", label: "Organizations" },
+  { id: "billing", label: "SaaS Billing" },
   { id: "entitlements", label: "Entitlement overrides" },
   { id: "jobs", label: "Jobs / Queue" },
   { id: "logs", label: "Technical logs" },
@@ -67,7 +75,15 @@ const navItems: Array<{ id: View; label: string }> = [
 
 function statusTone(status: string): Tone {
   if (
-    ["ACTIVE", "TRIALING", "INFO", "ENABLED", "HEALTHY", "PAID"].includes(
+    [
+      "ACTIVE",
+      "TRIALING",
+      "INFO",
+      "ENABLED",
+      "HEALTHY",
+      "PAID",
+      "ALLOCATED"
+    ].includes(
       status
     )
   ) {
@@ -83,7 +99,9 @@ function statusTone(status: string): Tone {
       "DEGRADED",
       "PAUSED",
       "OPEN",
-      "PARTIALLY_PAID"
+      "PARTIALLY_PAID",
+      "REVIEW_REQUIRED",
+      "UNALLOCATED"
     ].includes(status)
   ) {
     return "warning";
@@ -141,6 +159,8 @@ export default function CmsPage() {
   const [entitlementOverrides, setEntitlementOverrides] = useState<CmsEntitlementOverride[]>([]);
   const [audit, setAudit] = useState<CmsAuditEvent[]>([]);
   const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
+  const [billingReconciliation, setBillingReconciliation] =
+    useState<CmsBillingReconciliation | null>(null);
   const [logsStatus, setLogsStatus] = useState<IntegrationStatus | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [loading, setLoading] = useState(true);
@@ -159,6 +179,7 @@ export default function CmsPage() {
         nextEntitlementOverrides,
         nextAudit,
         nextJobs,
+        nextBillingReconciliation,
         nextLogs
       ] = await Promise.all([
           cmsApi.dashboard(),
@@ -168,6 +189,7 @@ export default function CmsPage() {
           cmsApi.entitlementOverrides(),
           cmsApi.audit(),
           cmsApi.jobs(),
+          cmsApi.billingReconciliation(),
           cmsApi.logs()
         ]);
       setDashboard(nextDashboard);
@@ -177,6 +199,7 @@ export default function CmsPage() {
       setEntitlementOverrides(nextEntitlementOverrides);
       setAudit(nextAudit);
       setJobsStatus(nextJobs);
+      setBillingReconciliation(nextBillingReconciliation);
       setLogsStatus(nextLogs);
     } catch (loadError) {
       setError(
@@ -197,6 +220,21 @@ export default function CmsPage() {
     () => new Map(plans.map((item) => [item.code, item])),
     [plans]
   );
+  const organizationById = useMemo(
+    () => new Map(organizations.map((item) => [item.id, item])),
+    [organizations]
+  );
+  const reconciliationInvoiceByReference = useMemo(
+    () =>
+      new Map(
+        (billingReconciliation?.invoices ?? []).map((item) => [
+          item.paymentReference,
+          item
+        ])
+      ),
+    [billingReconciliation]
+  );
+
   const overLimit = organizations.filter(
     (org) => org.roomLimit !== null && org.rooms > org.roomLimit
   ).length;
@@ -395,17 +433,57 @@ export default function CmsPage() {
         );
       }
 
-      const [nextAudit, nextDashboard, nextOrganizations, nextJobs] =
-        await Promise.all([
-          cmsApi.audit(),
-          cmsApi.dashboard(),
-          cmsApi.organizations(),
-          cmsApi.jobs()
-        ]);
+      if (modal.kind === "allocateProviderPayment") {
+        const invoiceId = String(
+          data.get("reconciliationInvoiceId") ?? ""
+        ).trim();
+        const amountVnd = Number(
+          data.get("reconciliationAmountVnd")
+        );
+        const invoice = billingReconciliation?.invoices.find(
+          (item) => item.id === invoiceId
+        );
+
+        if (!invoice) {
+          throw new Error("Invoice reconciliation không còn tồn tại.");
+        }
+        if (
+          !Number.isInteger(amountVnd) ||
+          amountVnd <= 0 ||
+          amountVnd > modal.payment.payment.unallocatedAmountVnd ||
+          amountVnd > invoice.remainingAmountVnd
+        ) {
+          throw new Error(
+            "Allocation phải là số nguyên dương và không vượt số dư payment/invoice."
+          );
+        }
+
+        await cmsApi.allocateProviderPayment(
+          modal.payment.payment.id,
+          invoiceId,
+          amountVnd,
+          reason
+        );
+      }
+
+      const [
+        nextAudit,
+        nextDashboard,
+        nextOrganizations,
+        nextJobs,
+        nextBillingReconciliation
+      ] = await Promise.all([
+        cmsApi.audit(),
+        cmsApi.dashboard(),
+        cmsApi.organizations(),
+        cmsApi.jobs(),
+        cmsApi.billingReconciliation()
+      ]);
       setAudit(nextAudit);
       setDashboard(nextDashboard);
       setOrganizations(nextOrganizations);
       setJobsStatus(nextJobs);
+      setBillingReconciliation(nextBillingReconciliation);
       setModal(null);
     } catch (saveError) {
       setError(
@@ -989,6 +1067,188 @@ export default function CmsPage() {
             </section>
           )}
 
+          {!loading && view === "billing" && (
+            <section className="cms-grid">
+              <article className="cms-panel">
+                <SectionHeader
+                  title="Provider payments cần review"
+                  action={
+                    <span className="cms-note">
+                      Không auto-allocate khi match không an toàn.
+                    </span>
+                  }
+                />
+                {!billingReconciliation ||
+                billingReconciliation.reviewPayments.length === 0 ? (
+                  <div className="empty-state">
+                    Không có provider payment cần reconciliation.
+                  </div>
+                ) : (
+                  <div className="cms-table-wrap">
+                    <table className="cms-table">
+                      <thead>
+                        <tr>
+                          <th>Provider transaction</th>
+                          <th>Reference</th>
+                          <th>Amount</th>
+                          <th>Assigned</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billingReconciliation.reviewPayments.map((item) => {
+                          const suggestedInvoice =
+                            item.paymentReference === null
+                              ? null
+                              : reconciliationInvoiceByReference.get(
+                                  item.paymentReference
+                                ) ?? null;
+                          const assignedOrganization =
+                            item.payment.organizationId === null
+                              ? null
+                              : organizationById.get(
+                                  item.payment.organizationId
+                                ) ?? null;
+                          return (
+                            <tr key={item.payment.id}>
+                              <td>
+                                <strong>
+                                  {item.payment.provider ?? "UNKNOWN_PROVIDER"}
+                                </strong>
+                                <small>
+                                  {item.payment.providerTransactionId ?? "—"} ·{" "}
+                                  {new Date(
+                                    item.payment.occurredAt
+                                  ).toLocaleString("vi-VN")}
+                                </small>
+                              </td>
+                              <td>
+                                <strong>
+                                  {item.paymentReference ?? "No reference"}
+                                </strong>
+                                <small>
+                                  {suggestedInvoice
+                                    ? "Exact invoice reference found"
+                                    : "No exact open invoice match"}
+                                </small>
+                              </td>
+                              <td>
+                                <strong>
+                                  {money(
+                                    item.payment.unallocatedAmountVnd
+                                  )}{" "}
+                                  chưa phân bổ
+                                </strong>
+                                <small>
+                                  {money(item.payment.amountVnd)} transaction
+                                </small>
+                              </td>
+                              <td>
+                                {assignedOrganization?.name ?? "Unassigned"}
+                              </td>
+                              <td>
+                                <button
+                                  className="text-button"
+                                  type="button"
+                                  disabled={
+                                    (billingReconciliation?.invoices.length ??
+                                      0) === 0
+                                  }
+                                  onClick={() =>
+                                    setModal({
+                                      kind: "allocateProviderPayment",
+                                      payment: item
+                                    })
+                                  }
+                                >
+                                  Allocate
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </article>
+
+              <article className="cms-panel">
+                <SectionHeader
+                  title="SaaS invoices còn số dư"
+                  action={
+                    <span className="cms-note">
+                      {billingReconciliation?.invoices.length ?? 0} open balance
+                    </span>
+                  }
+                />
+                {!billingReconciliation ||
+                billingReconciliation.invoices.length === 0 ? (
+                  <div className="empty-state">
+                    Không có SaaS invoice còn số dư.
+                  </div>
+                ) : (
+                  <div className="cms-table-wrap">
+                    <table className="cms-table">
+                      <thead>
+                        <tr>
+                          <th>Organization</th>
+                          <th>Reference</th>
+                          <th>Status</th>
+                          <th>Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billingReconciliation.invoices.map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td>
+                              <strong>
+                                {organizationById.get(invoice.organizationId)
+                                  ?.name ?? invoice.organizationId}
+                              </strong>
+                              <small>
+                                {new Date(
+                                  invoice.periodStart
+                                ).toLocaleDateString("vi-VN")}
+                                {" → "}
+                                {new Date(
+                                  invoice.periodEnd
+                                ).toLocaleDateString("vi-VN")}
+                              </small>
+                            </td>
+                            <td>{invoice.paymentReference}</td>
+                            <td>
+                              <StatusBadge
+                                tone={
+                                  invoice.isOverdue
+                                    ? "danger"
+                                    : statusTone(invoice.status)
+                                }
+                              >
+                                {invoice.isOverdue
+                                  ? "OVERDUE"
+                                  : invoice.status}
+                              </StatusBadge>
+                            </td>
+                            <td>
+                              <strong>
+                                {money(invoice.remainingAmountVnd)}
+                              </strong>
+                              <small>
+                                {money(invoice.paidAmountVnd)} /{" "}
+                                {money(invoice.amountVnd)} đã phân bổ
+                              </small>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </article>
+            </section>
+          )}
+
           {!loading && view === "entitlements" && (
             <section className="cms-panel">
               <SectionHeader
@@ -1557,6 +1817,77 @@ export default function CmsPage() {
                 );
               })()}
 
+            {modal.kind === "allocateProviderPayment" &&
+              (() => {
+                const suggestedInvoice =
+                  modal.payment.paymentReference === null
+                    ? null
+                    : reconciliationInvoiceByReference.get(
+                        modal.payment.paymentReference
+                      ) ?? null;
+
+                return (
+                  <>
+                    <h2>Allocate provider payment</h2>
+                    <p className="modal-warning">
+                      {modal.payment.payment.provider ?? "Provider"} ·{" "}
+                      {modal.payment.payment.providerTransactionId ?? "—"} ·{" "}
+                      {money(modal.payment.payment.unallocatedAmountVnd)} chưa
+                      phân bổ. Allocation sẽ tạo financial history mới; không
+                      sửa/xóa transaction gốc.
+                    </p>
+                    <label>
+                      SaaS invoice
+                      <select
+                        name="reconciliationInvoiceId"
+                        defaultValue={suggestedInvoice?.id}
+                        required
+                      >
+                        {!suggestedInvoice ? (
+                          <option value="">Chọn invoice…</option>
+                        ) : null}
+                        {(billingReconciliation?.invoices ?? []).map(
+                          (invoice) => (
+                            <option value={invoice.id} key={invoice.id}>
+                              {organizationById.get(invoice.organizationId)
+                                ?.name ?? invoice.organizationId}
+                              {" · "}
+                              {invoice.paymentReference}
+                              {" · còn "}
+                              {money(invoice.remainingAmountVnd)}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </label>
+                    <label>
+                      Số tiền allocation (VND)
+                      <input
+                        name="reconciliationAmountVnd"
+                        type="number"
+                        min={1}
+                        max={modal.payment.payment.unallocatedAmountVnd}
+                        step={1}
+                        defaultValue={
+                          suggestedInvoice
+                            ? Math.min(
+                                modal.payment.payment.unallocatedAmountVnd,
+                                suggestedInvoice.remainingAmountVnd
+                              )
+                            : modal.payment.payment.unallocatedAmountVnd
+                        }
+                        required
+                      />
+                    </label>
+                    <p className="cms-note">
+                      Chỉ allocate khi đã xác minh transaction thuộc đúng SaaS
+                      invoice. Backend sẽ chặn cross-organization assignment,
+                      vượt số dư payment hoặc vượt số dư invoice.
+                    </p>
+                  </>
+                );
+              })()}
+
             {modal.kind === "entitlement" && (
               <>
                 <h2>Thêm entitlement override</h2>
@@ -1663,7 +1994,9 @@ export default function CmsPage() {
                   ? "Đang lưu…"
                   : modal.kind === "manualSubscriptionPayment"
                     ? "Ghi nhận thanh toán"
-                    : "Xác nhận thay đổi"}
+                    : modal.kind === "allocateProviderPayment"
+                      ? "Allocate payment"
+                      : "Xác nhận thay đổi"}
               </button>
             </div>
           </form>
