@@ -67,5 +67,6 @@ export interface UpdateNotificationProviderControlInput {
 
 export interface RecordSubscriptionPaymentInput {
   invoiceId?: string;
+  amountVnd?: number;
   reason?: string;
 }
