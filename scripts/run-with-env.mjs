@@ -18,13 +18,11 @@ if (existsSync(envPath)) {
   console.warn("[env] .env not found; using the current shell environment.");
 }
 
-const executable =
-  process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
-
-const child = spawn(executable, args, {
+const child = spawn(command, args, {
   cwd: process.cwd(),
   env: process.env,
-  stdio: "inherit"
+  stdio: "inherit",
+  shell: process.platform === "win32"
 });
 
 child.on("error", (error) => {
@@ -32,11 +30,6 @@ child.on("error", (error) => {
   process.exit(1);
 });
 
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-
+child.on("exit", (code) => {
   process.exit(code ?? 1);
 });
