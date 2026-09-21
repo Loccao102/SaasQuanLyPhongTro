@@ -50,3 +50,27 @@ test("only platform admin gets entitlement override management by default", () =
     false
   );
 });
+
+test("subscription lifecycle management is platform-admin only by default", () => {
+  assert.equal(
+    platformRoleHasPermission(
+      "PLATFORM_ADMIN",
+      "platform.subscriptions.manage"
+    ),
+    true
+  );
+  assert.equal(
+    platformRoleHasPermission(
+      "SUPPORT_OPERATOR",
+      "platform.subscriptions.manage"
+    ),
+    false
+  );
+  assert.equal(
+    platformRoleHasPermission(
+      "OPS_OPERATOR",
+      "platform.subscriptions.manage"
+    ),
+    false
+  );
+});
