@@ -343,12 +343,20 @@ export default function CmsPage() {
         const current = settings.find((item) => item.key === modal.key);
         if (!current) return;
         const raw = data.get("value");
-        const value =
-          current.type === "BOOLEAN"
-            ? raw === "true"
-            : current.type === "INTEGER"
-              ? Number(raw)
-              : String(raw ?? "");
+        let value: unknown;
+        if (current.type === "BOOLEAN") {
+          value = raw === "true";
+        } else if (current.type === "INTEGER") {
+          value = Number(raw);
+        } else if (current.type === "JSON") {
+          try {
+            value = JSON.parse(String(raw ?? ""));
+          } catch {
+            throw new Error("JSON setting không hợp lệ.");
+          }
+        } else {
+          value = String(raw ?? "");
+        }
         const updated = await cmsApi.updateSetting(current.key, {
           value,
           expectedVersion: current.version,
@@ -2302,6 +2310,13 @@ export default function CmsPage() {
                           <option value="true">Enabled</option>
                           <option value="false">Disabled</option>
                         </select>
+                      ) : item.type === "JSON" ? (
+                        <textarea
+                          name="value"
+                          defaultValue={JSON.stringify(item.value, null, 2)}
+                          spellCheck={false}
+                          required
+                        />
                       ) : (
                         <input
                           name="value"
