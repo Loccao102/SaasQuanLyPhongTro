@@ -4,81 +4,116 @@
 
 Không đặt mục tiêu "100% người nhận chắc chắn đọc tin". Mục tiêu vận hành là:
 
-> 100% invoice đi vào notification pipeline phải có trạng thái cuối cùng rõ ràng; không có invoice thất lạc âm thầm.
+> Mọi recipient đã đi vào notification pipeline phải có durable state và attempt history; ambiguous provider state không bao giờ được tự nhận là thành công.
 
 ## Flow
 
 ```text
-Invoice ISSUED
-   -> NotificationJob PENDING
+Business event / campaign request
+   -> reserve automation quota
+   -> NotificationCampaign QUEUED
+   -> one NotificationJob per recipient
+   -> separate Worker
    -> Provider Adapter
-   -> SENT / RETRY / NEEDS_ATTENTION
+   -> SENT / RETRY_WAIT / FAILED / MANUAL_REVIEW
 ```
+
+API request chỉ enqueue durable work. Không gửi hàng trăm tin trong một HTTP request.
+
+## Durable state
+
+### NotificationCampaign
+
+- organization_id;
+- channel/provider;
+- message body;
+- quota reservation;
+- idempotency key + request fingerprint;
+- total recipients;
+- aggregate operational status.
+
+### NotificationJob
+
+- organization_id;
+- campaign_id;
+- recipient_key;
+- provider;
+- durable status;
+- attempt_count/max_attempts;
+- next_attempt_at;
+- idempotency key;
+- verification_state;
+- last error;
+- diagnostic evidence.
+
+### NotificationAttempt
+
+Mỗi provider attempt có:
+- attempt_number;
+- provider;
+- started/finished timestamps;
+- outcome;
+- error code/message;
+- bounded diagnostic evidence.
+
+Không lưu cookie/session secret vào evidence.
+
+## Commercial quota
+
+Campaign reserve quota trước khi tạo jobs.
+
+Recipient job consume đúng một unit khi claim lần đầu. Retry cùng durable job dùng consumption key cũ nên không trừ quota lần hai.
+
+Worker re-check commercial access tại execution time. Organization/subscription bị suspended không được claim cho tới khi được mở lại.
 
 ## Playwright transition provider
 
-Playwright có thể thay thế AHK trong giai đoạn chuyển tiếp nhưng phải là Edge worker riêng.
+Playwright có thể thay thế AHK trong giai đoạn chuyển tiếp nhưng phải chạy ở `apps/worker`, không nằm trong API process.
 
-Không gọi browser automation trực tiếp từ API request.
+Provider adapter phải:
+1. xác định đúng recipient;
+2. verify conversation/recipient trước send;
+3. thực hiện send;
+4. verify evidence sau send;
+5. chỉ trả `SENT_CONFIRMED` khi recipient và send đều được xác nhận;
+6. chỉ trả transient failure khi chắc chắn chưa xảy ra send;
+7. trả `UNKNOWN`/manual review cho logout, captcha, ambiguous recipient, UI breakage hoặc trạng thái hậu-send không xác định.
 
-### Worker responsibilities
+Generic worker exception được coi là `UNKNOWN`, không retry mù.
 
-1. Nhận một job.
-2. Mở đúng conversation.
-3. Verify recipient bằng dữ liệu nhận diện khả dụng.
-4. Gửi nội dung/link.
-5. Verify message xuất hiện trong conversation.
-6. Ghi attempt result.
-7. Retry có giới hạn nếu lỗi kỹ thuật.
-8. Dừng/đánh dấu NEEDS_ATTENTION khi logout/captcha/UI bất thường.
+## Worker boundary
 
-## Data model
+Worker gọi:
+- `POST /api/internal/notifications/claim`;
+- `POST /api/internal/notifications/{jobId}/complete`.
 
-NotificationJob:
-- id;
-- organization_id;
-- invoice_id;
-- recipient_id;
-- channel;
+Các endpoint này yêu cầu `INTERNAL_WORKER_TOKEN`. Worker không ghi PostgreSQL trực tiếp.
+
+## CMS operations
+
+CMS đọc durable jobs và hiển thị:
+- organization/recipient;
+- job/campaign status;
+- attempt count;
+- verification state;
 - provider;
-- status;
-- idempotency_key;
-- attempt_count;
-- next_attempt_at;
-- last_error_code;
-- last_error_message;
-- created_at;
-- completed_at.
+- last error.
 
-NotificationAttempt:
-- job_id;
-- attempt_no;
-- started_at;
-- finished_at;
-- result;
-- diagnostic reference.
-
-Screenshot/trace có thể lưu phục vụ debug nhưng phải tránh chứa secrets quá mức cần thiết.
+Operator có thể requeue `FAILED` hoặc `MANUAL_REVIEW` job. Retry bắt buộc reason, idempotency và platform audit.
 
 ## Provider abstraction
 
+Core contract:
+
 ```text
 NotificationProvider
-  send(job) -> DeliveryResult
+  send(job) -> ProviderResult
 ```
 
-Implementations có thể gồm:
+Provider có thể là:
 - PlaywrightZaloProvider;
 - OfficialZaloProvider;
 - SmsProvider;
 - EmailProvider.
 
-Billing domain không biết provider cụ thể.
-
-## Reliability
-
-- idempotency key ngăn gửi trùng do retry;
-- exponential backoff cho transient error;
-- circuit breaker/pause khi provider bất thường;
-- manual review queue cho lỗi không tự xử lý được;
-- dashboard luôn hiển thị UNKNOWN = 0 như một invariant vận hành.
+Billing/Commercial domain không biết provider cụ thể.
