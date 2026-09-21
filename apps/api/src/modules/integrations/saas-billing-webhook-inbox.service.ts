@@ -106,7 +106,11 @@ export class SaasBillingWebhookInboxService {
          $1,
          $2,
          $3,
-         CASE WHEN $3 = 'INVALID' THEN 'IGNORED' ELSE 'RECEIVED' END,
+         CASE
+           WHEN $3 = 'INVALID' THEN 'IGNORED'
+           WHEN $3 = 'NOT_CONFIGURED' THEN 'REVIEW_REQUIRED'
+           ELSE 'RECEIVED'
+         END,
          $4,
          $5,
          $6::jsonb
@@ -189,7 +193,7 @@ export class SaasBillingWebhookInboxService {
            last_error_message
          FROM saas_billing_webhook_events
          WHERE processing_status = 'RECEIVED'
-           AND signature_status IN ('VERIFIED', 'NOT_CONFIGURED')
+           AND signature_status = 'VERIFIED'
            AND ($1::text IS NULL OR provider = $1)
          ORDER BY received_at, id
          FOR UPDATE SKIP LOCKED
