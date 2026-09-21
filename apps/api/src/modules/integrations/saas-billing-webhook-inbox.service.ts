@@ -82,6 +82,7 @@ export class SaasBillingWebhookInboxService {
       providerEventId: string;
       signatureStatus: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
       rawBody: string;
+      rawBodySha256?: string;
       headers?: unknown;
     }
   ): Promise<SaasBillingWebhookEventView> {
