@@ -327,6 +327,12 @@ export class SubscriptionManagementService {
       throw new ConcurrentSubscriptionUpdateError();
     }
 
+    if (current.status === "CANCELLED") {
+      throw new InvalidSubscriptionPlanChangeError(
+        "Cancelled subscription cannot change plan."
+      );
+    }
+
     const targetResult = await client.query<
       QueryResultRow & {
         plan_id: string;
