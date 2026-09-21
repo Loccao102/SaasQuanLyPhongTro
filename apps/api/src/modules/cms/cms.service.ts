@@ -569,6 +569,7 @@ export class CmsService {
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
     const planCode = input.planCode?.trim() ?? "";
     const status = input.status;
+    const billingInterval = input.billingInterval ?? "MONTHLY";
 
     if (planCode.length === 0) {
       throw new BadRequestException("planCode is required.");
@@ -578,12 +579,21 @@ export class CmsService {
         "Initial subscription status must be TRIALING or ACTIVE."
       );
     }
+    if (
+      billingInterval !== "MONTHLY" &&
+      billingInterval !== "YEARLY"
+    ) {
+      throw new BadRequestException(
+        "billingInterval must be MONTHLY or YEARLY."
+      );
+    }
 
     const fingerprint = this.fingerprint({
       action: "SUBSCRIPTION_PROVISIONED",
       organizationId,
       planCode,
       status,
+      billingInterval,
       trialEndsAt: input.trialEndsAt ?? null,
       reason
     });
@@ -608,6 +618,7 @@ export class CmsService {
           organizationId,
           planCode,
           status,
+          billingInterval,
           trialEndsAt: input.trialEndsAt ?? null
         });
 
