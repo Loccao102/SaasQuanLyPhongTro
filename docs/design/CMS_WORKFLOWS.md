@@ -56,6 +56,10 @@ Financial safeguards:
 
 Loaded states include empty review queue, no open invoices, exact reference suggestion, unmatched reference, partially allocated payment, overdue invoice, server validation error and successful reconciliation.
 
+Webhook inbox shows operational state only: provider event id, signature state, processing state, attempts/stale flag, sanitized last error and linked payment id. Raw provider body and headers are not rendered.
+
+Webhook recovery flow: inspect FAILED/REVIEW_REQUIRED event -> confirm signature is VERIFIED -> fix the parser/provider cause -> Requeue with audit reason -> event returns to RECEIVED while attempt history remains. Backend rejects requeue for unverified signatures, linked payments or unsupported states.
+
 ## Jobs
 
 Manual retry: inspect error/prior attempts -> verify retryable -> reason -> idempotent command -> resulting state. Bulk retry must show target count and partial-success summary.
