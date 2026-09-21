@@ -4,8 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
-  NotImplementedException
+  NotFoundException
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import {
@@ -20,6 +19,10 @@ import {
 import { InvalidSubscriptionTransitionError } from "../commercial/domain/subscription-lifecycle.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
+  NotificationJobRetryConflictError,
+  NotificationOperationsService
+} from "../notifications/application/notification-operations.service.js";
+import {
   InvalidEntitlementOverrideError,
   isEntitlementKey,
   validateEntitlementOverride,
@@ -30,6 +33,7 @@ import type {
   PlatformPrincipal,
   ProvisionSubscriptionInput,
   RevokeEntitlementOverrideInput,
+  RetryNotificationJobInput,
   TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
   UpdatePlanInput,
@@ -129,7 +133,8 @@ type EntitlementOverrideRow = QueryResultRow & {
 export class CmsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly subscriptionManagement: SubscriptionManagementService
+    private readonly subscriptionManagement: SubscriptionManagementService,
+    private readonly notificationOperations: NotificationOperationsService
   ) {}
 
   async getDashboard(principal: PlatformPrincipal) {
@@ -1105,21 +1110,79 @@ export class CmsService {
     }));
   }
 
-  getJobsIntegrationStatus(principal: PlatformPrincipal) {
+  async getJobsIntegrationStatus(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.jobs.read");
+    const entries = await this.notificationOperations.listJobs();
     return {
-      connected: false,
+      connected: true,
       reason:
-        "Durable notification/general job persistence has not been implemented in this repository slice.",
-      entries: []
+        "Durable notification jobs are connected. Provider execution still runs in a separate worker runtime.",
+      entries
     };
   }
 
-  retryJob(principal: PlatformPrincipal, _jobId: string): never {
+  async retryJob(
+    principal: PlatformPrincipal,
+    jobId: string,
+    input: RetryNotificationJobInput,
+    idempotencyKey: string | undefined
+  ) {
     this.requirePermission(principal, "platform.jobs.manage");
-    throw new NotImplementedException(
-      "Job retry will be enabled when durable job persistence is connected."
-    );
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const fingerprint = this.fingerprint({
+      action: "NOTIFICATION_JOB_RETRY_REQUESTED",
+      jobId,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const retry = await this.notificationOperations.retryJobInTransaction(
+          client,
+          jobId
+        );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "NOTIFICATION_JOB_RETRY_REQUESTED",
+          targetType: "NOTIFICATION_JOB",
+          targetKey: jobId,
+          organizationId: retry.before.organizationId,
+          beforeState: retry.before,
+          afterState: retry.after,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "NOTIFICATION_JOB_RETRY_REQUESTED",
+          fingerprint,
+          retry.after
+        );
+        return retry.after;
+      } catch (error) {
+        if (error instanceof NotificationJobRetryConflictError) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+    });
   }
 
   getLogsIntegrationStatus(principal: PlatformPrincipal) {
