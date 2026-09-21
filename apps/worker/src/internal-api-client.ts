@@ -22,6 +22,20 @@ export class InternalWorkerApiClient {
     }
   }
 
+  billingSweep(limit: number): Promise<{
+    processed: number;
+    results: Array<{
+      organizationId: string;
+      ok: boolean;
+      invoiceId?: string | null;
+      activatedPaidPeriod?: boolean;
+      transition?: string | null;
+      error?: string;
+    }>;
+  }> {
+    return this.request("/internal/billing/sweep", { limit });
+  }
+
   heartbeat(input: {
     workerId: string;
     provider: string;
