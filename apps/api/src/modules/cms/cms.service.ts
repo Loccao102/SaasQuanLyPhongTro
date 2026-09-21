@@ -8,6 +8,15 @@ import {
   NotImplementedException
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
+import {
+  ConcurrentSubscriptionUpdateError,
+  InvalidSubscriptionProvisioningError,
+  SubscriptionAlreadyExistsError,
+  SubscriptionManagementService,
+  SubscriptionNotFoundError,
+  SubscriptionPlanNotFoundError
+} from "../commercial/application/subscription-management.service.js";
+import { InvalidSubscriptionTransitionError } from "../commercial/domain/subscription-lifecycle.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
   InvalidEntitlementOverrideError,
@@ -17,7 +26,9 @@ import {
 } from "../commercial/domain/entitlements.js";
 import type {
   PlatformPrincipal,
+  ProvisionSubscriptionInput,
   RevokeEntitlementOverrideInput,
+  TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
   UpdatePlanInput,
   UpdateSettingInput
@@ -73,6 +84,7 @@ type OrganizationRow = QueryResultRow & {
   room_count: number;
   staff_count: number;
   subscription_status: string | null;
+  subscription_version: number | null;
   plan_code: string | null;
   room_limit: number | null;
   staff_limit: number | null;
@@ -111,7 +123,10 @@ type EntitlementOverrideRow = QueryResultRow & {
 
 @Injectable()
 export class CmsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly subscriptionManagement: SubscriptionManagementService
+  ) {}
 
   async getDashboard(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
@@ -413,6 +428,7 @@ export class CmsService {
          COALESCE(room_usage.room_count, 0)::int AS room_count,
          COALESCE(staff_usage.staff_count, 0)::int AS staff_count,
          s.status AS subscription_status,
+         s.version AS subscription_version,
          p.code AS plan_code,
          COALESCE(room_override.value, pv.room_limit) AS room_limit,
          COALESCE(staff_override.value, pv.staff_limit) AS staff_limit,
@@ -501,6 +517,7 @@ export class CmsService {
       rooms: row.room_count,
       staff: row.staff_count,
       subscriptionStatus: row.subscription_status ?? "UNASSIGNED",
+      subscriptionVersion: row.subscription_version,
       planCode: row.plan_code,
       roomLimit: row.room_limit,
       staffLimit: row.staff_limit,
@@ -510,6 +527,169 @@ export class CmsService {
       automationQuotaSource: row.automation_quota_source,
       automationUsed: null
     }));
+  }
+
+  async provisionSubscription(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    input: ProvisionSubscriptionInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.subscriptions.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const planCode = input.planCode?.trim() ?? "";
+    const status = input.status;
+
+    if (planCode.length === 0) {
+      throw new BadRequestException("planCode is required.");
+    }
+    if (status !== "TRIALING" && status !== "ACTIVE") {
+      throw new BadRequestException(
+        "Initial subscription status must be TRIALING or ACTIVE."
+      );
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "SUBSCRIPTION_PROVISIONED",
+      organizationId,
+      planCode,
+      status,
+      trialEndsAt: input.trialEndsAt ?? null,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const response = await this.subscriptionManagement.provision(client, {
+          organizationId,
+          planCode,
+          status,
+          trialEndsAt: input.trialEndsAt ?? null
+        });
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "SUBSCRIPTION_PROVISIONED",
+          targetType: "ORGANIZATION_SUBSCRIPTION",
+          targetKey: organizationId,
+          organizationId,
+          beforeState: {},
+          afterState: response,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "SUBSCRIPTION_PROVISIONED",
+          fingerprint,
+          response
+        );
+        return response;
+      } catch (error) {
+        this.rethrowSubscriptionError(error);
+      }
+    });
+  }
+
+  async transitionSubscription(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    input: TransitionSubscriptionInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.subscriptions.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const to = input.to;
+    const expectedVersion = input.expectedVersion;
+
+    if (
+      to !== "TRIALING" &&
+      to !== "ACTIVE" &&
+      to !== "PAST_DUE" &&
+      to !== "GRACE_PERIOD" &&
+      to !== "SUSPENDED" &&
+      to !== "CANCELLED"
+    ) {
+      throw new BadRequestException("A valid target subscription status is required.");
+    }
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new BadRequestException("expectedVersion must be a positive integer.");
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "SUBSCRIPTION_STATUS_CHANGED",
+      organizationId,
+      to,
+      expectedVersion,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const transition = await this.subscriptionManagement.transition(
+          client,
+          {
+            organizationId,
+            to,
+            expectedVersion: Number(expectedVersion),
+            reason
+          }
+        );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "SUBSCRIPTION_STATUS_CHANGED",
+          targetType: "ORGANIZATION_SUBSCRIPTION",
+          targetKey: organizationId,
+          organizationId,
+          beforeState: transition.before,
+          afterState: transition.after,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "SUBSCRIPTION_STATUS_CHANGED",
+          fingerprint,
+          transition.after
+        );
+        return transition.after;
+      } catch (error) {
+        this.rethrowSubscriptionError(error);
+      }
+    });
   }
 
   async listEntitlementOverrides(principal: PlatformPrincipal) {
@@ -853,6 +1033,28 @@ export class CmsService {
         "Observability/Loki integration has not been connected yet. CMS does not fabricate technical log entries.",
       entries: []
     };
+  }
+
+  private rethrowSubscriptionError(error: unknown): never {
+    if (
+      error instanceof InvalidSubscriptionProvisioningError ||
+      error instanceof InvalidSubscriptionTransitionError
+    ) {
+      throw new BadRequestException(error.message);
+    }
+    if (
+      error instanceof SubscriptionNotFoundError ||
+      error instanceof SubscriptionPlanNotFoundError
+    ) {
+      throw new NotFoundException(error.message);
+    }
+    if (
+      error instanceof SubscriptionAlreadyExistsError ||
+      error instanceof ConcurrentSubscriptionUpdateError
+    ) {
+      throw new ConflictException(error.message);
+    }
+    throw error;
   }
 
   private requirePermission(
