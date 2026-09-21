@@ -141,6 +141,26 @@ export class CmsController {
     );
   }
 
+  @Get("billing/reconciliation")
+  getBillingReconciliation(@Req() request: CmsRequest) {
+    return this.cms.getBillingReconciliation(this.principal(request));
+  }
+
+  @Post("billing/reconciliation/:paymentId/allocate")
+  allocateProviderPayment(
+    @Req() request: CmsRequest,
+    @Param("paymentId") paymentId: string,
+    @Body() input: AllocateProviderPaymentInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.allocateProviderPayment(
+      this.principal(request),
+      paymentId,
+      input,
+      idempotencyKey
+    );
+  }
+
   @Get("entitlement-overrides")
   listEntitlementOverrides(@Req() request: CmsRequest) {
     return this.cms.listEntitlementOverrides(this.principal(request));
