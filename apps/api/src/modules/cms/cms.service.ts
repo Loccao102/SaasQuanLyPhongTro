@@ -36,6 +36,7 @@ import type {
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
+  UpdateNotificationProviderControlInput,
   UpdatePlanInput,
   UpdateSettingInput
 } from "./cms.types.js";
@@ -1112,13 +1113,94 @@ export class CmsService {
 
   async getJobsIntegrationStatus(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.jobs.read");
-    const entries = await this.notificationOperations.listJobs();
+    const [entries, providers, workers] = await Promise.all([
+      this.notificationOperations.listJobs(),
+      this.notificationOperations.listProviders(),
+      this.notificationOperations.listWorkerHeartbeats()
+    ]);
     return {
       connected: true,
       reason:
-        "Durable notification jobs are connected. Provider execution still runs in a separate worker runtime.",
-      entries
+        "Durable notification jobs and provider worker health are connected.",
+      entries,
+      providers,
+      workers
     };
+  }
+
+  async updateNotificationProviderControl(
+    principal: PlatformPrincipal,
+    providerValue: string,
+    input: UpdateNotificationProviderControlInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.jobs.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const provider = providerValue.trim();
+    const status = input.status;
+
+    if (!provider) {
+      throw new BadRequestException("Provider is required.");
+    }
+    if (status !== "ACTIVE" && status !== "PAUSED") {
+      throw new BadRequestException(
+        "Provider control status must be ACTIVE or PAUSED."
+      );
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "NOTIFICATION_PROVIDER_CONTROL_UPDATED",
+      provider,
+      status,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      const change =
+        await this.notificationOperations.setProviderControlInTransaction(
+          client,
+          {
+            provider,
+            status,
+            reason,
+            actorUserId: principal.userId
+          }
+        );
+
+      await this.insertAudit(client, {
+        actorUserId: principal.userId,
+        action: "NOTIFICATION_PROVIDER_CONTROL_UPDATED",
+        targetType: "NOTIFICATION_PROVIDER",
+        targetKey: provider,
+        beforeState: change.before,
+        afterState: change.after,
+        reason
+      });
+      await this.insertReceipt(
+        client,
+        principal.userId,
+        commandKey,
+        "NOTIFICATION_PROVIDER_CONTROL_UPDATED",
+        fingerprint,
+        change.after
+      );
+      return change.after;
+    });
   }
 
   async retryJob(
