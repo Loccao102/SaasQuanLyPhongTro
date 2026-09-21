@@ -849,15 +849,19 @@ export default function CmsPage() {
                           </span>
                           <small>{item.description}</small>
                         </div>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() =>
-                            setModal({ kind: "setting", key: item.key })
-                          }
-                        >
-                          Chỉnh
-                        </button>
+                        {hasPermission("platform.settings.manage") ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() =>
+                              setModal({ kind: "setting", key: item.key })
+                            }
+                          >
+                            Chỉnh
+                          </button>
+                        ) : (
+                          <span className="cms-note">Read-only</span>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -902,15 +906,19 @@ export default function CmsPage() {
                           {plan.automationQuota.toLocaleString("vi-VN")}
                         </td>
                         <td>
-                          <button
-                            className="text-button"
-                            type="button"
-                            onClick={() =>
-                              setModal({ kind: "plan", code: plan.code })
-                            }
-                          >
-                            Chỉnh
-                          </button>
+                          {hasPermission("platform.plans.manage") ? (
+                            <button
+                              className="text-button"
+                              type="button"
+                              onClick={() =>
+                                setModal({ kind: "plan", code: plan.code })
+                              }
+                            >
+                              Chỉnh
+                            </button>
+                          ) : (
+                            <span className="cms-note">Read-only</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1084,22 +1092,29 @@ export default function CmsPage() {
                             </td>
                             <td>
                               {org.subscriptionStatus === "UNASSIGNED" ? (
-                                <button
-                                  className="text-button"
-                                  type="button"
-                                  disabled={plans.length === 0}
-                                  onClick={() =>
-                                    setModal({
-                                      kind: "provisionSubscription",
-                                      organization: org
-                                    })
-                                  }
-                                >
-                                  Provision
-                                </button>
+                                hasPermission("platform.subscriptions.manage") ? (
+                                  <button
+                                    className="text-button"
+                                    type="button"
+                                    disabled={plans.length === 0}
+                                    onClick={() =>
+                                      setModal({
+                                        kind: "provisionSubscription",
+                                        organization: org
+                                      })
+                                    }
+                                  >
+                                    Provision
+                                  </button>
+                                ) : (
+                                  <span className="cms-note">Read-only</span>
+                                )
                               ) : (
                                 <div className="table-actions">
-                                  {subscriptionTargets(org.subscriptionStatus)
+                                  {hasPermission(
+                                    "platform.subscriptions.manage"
+                                  ) &&
+                                  subscriptionTargets(org.subscriptionStatus)
                                     .length > 0 ? (
                                     <button
                                       className="text-button"
@@ -1114,7 +1129,8 @@ export default function CmsPage() {
                                       Transition
                                     </button>
                                   ) : null}
-                                  {org.latestInvoice &&
+                                  {hasPermission("platform.billing.manage") &&
+                                  org.latestInvoice &&
                                   (org.latestInvoice.status === "OPEN" ||
                                     org.latestInvoice.status ===
                                       "PARTIALLY_PAID") &&
@@ -1132,7 +1148,10 @@ export default function CmsPage() {
                                       Ghi nhận thanh toán
                                     </button>
                                   ) : null}
-                                  {org.subscriptionStatus !== "CANCELLED" ? (
+                                  {hasPermission(
+                                    "platform.subscriptions.manage"
+                                  ) &&
+                                  org.subscriptionStatus !== "CANCELLED" ? (
                                     <button
                                       className="text-button"
                                       type="button"
@@ -1146,9 +1165,15 @@ export default function CmsPage() {
                                     >
                                       Change plan
                                     </button>
-                                  ) : (
+                                  ) : null}
+                                  {!hasPermission(
+                                    "platform.subscriptions.manage"
+                                  ) &&
+                                  !hasPermission("platform.billing.manage") ? (
+                                    <span className="cms-note">Read-only</span>
+                                  ) : org.subscriptionStatus === "CANCELLED" ? (
                                     <span className="cms-note">Terminal</span>
-                                  )}
+                                  ) : null}
                                 </div>
                               )}
                             </td>
@@ -1242,22 +1267,26 @@ export default function CmsPage() {
                                 {assignedOrganization?.name ?? "Unassigned"}
                               </td>
                               <td>
-                                <button
-                                  className="text-button"
-                                  type="button"
-                                  disabled={
-                                    (billingReconciliation?.invoices.length ??
-                                      0) === 0
-                                  }
-                                  onClick={() =>
-                                    setModal({
-                                      kind: "allocateProviderPayment",
-                                      payment: item
-                                    })
-                                  }
-                                >
-                                  Allocate
-                                </button>
+                                {hasPermission("platform.billing.manage") ? (
+                                  <button
+                                    className="text-button"
+                                    type="button"
+                                    disabled={
+                                      (billingReconciliation?.invoices.length ??
+                                        0) === 0
+                                    }
+                                    onClick={() =>
+                                      setModal({
+                                        kind: "allocateProviderPayment",
+                                        payment: item
+                                      })
+                                    }
+                                  >
+                                    Allocate
+                                  </button>
+                                ) : (
+                                  <span className="cms-note">Read-only</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1349,14 +1378,18 @@ export default function CmsPage() {
               <SectionHeader
                 title="Entitlement overrides"
                 action={
-                  <button
-                    className="primary-button"
-                    type="button"
-                    disabled={organizations.length === 0}
-                    onClick={() => setModal({ kind: "entitlement" })}
-                  >
-                    Thêm override
-                  </button>
+                  hasPermission("platform.entitlements.manage") ? (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={organizations.length === 0}
+                      onClick={() => setModal({ kind: "entitlement" })}
+                    >
+                      Thêm override
+                    </button>
+                  ) : (
+                    <span className="cms-note">Read-only</span>
+                  )
                 }
               />
               <p className="cms-note">
@@ -1398,18 +1431,24 @@ export default function CmsPage() {
                           </td>
                           <td>{override.reason}</td>
                           <td>
-                            <button
-                              className="text-button text-button--danger"
-                              type="button"
-                              onClick={() =>
-                                setModal({
-                                  kind: "revokeEntitlement",
-                                  override
-                                })
-                              }
-                            >
-                              Revoke
-                            </button>
+                            {hasPermission(
+                              "platform.entitlements.manage"
+                            ) ? (
+                              <button
+                                className="text-button text-button--danger"
+                                type="button"
+                                onClick={() =>
+                                  setModal({
+                                    kind: "revokeEntitlement",
+                                    override
+                                  })
+                                }
+                              >
+                                Revoke
+                              </button>
+                            ) : (
+                              <span className="cms-note">Read-only</span>
+                            )}
                           </td>
                         </tr>
                       ))}
