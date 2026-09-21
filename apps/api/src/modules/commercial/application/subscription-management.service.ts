@@ -73,6 +73,13 @@ export class ConcurrentSubscriptionUpdateError extends Error {
   }
 }
 
+export class InvalidSubscriptionPlanChangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidSubscriptionPlanChangeError";
+  }
+}
+
 export class InvalidSubscriptionProvisioningError extends Error {
   constructor(message: string) {
     super(message);
@@ -274,6 +281,107 @@ export class SubscriptionManagementService {
         transition.subscription.version,
         nextGraceEndsAt,
         current.plan_code
+      ]
+    );
+
+    return {
+      before,
+      after: this.mapRow(updatedResult.rows[0]!)
+    };
+  }
+
+  async changePlan(
+    client: PoolClient,
+    input: {
+      organizationId: string;
+      targetPlanCode: string;
+      expectedVersion: number;
+    }
+  ): Promise<SubscriptionTransitionView> {
+    const currentResult = await client.query<SubscriptionRow>(
+      `SELECT
+         s.id::text,
+         s.organization_id::text,
+         s.plan_id::text,
+         s.plan_version_id::text,
+         p.code AS plan_code,
+         s.status,
+         s.version,
+         s.trial_ends_at,
+         s.current_period_start,
+         s.current_period_end,
+         s.grace_ends_at,
+         s.cancel_at_period_end
+       FROM organization_subscriptions s
+       JOIN saas_plans p ON p.id = s.plan_id
+       WHERE s.organization_id = $1
+       FOR UPDATE OF s`,
+      [input.organizationId]
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      throw new SubscriptionNotFoundError();
+    }
+
+    if (current.version !== input.expectedVersion) {
+      throw new ConcurrentSubscriptionUpdateError();
+    }
+
+    const targetResult = await client.query<
+      QueryResultRow & {
+        plan_id: string;
+        plan_version_id: string;
+        plan_code: string;
+      }
+    >(
+      `SELECT
+         p.id::text AS plan_id,
+         p.current_version_id::text AS plan_version_id,
+         p.code AS plan_code
+       FROM saas_plans p
+       WHERE p.code = $1
+         AND p.status = 'ACTIVE'
+         AND p.current_version_id IS NOT NULL
+       FOR SHARE`,
+      [input.targetPlanCode]
+    );
+    const target = targetResult.rows[0];
+    if (!target) {
+      throw new SubscriptionPlanNotFoundError();
+    }
+
+    if (current.plan_version_id === target.plan_version_id) {
+      throw new InvalidSubscriptionPlanChangeError(
+        "Subscription already uses the target plan current version."
+      );
+    }
+
+    const before = this.mapRow(current);
+    const updatedResult = await client.query<SubscriptionRow>(
+      `UPDATE organization_subscriptions
+       SET plan_id = $2,
+           plan_version_id = $3,
+           version = version + 1,
+           updated_at = now()
+       WHERE organization_id = $1
+       RETURNING
+         id::text,
+         organization_id::text,
+         plan_id::text,
+         plan_version_id::text,
+         $4::text AS plan_code,
+         status,
+         version,
+         trial_ends_at,
+         current_period_start,
+         current_period_end,
+         grace_ends_at,
+         cancel_at_period_end`,
+      [
+        input.organizationId,
+        target.plan_id,
+        target.plan_version_id,
+        target.plan_code
       ]
     );
 
