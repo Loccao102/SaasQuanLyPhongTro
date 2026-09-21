@@ -1,20 +1,13 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="roof" x1="10" y1="8" x2="52" y2="54" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F2D4A"/>
-      <stop offset="0.55" stop-color="#0B6E8E"/>
-      <stop offset="1" stop-color="#14B8A6"/>
-    </linearGradient>
-    <linearGradient id="swoosh" x1="12" y1="48" x2="55" y2="26" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0B6E8E"/>
-      <stop offset="1" stop-color="#14B8A6"/>
+    <linearGradient id="habiMint" x1="14" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#35C6A8"/>
+      <stop offset="1" stop-color="#1AA68C"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#F8FAFC"/>
-  <path d="M12 29.5L32 13L50.5 28.5V46.5H43.5V31.8L32 22.2L19 32.5V47H12V29.5Z" fill="url(#roof)"/>
-  <rect x="22" y="36" width="5.5" height="11" rx="1.5" fill="#14B8A6"/>
-  <rect x="30" y="31" width="5.5" height="16" rx="1.5" fill="#19A7B7"/>
-  <rect x="38" y="25" width="5.5" height="22" rx="1.5" fill="#E7F7F5"/>
-  <path d="M10.5 49C21.5 53.5 35 53.2 45.2 46.4C51.5 42.2 55.3 36.5 57 31C57.3 40.7 53.5 49.1 45.8 54.4C35.3 61.6 20.7 59.6 10.5 49Z" fill="url(#swoosh)"/>
-  <circle cx="47.5" cy="15.5" r="5.5" fill="#F59E0B"/>
+  <rect width="64" height="64" rx="18" fill="#F7FAF9"/>
+  <path d="M14 45.5V25.5C14 19.7 18.7 15 24.5 15H27V26.5H37V15H39.5C45.3 15 50 19.7 50 25.5V45.5C50 49.1 47.1 52 43.5 52H37V37H27V52H20.5C16.9 52 14 49.1 14 45.5Z" fill="#25355C"/>
+  <path d="M27 26.5H37V37H27V26.5Z" fill="url(#habiMint)"/>
+  <path d="M18.5 24.5C22.8 19.6 27.2 17.2 32 17.2C36.8 17.2 41.2 19.6 45.5 24.5" stroke="#35C6A8" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="46.5" cy="17.5" r="5.5" fill="#FFB36B"/>
 </svg>
