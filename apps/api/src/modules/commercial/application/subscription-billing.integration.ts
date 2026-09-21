@@ -12,6 +12,8 @@ const operatorUserId = "d2000000-0000-0000-0000-000000000001";
 const batchOrganizationId = "d1000000-0000-0000-0000-000000000002";
 const cancellationOrganizationId =
   "d1000000-0000-0000-0000-000000000003";
+const fundedCancellationOrganizationId =
+  "d1000000-0000-0000-0000-000000000004";
 
 async function cleanup(pool: Pool): Promise<void> {
   await pool.query(
@@ -89,6 +91,35 @@ async function cleanupCancellation(pool: Pool): Promise<void> {
   await pool.query(
     "DELETE FROM organizations WHERE id = $1",
     [cancellationOrganizationId]
+  );
+}
+
+async function cleanupFundedCancellation(
+  pool: Pool
+): Promise<void> {
+  await pool.query(
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
+    [fundedCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
+    [fundedCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
+    [fundedCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM platform_audit_events WHERE organization_id = $1",
+    [fundedCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organization_subscriptions WHERE organization_id = $1",
+    [fundedCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organizations WHERE id = $1",
+    [fundedCancellationOrganizationId]
   );
 }
 
@@ -631,6 +662,155 @@ test("scheduled cancellation voids and reopens renewal safely before applying at
   } finally {
     await database.onModuleDestroy();
     await cleanupCancellation(fixturePool);
+    await fixturePool.end();
+  }
+});
+
+
+test("scheduled cancellation rejects future periods that already have allocated money", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const billing = new SubscriptionBillingService(database);
+
+  try {
+    await cleanupFundedCancellation(fixturePool);
+
+    await fixturePool.query(
+      `INSERT INTO organizations (
+         id, slug, name, organization_type, status
+       )
+       VALUES (
+         $1,
+         'funded-cancellation-org',
+         'Funded Cancellation Org',
+         'INDIVIDUAL',
+         'ACTIVE'
+       )`,
+      [fundedCancellationOrganizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status,
+         billing_interval,
+         current_period_start,
+         current_period_end
+       )
+       SELECT
+         $1,
+         p.id,
+         p.current_version_id,
+         'ACTIVE',
+         'MONTHLY',
+         now() - interval '27 days',
+         now() + interval '3 days'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [fundedCancellationOrganizationId]
+    );
+
+    const invoice = await billing.ensureRenewalInvoice(
+      fundedCancellationOrganizationId
+    );
+    assert.ok(invoice);
+
+    const payment = await fixturePool.query<{ id: string }>(
+      `INSERT INTO saas_subscription_payments (
+         organization_id,
+         subscription_id,
+         amount_vnd,
+         status,
+         reconciliation_status,
+         source,
+         provider,
+         provider_transaction_id,
+         idempotency_key,
+         occurred_at,
+         metadata
+       )
+       SELECT
+         s.organization_id,
+         s.id,
+         1000,
+         'SUCCEEDED',
+         'ALLOCATED',
+         'PROVIDER',
+         'TEST_FUNDED_CANCEL',
+         'funded-cancel-tx-001',
+         'provider:TEST_FUNDED_CANCEL:funded-cancel-tx-001',
+         now(),
+         '{}'::jsonb
+       FROM organization_subscriptions s
+       WHERE s.organization_id = $1
+       RETURNING id::text`,
+      [fundedCancellationOrganizationId]
+    );
+    const paymentId = payment.rows[0]?.id;
+    assert.ok(paymentId);
+
+    await fixturePool.query(
+      `INSERT INTO saas_subscription_payment_allocations (
+         organization_id,
+         payment_id,
+         invoice_id,
+         amount_vnd,
+         reason
+       )
+       VALUES ($1, $2, $3, 1000, 'Integration funded future period')`,
+      [fundedCancellationOrganizationId, paymentId, invoice.id]
+    );
+
+    await fixturePool.query(
+      `UPDATE saas_subscription_invoices
+       SET status = 'PARTIALLY_PAID',
+           updated_at = now()
+       WHERE id = $1`,
+      [invoice.id]
+    );
+
+    await assert.rejects(
+      () =>
+        database.withTransaction((client) =>
+          billing.setCancellationScheduleInTransaction(client, {
+            organizationId: fundedCancellationOrganizationId,
+            cancelAtPeriodEnd: true,
+            expectedVersion: 1,
+            reason: "Must reject funded future period"
+          })
+        ),
+      SubscriptionBillingConflictError
+    );
+
+    const subscription = await fixturePool.query<{
+      cancel_at_period_end: boolean;
+      version: number;
+    }>(
+      `SELECT cancel_at_period_end, version
+       FROM organization_subscriptions
+       WHERE organization_id = $1`,
+      [fundedCancellationOrganizationId]
+    );
+    assert.equal(
+      subscription.rows[0]?.cancel_at_period_end,
+      false
+    );
+    assert.equal(subscription.rows[0]?.version, 1);
+
+    const invoiceAfter = await billing.listInvoices(
+      fundedCancellationOrganizationId
+    );
+    assert.equal(invoiceAfter[0]?.id, invoice.id);
+    assert.equal(invoiceAfter[0]?.status, "PARTIALLY_PAID");
+    assert.equal(invoiceAfter[0]?.paidAmountVnd, 1000);
+  } finally {
+    await database.onModuleDestroy();
+    await cleanupFundedCancellation(fixturePool);
     await fixturePool.end();
   }
 });
