@@ -662,8 +662,28 @@ export default function CmsPage() {
                               {org.staff} / {org.staffLimit ?? "—"}
                             </td>
                             <td>
-                              {org.automationQuota?.toLocaleString("vi-VN") ??
-                                "—"}
+                              {org.automationQuota === null ? (
+                                "—"
+                              ) : (
+                                <>
+                                  <strong>
+                                    {(
+                                      org.automationUsed +
+                                      org.automationReserved
+                                    ).toLocaleString("vi-VN")}{" "}
+                                    /{" "}
+                                    {org.automationQuota.toLocaleString("vi-VN")}
+                                  </strong>
+                                  <small>
+                                    {org.automationUsed.toLocaleString("vi-VN")}{" "}
+                                    consumed ·{" "}
+                                    {org.automationReserved.toLocaleString(
+                                      "vi-VN"
+                                    )}{" "}
+                                    reserved
+                                  </small>
+                                </>
+                              )}
                             </td>
                             <td>
                               {org.subscriptionStatus === "UNASSIGNED" ? (
