@@ -119,7 +119,6 @@ export class RoomApplicationService {
         client,
         input.organizationId
       );
-      this.commercialPolicy.assertWriteAllowed(policy);
 
       const property = await this.findProperty(
         client,
@@ -166,6 +165,8 @@ export class RoomApplicationService {
 
         return mapRoom(existing);
       }
+
+      this.commercialPolicy.assertWriteAllowed(policy);
 
       if (floorId !== null) {
         const floor = await client.query(
