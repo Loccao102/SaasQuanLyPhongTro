@@ -141,6 +141,18 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
       [planId, planVersionId]
     );
 
+    const bootstrap = service.getBootstrap(principal);
+    assert.equal(bootstrap.role, "PLATFORM_ADMIN");
+    assert.ok(
+      bootstrap.permissions.includes("platform.billing.read")
+    );
+    assert.ok(
+      bootstrap.permissions.includes("platform.billing.manage")
+    );
+    assert.ok(
+      bootstrap.permissions.includes("platform.jobs.manage")
+    );
+
     const firstSetting = await service.updateSetting(
       principal,
       testSettingKey,
