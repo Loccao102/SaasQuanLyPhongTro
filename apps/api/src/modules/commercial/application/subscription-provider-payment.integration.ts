@@ -85,11 +85,12 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
     assert.equal(invoice.remainingAmountVnd, 99_000);
     assert.match(invoice.paymentReference, /^SAAS[A-F0-9]+$/);
 
+    const partialOccurredAt = new Date().toISOString();
     const partial = await billing.ingestProviderPayment({
       provider,
       providerTransactionId: "provider-tx-001",
       amountVnd: 40_000,
-      occurredAt: new Date().toISOString(),
+      occurredAt: partialOccurredAt,
       paymentReference: invoice.paymentReference,
       metadata: { bankAccount: "test" }
     });
@@ -110,7 +111,7 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
       provider,
       providerTransactionId: "provider-tx-001",
       amountVnd: 40_000,
-      occurredAt: new Date().toISOString(),
+      occurredAt: partialOccurredAt,
       paymentReference: invoice.paymentReference,
       metadata: { bankAccount: "test" }
     });
@@ -119,11 +120,26 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
     assert.equal(replayedPartial.allocation?.id, partial.allocation.id);
     assert.equal(replayedPartial.invoice?.remainingAmountVnd, 59_000);
 
+    await assert.rejects(
+      () =>
+        billing.ingestProviderPayment({
+          provider,
+          providerTransactionId: "provider-tx-001",
+          amountVnd: 40_000,
+          occurredAt: new Date(
+            new Date(partialOccurredAt).getTime() + 1000
+          ).toISOString(),
+          paymentReference: invoice.paymentReference
+        }),
+      /Provider transaction id was reused with different payment content/
+    );
+
+    const overpayOccurredAt = new Date().toISOString();
     const overpay = await billing.ingestProviderPayment({
       provider,
       providerTransactionId: "provider-tx-overpay",
       amountVnd: 60_000,
-      occurredAt: new Date().toISOString(),
+      occurredAt: overpayOccurredAt,
       paymentReference: invoice.paymentReference
     });
 
@@ -143,7 +159,7 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
       provider,
       providerTransactionId: "provider-tx-overpay",
       amountVnd: 60_000,
-      occurredAt: new Date().toISOString(),
+      occurredAt: overpayOccurredAt,
       paymentReference: invoice.paymentReference
     });
 
