@@ -105,6 +105,32 @@ export type CmsEntitlementOverride = {
   createdBy: string;
 };
 
+export type CmsNotificationJob = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  campaignId: string;
+  campaignStatus: string;
+  recipientKey: string;
+  recipientDisplayName: string | null;
+  provider: string;
+  status: string;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt: string | null;
+  verificationState: string;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CmsJobsStatus = {
+  connected: boolean;
+  reason: string;
+  entries: CmsNotificationJob[];
+};
+
 export type IntegrationStatus = {
   connected: boolean;
   reason: string;
@@ -142,7 +168,7 @@ export const cmsApi = {
   entitlementOverrides: () =>
     request<CmsEntitlementOverride[]>("/entitlement-overrides"),
   audit: () => request<CmsAuditEvent[]>("/audit"),
-  jobs: () => request<IntegrationStatus>("/jobs"),
+  jobs: () => request<CmsJobsStatus>("/jobs"),
   logs: () => request<IntegrationStatus>("/logs"),
 
   updateSetting: (
@@ -263,5 +289,12 @@ export const cmsApi = {
         headers: { "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify({ reason })
       }
-    )
+    ),
+
+  retryNotificationJob: (jobId: string, reason: string) =>
+    request<CmsNotificationJob>("/jobs/" + encodeURIComponent(jobId) + "/retry", {
+      method: "POST",
+      headers: { "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({ reason })
+    })
 };
