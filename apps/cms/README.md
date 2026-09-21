@@ -10,6 +10,8 @@ Apply migrations in order:
 psql "$DATABASE_URL" -f apps/api/db/migrations/0001_identity_property_foundation.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0003_cms_commercial_foundation.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0004_automation_quota_foundation.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0005_notification_jobs_foundation.sql
 psql "$DATABASE_URL" -f apps/api/db/seeds/cms_dev_operator.sql
 ```
 
@@ -43,16 +45,17 @@ Connected to PostgreSQL/API now:
 - organization/room/staff inspection;
 - entitlement overrides;
 - subscription provision + lifecycle transitions + immediate plan changes;
+- durable notification Jobs/Queue inspection + audited manual retry;
+- automation quota reservation/consumption inspection;
 - platform audit;
 - dashboard counts.
 
 Explicitly pending:
 - real login/session middleware (local dev uses a server-side dev principal);
-- durable Jobs/Queue integration;
 - Loki/observability integration;
 - subscription payment collection / renewal scheduler;
 - self-service paid upgrade/downgrade checkout;
 - scheduled future plan changes;
-- automation quota reservation/consumption ledger.
+- production notification provider adapter (Playwright Zalo or official API).
 
 CMS does not own a separate business database and browser code never selects the platform user id.
