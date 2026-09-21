@@ -5,9 +5,13 @@ import {
   resolveWorkerRole
 } from "./worker-config.js";
 
-test("worker role defaults to notification and accepts billing", () => {
+test("worker role defaults to notification and accepts isolated billing roles", () => {
   assert.equal(resolveWorkerRole(undefined), "NOTIFICATION");
   assert.equal(resolveWorkerRole("billing"), "BILLING");
+  assert.equal(
+    resolveWorkerRole("billing_webhook"),
+    "BILLING_WEBHOOK"
+  );
 });
 
 test("worker role rejects unknown processes", () => {
