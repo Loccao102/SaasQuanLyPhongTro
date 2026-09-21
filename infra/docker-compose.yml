@@ -1,27 +1,225 @@
+name: habi
+
+x-node-service: &node-service
+  image: habi-dev:local
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile.dev
+
+x-worker-environment: &worker-environment
+  NODE_ENV: development
+  INTERNAL_API_BASE_URL: http://api:4000/api
+  INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
+  WORKER_PROVIDER: ${WORKER_PROVIDER:-DEV_MANUAL_REVIEW}
+  WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1500}
+  WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-15000}
+  BILLING_SWEEP_INTERVAL_MS: ${BILLING_SWEEP_INTERVAL_MS:-60000}
+  BILLING_SWEEP_LIMIT: ${BILLING_SWEEP_LIMIT:-100}
+  BILLING_WEBHOOK_PROVIDER: ${BILLING_WEBHOOK_PROVIDER:-DEV_JSON_BANK}
+  BILLING_WEBHOOK_POLL_INTERVAL_MS: ${BILLING_WEBHOOK_POLL_INTERVAL_MS:-1500}
+  DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
+
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: propops
-      POSTGRES_USER: propops
-      POSTGRES_PASSWORD: propops
-    ports: ["5432:5432"]
-    volumes: [propops_postgres:/var/lib/postgresql/data]
+      POSTGRES_DB: ${POSTGRES_DB:-propops}
+      POSTGRES_USER: ${POSTGRES_USER:-propops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-propops}
+    ports:
+      - "5432:5432"
+    volumes:
+      - propops_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U propops -d propops"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-propops} -d ${POSTGRES_DB:-propops}"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+
   redis:
     image: redis:7.4-alpine
-    ports: ["6379:6379"]
+    ports:
+      - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
-    volumes: [propops_redis:/data]
+    volumes:
+      - propops_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+
+  migrate:
+    <<: *node-service
+    restart: "no"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops}@postgres:5432/${POSTGRES_DB:-propops}
+    command: ["pnpm", "--filter", "@propops/api", "db:setup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *node-service
+    environment:
+      NODE_ENV: development
+      API_PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops}@postgres:5432/${POSTGRES_DB:-propops}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      REDIS_URL: redis://redis:6379
+      CMS_DEV_USER_ID: ${CMS_DEV_USER_ID:-00000000-0000-0000-0000-000000000901}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
+      INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
+      DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
+    command: ["pnpm", "--filter", "@propops/api", "dev"]
+    ports:
+      - "4000:4000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  admin:
+    <<: *node-service
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@propops/admin",
+        "exec",
+        "next",
+        "dev",
+        "-H",
+        "0.0.0.0",
+        "-p",
+        "3000"
+      ]
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  staff:
+    <<: *node-service
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@propops/staff",
+        "exec",
+        "next",
+        "dev",
+        "-H",
+        "0.0.0.0",
+        "-p",
+        "3001"
+      ]
+    ports:
+      - "3001:3001"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  public-invoice:
+    <<: *node-service
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@propops/public-invoice",
+        "exec",
+        "next",
+        "dev",
+        "-H",
+        "0.0.0.0",
+        "-p",
+        "3002"
+      ]
+    ports:
+      - "3002:3002"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  cms:
+    <<: *node-service
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@propops/cms",
+        "exec",
+        "next",
+        "dev",
+        "-H",
+        "0.0.0.0",
+        "-p",
+        "3003"
+      ]
+    ports:
+      - "3003:3003"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-notification:
+    <<: *node-service
+    environment:
+      <<: *worker-environment
+      WORKER_ROLE: NOTIFICATION
+      WORKER_ID: docker-notification-worker
+    command: ["pnpm", "--filter", "@propops/worker", "dev"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-billing:
+    <<: *node-service
+    environment:
+      <<: *worker-environment
+      WORKER_ROLE: BILLING
+      WORKER_ID: docker-billing-worker
+    command: ["pnpm", "--filter", "@propops/worker", "dev"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-billing-webhook:
+    <<: *node-service
+    environment:
+      <<: *worker-environment
+      WORKER_ROLE: BILLING_WEBHOOK
+      WORKER_ID: docker-billing-webhook-worker
+    command: ["pnpm", "--filter", "@propops/worker", "dev"]
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   propops_postgres:
