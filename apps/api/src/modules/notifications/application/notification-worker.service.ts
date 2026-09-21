@@ -97,7 +97,10 @@ export class NotificationWorkerService {
             'PAST_DUE',
             'GRACE_PERIOD'
           )
+         LEFT JOIN notification_provider_controls pc
+           ON pc.provider = j.provider
          WHERE j.provider = $1
+           AND COALESCE(pc.status, 'ACTIVE') = 'ACTIVE'
            AND (
              j.status = 'QUEUED'
              OR (
