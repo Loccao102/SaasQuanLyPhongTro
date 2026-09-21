@@ -1219,6 +1219,33 @@ export class SubscriptionBillingService {
     const allocation = allocationResult.rows[0] ?? null;
 
     if (!allocation) {
+      const metadata =
+        typeof refreshedPayment.metadata === "object" &&
+        refreshedPayment.metadata !== null &&
+        !Array.isArray(refreshedPayment.metadata)
+          ? (refreshedPayment.metadata as Record<string, unknown>)
+          : null;
+      const paymentReference =
+        typeof metadata?.paymentReference === "string"
+          ? metadata.paymentReference
+          : null;
+
+      if (paymentReference) {
+        const invoiceResult = await client.query<InvoiceRow>(
+          this.invoiceSelectSql(
+            "WHERE i.payment_reference = $1"
+          ),
+          [paymentReference]
+        );
+        const invoice = invoiceResult.rows[0] ?? null;
+        return {
+          payment: this.mapPayment(refreshedPayment),
+          invoice: invoice ? this.mapInvoice(invoice) : null,
+          allocation: null,
+          matchedBy: invoice ? "PAYMENT_REFERENCE" : null
+        };
+      }
+
       return {
         payment: this.mapPayment(refreshedPayment),
         invoice: null,
