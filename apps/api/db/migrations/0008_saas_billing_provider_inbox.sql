@@ -53,6 +53,8 @@ CREATE TABLE saas_billing_webhook_events (
   headers jsonb NOT NULL DEFAULT '{}'::jsonb,
   received_at timestamptz NOT NULL DEFAULT now(),
   processing_started_at timestamptz,
+  processing_attempts integer NOT NULL DEFAULT 0
+    CHECK (processing_attempts >= 0),
   processed_at timestamptz,
   last_error_code text,
   last_error_message text,
@@ -73,5 +75,23 @@ CREATE INDEX saas_billing_webhook_events_provider_received_idx
     provider,
     received_at DESC
   );
+
+INSERT INTO system_settings (
+  key,
+  group_key,
+  label,
+  description,
+  value,
+  value_type
+)
+VALUES (
+  'billing_webhook_processing_timeout_seconds',
+  'Billing',
+  'Webhook processing timeout',
+  'Số giây trước khi một billing webhook PROCESSING được coi là stale và có thể claim lại.',
+  '300'::jsonb,
+  'INTEGER'
+)
+ON CONFLICT (key) DO NOTHING;
 
 COMMIT;
