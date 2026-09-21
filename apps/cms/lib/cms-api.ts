@@ -419,6 +419,7 @@ export const cmsApi = {
       cancelAtPeriodEnd: boolean;
       effectiveAt: string | null;
       voidedInvoiceIds: string[];
+      reopenedInvoiceIds: string[];
     }>(
       "/organizations/" +
         encodeURIComponent(organizationId) +
