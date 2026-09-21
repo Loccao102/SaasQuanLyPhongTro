@@ -31,6 +31,29 @@ export type CmsPlan = {
   effectiveFrom: string;
 };
 
+export type CmsSubscriptionStatus =
+  | "TRIALING"
+  | "ACTIVE"
+  | "PAST_DUE"
+  | "GRACE_PERIOD"
+  | "SUSPENDED"
+  | "CANCELLED";
+
+export type CmsSubscription = {
+  id: string;
+  organizationId: string;
+  planId: string;
+  planVersionId: string;
+  planCode: string;
+  status: CmsSubscriptionStatus;
+  version: number;
+  trialEndsAt: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  graceEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+};
+
 export type CmsOrganization = {
   id: string;
   slug: string;
@@ -40,6 +63,7 @@ export type CmsOrganization = {
   rooms: number;
   staff: number;
   subscriptionStatus: string;
+  subscriptionVersion: number | null;
   planCode: string | null;
   roomLimit: number | null;
   staffLimit: number | null;
@@ -129,6 +153,45 @@ export const cmsApi = {
       headers: { "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify(input)
     }),
+
+  provisionSubscription: (
+    organizationId: string,
+    input: {
+      planCode: string;
+      status: "TRIALING" | "ACTIVE";
+      trialEndsAt?: string | null;
+      reason: string;
+    }
+  ) =>
+    request<CmsSubscription>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/subscription",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(input)
+      }
+    ),
+
+  transitionSubscription: (
+    organizationId: string,
+    input: {
+      to: CmsSubscriptionStatus;
+      expectedVersion: number;
+      reason: string;
+    }
+  ) =>
+    request<CmsSubscription>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/subscription/transition",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(input)
+      }
+    ),
 
   updatePlan: (
     code: string,
