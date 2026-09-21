@@ -63,7 +63,9 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.sql
           run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.sql
           run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.sql
+          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
 
+          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.down.sql
           run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.down.sql
           run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.down.sql
           run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.down.sql
@@ -79,6 +81,7 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.sql
           run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.sql
           run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.sql
+          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
 
       - name: Leasing integration tests
         env:
