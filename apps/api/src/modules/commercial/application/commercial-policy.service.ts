@@ -238,6 +238,7 @@ export class CommercialPolicyService {
     client: PoolClient,
     organizationId: string
   ): Promise<OrganizationCommercialPolicy> {
+    await this.lockOrganizationForMutation(client, organizationId);
     const policy = await this.loadPolicy(client, organizationId);
     this.assertWriteAllowed(policy);
     return policy;
