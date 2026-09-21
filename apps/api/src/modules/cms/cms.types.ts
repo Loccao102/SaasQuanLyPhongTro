@@ -54,3 +54,7 @@ export interface ChangeSubscriptionPlanInput {
   expectedVersion?: number;
   reason?: string;
 }
+
+export interface RetryNotificationJobInput {
+  reason?: string;
+}
