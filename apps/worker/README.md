@@ -56,6 +56,7 @@ INTERNAL_API_BASE_URL=http://localhost:4000/api
 INTERNAL_WORKER_TOKEN=replace-with-a-long-random-worker-token
 BILLING_WEBHOOK_PROVIDER=DEV_JSON_BANK
 BILLING_WEBHOOK_POLL_INTERVAL_MS=1500
+DEV_BILLING_WEBHOOK_SECRET=replace-with-at-least-16-random-characters
 ```
 
 This role claims already-persisted, signature-verified raw provider events through `/api/internal/billing-webhooks/*`.
@@ -68,7 +69,9 @@ The worker:
 - sends normalized payment data back to the backend, where PaymentTransaction creation/allocation and webhook PROCESSED state commit atomically;
 - safely replays a lost response through backend payment/event fingerprints.
 
-`DEV_JSON_BANK` is local-development plumbing only and is blocked when `NODE_ENV=production`. A production provider such as SePay requires its own signature verification + raw-event persistence adapter and its own deterministic normalization adapter.
+`DEV_JSON_BANK` is local-development plumbing only and is blocked when `NODE_ENV=production`. The API dev ingress is `POST /api/integrations/billing-webhooks/dev-json-bank`; it requires `x-dev-event-id` plus a lowercase/uppercase hex HMAC-SHA256 in `x-dev-signature`, computed over the exact raw request body with `DEV_BILLING_WEBHOOK_SECRET`.
+
+A production provider such as SePay requires its own signature verification + raw-event persistence adapter and its own deterministic normalization adapter.
 
 ## Deployment invariant
 
