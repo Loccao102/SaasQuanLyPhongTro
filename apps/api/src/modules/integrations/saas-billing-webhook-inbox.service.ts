@@ -67,6 +67,7 @@ export class SaasBillingWebhookInboxService {
     providerEventId: string;
     signatureStatus: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
     rawBody: string;
+    rawBodySha256?: string;
     headers?: unknown;
   }): Promise<SaasBillingWebhookEventView> {
     return this.database.withTransaction((client) =>
@@ -93,9 +94,15 @@ export class SaasBillingWebhookInboxService {
       throw new BillingWebhookConflictError("rawBody is required.");
     }
 
-    const rawBodySha256 = createHash("sha256")
-      .update(input.rawBody)
-      .digest("hex");
+    const rawBodySha256 =
+      input.rawBodySha256 ??
+      createHash("sha256").update(input.rawBody).digest("hex");
+
+    if (!/^[a-f0-9]{64}$/i.test(rawBodySha256)) {
+      throw new BillingWebhookConflictError(
+        "rawBodySha256 must be a SHA-256 hex digest."
+      );
+    }
 
     const inserted = await client.query<WebhookEventRow>(
       `INSERT INTO saas_billing_webhook_events (
