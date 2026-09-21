@@ -64,3 +64,8 @@ export interface UpdateNotificationProviderControlInput {
   status?: "ACTIVE" | "PAUSED";
   reason?: string;
 }
+
+export interface RecordSubscriptionPaymentInput {
+  invoiceId?: string;
+  reason?: string;
+}
