@@ -58,3 +58,8 @@ export interface ChangeSubscriptionPlanInput {
 export interface RetryNotificationJobInput {
   reason?: string;
 }
+
+export interface UpdateNotificationProviderControlInput {
+  status?: "ACTIVE" | "PAUSED";
+  reason?: string;
+}
