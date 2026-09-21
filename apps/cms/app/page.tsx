@@ -538,11 +538,19 @@ export default function CmsPage() {
         nextJobs,
         nextBillingReconciliation
       ] = await Promise.all([
-        cmsApi.audit(),
+        hasPermission("platform.audit.read")
+          ? cmsApi.audit()
+          : Promise.resolve([]),
         cmsApi.dashboard(),
-        cmsApi.organizations(),
-        cmsApi.jobs(),
-        cmsApi.billingReconciliation()
+        hasPermission("platform.organizations.inspect")
+          ? cmsApi.organizations()
+          : Promise.resolve([]),
+        hasPermission("platform.jobs.read")
+          ? cmsApi.jobs()
+          : Promise.resolve(null),
+        hasPermission("platform.billing.read")
+          ? cmsApi.billingReconciliation()
+          : Promise.resolve(null)
       ]);
       setAudit(nextAudit);
       setDashboard(nextDashboard);
@@ -631,41 +639,47 @@ export default function CmsPage() {
                   label="Organizations"
                   value={String(dashboard.organizationCount)}
                   detail={
-                    dashboard.delinquentOrganizationCount +
-                    " organization delinquent"
+                    hasPermission("platform.billing.read")
+                      ? String(dashboard.delinquentOrganizationCount ?? 0) +
+                        " organization delinquent"
+                      : "Nguồn thật từ SaaS DB"
                   }
                   tone={
-                    dashboard.delinquentOrganizationCount
+                    (dashboard.delinquentOrganizationCount ?? 0) > 0
                       ? "warning"
                       : "info"
                   }
                 />
-                <MetricCard
-                  label="SaaS chưa thu"
-                  value={money(dashboard.outstandingVnd)}
-                  detail={
-                    dashboard.unpaidInvoiceCount +
-                    " invoice còn số dư"
-                  }
-                  tone={
-                    dashboard.outstandingVnd > 0
-                      ? "warning"
-                      : "success"
-                  }
-                />
-                <MetricCard
-                  label="SaaS quá hạn"
-                  value={money(dashboard.overdueVnd)}
-                  detail={
-                    dashboard.overdueInvoiceCount +
-                    " invoice đã đến hạn"
-                  }
-                  tone={
-                    dashboard.overdueVnd > 0
-                      ? "danger"
-                      : "success"
-                  }
-                />
+                {hasPermission("platform.billing.read") ? (
+                  <>
+                    <MetricCard
+                      label="SaaS chưa thu"
+                      value={money(dashboard.outstandingVnd ?? 0)}
+                      detail={
+                        String(dashboard.unpaidInvoiceCount ?? 0) +
+                        " invoice còn số dư"
+                      }
+                      tone={
+                        (dashboard.outstandingVnd ?? 0) > 0
+                          ? "warning"
+                          : "success"
+                      }
+                    />
+                    <MetricCard
+                      label="SaaS quá hạn"
+                      value={money(dashboard.overdueVnd ?? 0)}
+                      detail={
+                        String(dashboard.overdueInvoiceCount ?? 0) +
+                        " invoice đã đến hạn"
+                      }
+                      tone={
+                        (dashboard.overdueVnd ?? 0) > 0
+                          ? "danger"
+                          : "success"
+                      }
+                    />
+                  </>
+                ) : null}
                 <MetricCard
                   label="Active rooms"
                   value={String(dashboard.activeRoomCount)}
@@ -689,7 +703,11 @@ export default function CmsPage() {
               <section className="cms-grid">
                 <article className="cms-panel">
                   <SectionHeader title="Organizations cần chú ý" />
-                  {organizations.length === 0 ? (
+                  {!hasPermission("platform.organizations.inspect") ? (
+                    <div className="empty-state">
+                      Role hiện tại không có quyền inspect organizations.
+                    </div>
+                  ) : organizations.length === 0 ? (
                     <div className="empty-state">Chưa có organization.</div>
                   ) : (
                     <div className="cms-table-wrap">
@@ -773,18 +791,26 @@ export default function CmsPage() {
                       <span>CMS API / PostgreSQL</span>
                       <StatusBadge tone="success">CONNECTED</StatusBadge>
                     </div>
-                    <div>
-                      <span>Jobs persistence</span>
-                      <StatusBadge tone="warning">
-                        {jobsStatus?.connected ? "CONNECTED" : "PENDING"}
-                      </StatusBadge>
-                    </div>
-                    <div>
-                      <span>Observability logs</span>
-                      <StatusBadge tone="warning">
-                        {logsStatus?.connected ? "CONNECTED" : "PENDING"}
-                      </StatusBadge>
-                    </div>
+                    {hasPermission("platform.jobs.read") ? (
+                      <div>
+                        <span>Jobs persistence</span>
+                        <StatusBadge
+                          tone={jobsStatus?.connected ? "success" : "warning"}
+                        >
+                          {jobsStatus?.connected ? "CONNECTED" : "PENDING"}
+                        </StatusBadge>
+                      </div>
+                    ) : null}
+                    {hasPermission("platform.logs.read") ? (
+                      <div>
+                        <span>Observability logs</span>
+                        <StatusBadge
+                          tone={logsStatus?.connected ? "success" : "warning"}
+                        >
+                          {logsStatus?.connected ? "CONNECTED" : "PENDING"}
+                        </StatusBadge>
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               </section>
