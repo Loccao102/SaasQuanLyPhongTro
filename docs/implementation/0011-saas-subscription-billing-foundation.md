@@ -7,13 +7,23 @@
 - current billing period and `past_due_at`;
 - versioned SaaS renewal invoice snapshots;
 - independent payment transactions;
-- payment allocations;
+- append-only payment allocations;
 - partial payment support;
 - derived paid/remaining balance;
 - derived overdue state;
 - idempotent manual CMS payment reconciliation;
-- dedicated `platform.billing.manage` permission;
+- dedicated `platform.billing.read` / `platform.billing.manage` permissions;
 - CMS billing inspection per organization;
+- migration `0008_saas_billing_provider_inbox.sql`;
+- unique invoice payment references;
+- raw provider webhook inbox with payload fingerprinting;
+- signature gating before processing;
+- normalized provider PaymentTransaction ingestion;
+- safe exact-reference auto-match;
+- REVIEW_REQUIRED routing for unmatched/overpay/unsafe cases;
+- CMS SaaS Billing reconciliation queue;
+- audited/idempotent provider payment allocation;
+- cross-organization allocation rejection;
 - delinquency transitions:
   - TRIALING/ACTIVE -> PAST_DUE;
   - PAST_DUE -> GRACE_PERIOD;
@@ -30,8 +40,8 @@
 - a payment transaction is not an invoice mutation;
 - allocations are the source for invoice paid/remaining balance;
 - multiple transactions can fund one invoice;
-- one transaction can support future multi-invoice allocation;
-- manual overpayment is rejected until credit policy exists;
+- one transaction can fund multiple invoices through append-only allocations;
+- allocation cannot exceed payment unallocated balance or invoice remaining balance;
 - duplicate manual command/payment idempotency does not create another transaction/allocation;
 - fully paying a future period does not advance subscription before the period starts.
 
@@ -52,10 +62,8 @@ The confirmation shows exact organization, invoice, period, balances and consequ
 
 ## Pending
 
-- provider webhook/event inbox;
-- provider PaymentTransaction ingestion;
-- unique auto-matching rules;
-- REVIEW_REQUIRED reconciliation UI;
+- provider-specific public webhook adapters/signature verification (for example SePay);
+- asynchronous webhook parsing worker/adapter implementation;
 - refund/credit-balance policy;
 - provider transaction search;
 - scheduled cancellation-at-period-end;
