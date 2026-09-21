@@ -86,6 +86,17 @@ export class NotificationWorkerService {
          JOIN notification_campaigns c
            ON c.organization_id = j.organization_id
           AND c.id = j.campaign_id
+         JOIN organizations o
+           ON o.id = j.organization_id
+          AND o.status = 'ACTIVE'
+         JOIN organization_subscriptions s
+           ON s.organization_id = j.organization_id
+          AND s.status IN (
+            'TRIALING',
+            'ACTIVE',
+            'PAST_DUE',
+            'GRACE_PERIOD'
+          )
          WHERE j.provider = $1
            AND (
              j.status = 'QUEUED'
