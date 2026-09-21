@@ -159,6 +159,31 @@ paths:
         "400": { description: Invalid/cancelled/no-op plan change }
         "404": { description: Subscription or target plan not found }
         "409": { description: Optimistic version or idempotency conflict }
+  /organizations/{organizationId}/subscription/cancellation:
+    post:
+      summary: Schedule or revoke cancellation at the current SaaS period end
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancelAtPeriodEnd, expectedVersion, reason]
+              properties:
+                cancelAtPeriodEnd: { type: boolean }
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200":
+          description: Cancellation schedule updated; unpaid cancellation-created renewal invoice voids/reopens are returned
+        "400": { description: Invalid command input }
+        "404": { description: Organization subscription not found }
+        "409":
+          description: Concurrent version, invalid status, duplicate state or future funded period conflict
+        "403": { description: Missing platform.subscriptions.manage }
   /organizations/{organizationId}/billing/payments/manual:
     post:
       summary: Record and allocate a verified manual SaaS subscription payment
