@@ -16,6 +16,7 @@ import type {
   CmsRequest,
   PlatformPrincipal,
   ProvisionSubscriptionInput,
+  RecordSubscriptionPaymentInput,
   RevokeEntitlementOverrideInput,
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
@@ -118,6 +119,21 @@ export class CmsController {
     @Headers("idempotency-key") idempotencyKey?: string
   ) {
     return this.cms.changeSubscriptionPlan(
+      this.principal(request),
+      organizationId,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("organizations/:organizationId/billing/payments/manual")
+  recordSubscriptionPayment(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Body() input: RecordSubscriptionPaymentInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.recordSubscriptionPayment(
       this.principal(request),
       organizationId,
       input,
