@@ -1,4 +1,4 @@
-# PropOps CMS
+# Habi Control Plane
 
 Internal SaaS control surface.
 
