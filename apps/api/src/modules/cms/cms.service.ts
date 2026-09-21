@@ -54,6 +54,7 @@ import {
   type SettingValueType
 } from "./domain/config-validation.js";
 import {
+  platformPermissionsForRole,
   platformRoleHasPermission,
   type PlatformPermission
 } from "./domain/platform-access.js";
@@ -165,6 +166,15 @@ export class CmsService {
     private readonly notificationOperations: NotificationOperationsService
   ) {}
 
+  getBootstrap(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.cms.read");
+    return {
+      userId: principal.userId,
+      role: principal.role,
+      permissions: platformPermissionsForRole(principal.role)
+    };
+  }
+
   async getDashboard(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
 
@@ -250,21 +260,36 @@ export class CmsService {
       settingCount: Number(settings.rows[0]?.count ?? 0),
       activePlanCount: Number(plans.rows[0]?.count ?? 0),
       platformAudit24h: Number(audit.rows[0]?.count ?? 0),
-      delinquentOrganizationCount: Number(
-        delinquent.rows[0]?.count ?? 0
-      ),
-      unpaidInvoiceCount: Number(
-        billing.rows[0]?.unpaid_invoice_count ?? 0
-      ),
-      overdueInvoiceCount: Number(
-        billing.rows[0]?.overdue_invoice_count ?? 0
-      ),
-      outstandingVnd: Number(
-        billing.rows[0]?.outstanding_vnd ?? 0
-      ),
-      overdueVnd: Number(
-        billing.rows[0]?.overdue_vnd ?? 0
+      delinquentOrganizationCount: platformRoleHasPermission(
+        principal.role,
+        "platform.billing.read"
       )
+        ? Number(delinquent.rows[0]?.count ?? 0)
+        : null,
+      unpaidInvoiceCount: platformRoleHasPermission(
+        principal.role,
+        "platform.billing.read"
+      )
+        ? Number(billing.rows[0]?.unpaid_invoice_count ?? 0)
+        : null,
+      overdueInvoiceCount: platformRoleHasPermission(
+        principal.role,
+        "platform.billing.read"
+      )
+        ? Number(billing.rows[0]?.overdue_invoice_count ?? 0)
+        : null,
+      outstandingVnd: platformRoleHasPermission(
+        principal.role,
+        "platform.billing.read"
+      )
+        ? Number(billing.rows[0]?.outstanding_vnd ?? 0)
+        : null,
+      overdueVnd: platformRoleHasPermission(
+        principal.role,
+        "platform.billing.read"
+      )
+        ? Number(billing.rows[0]?.overdue_vnd ?? 0)
+        : null
     };
   }
 
