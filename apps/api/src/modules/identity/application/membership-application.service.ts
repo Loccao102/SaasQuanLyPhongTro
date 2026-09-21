@@ -66,7 +66,6 @@ export class MembershipApplicationService {
         client,
         input.organizationId
       );
-      this.commercialPolicy.assertWriteAllowed(policy);
 
       if (
         !this.accessControl.can(input.actor.membership, "membership.manage", {
@@ -97,6 +96,8 @@ export class MembershipApplicationService {
       if (target.status === "ACTIVE") {
         return this.mapMembership(target);
       }
+
+      this.commercialPolicy.assertWriteAllowed(policy);
 
       const usageResult = await client.query<QueryResultRow & { count: number }>(
         `SELECT count(*)::int AS count
