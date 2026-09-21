@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.7.0
+  version: 0.8.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -139,6 +139,28 @@ paths:
         "400": { description: Invalid/cancelled/no-op plan change }
         "404": { description: Subscription or target plan not found }
         "409": { description: Optimistic version or idempotency conflict }
+  /organizations/{organizationId}/billing/payments/manual:
+    post:
+      summary: Record and allocate a verified manual SaaS subscription payment
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amountVnd, reason]
+              properties:
+                invoiceId: { type: string, format: uuid }
+                amountVnd: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Payment transaction and invoice allocation recorded or idempotently replayed }
+        "400": { description: Invalid amount/reason }
+        "404": { description: Organization/subscription invoice not found }
+        "409": { description: Paid/void invoice, overpayment, invalid state or idempotency conflict }
   /entitlement-overrides:
     get:
       summary: List current non-revoked organization entitlement overrides
