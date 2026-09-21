@@ -18,6 +18,7 @@ import type {
   PlatformPrincipal,
   ProvisionSubscriptionInput,
   RecordSubscriptionPaymentInput,
+  RequeueBillingWebhookInput,
   RevokeEntitlementOverrideInput,
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
@@ -162,6 +163,21 @@ export class CmsController {
     return this.cms.allocateProviderPayment(
       this.principal(request),
       paymentId,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("billing/webhooks/:eventId/requeue")
+  requeueBillingWebhook(
+    @Req() request: CmsRequest,
+    @Param("eventId") eventId: string,
+    @Body() input: RequeueBillingWebhookInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.requeueBillingWebhook(
+      this.principal(request),
+      eventId,
       input,
       idempotencyKey
     );
