@@ -191,6 +191,11 @@ export type CmsProviderPaymentReview = {
   paymentReference: string | null;
 };
 
+export type CmsProviderPaymentSearchResult = {
+  items: CmsProviderPaymentReview[];
+  nextCursor: string | null;
+};
+
 export type CmsReconciliationInvoice = {
   id: string;
   organizationId: string;
@@ -370,6 +375,31 @@ export const cmsApi = {
   jobs: () => request<CmsJobsStatus>("/jobs"),
   billingReconciliation: () =>
     request<CmsBillingReconciliation>("/billing/reconciliation"),
+  providerPaymentsSearch: (input?: {
+    query?: string;
+    provider?: string;
+    reconciliationStatus?:
+      | "UNALLOCATED"
+      | "ALLOCATED"
+      | "REVIEW_REQUIRED";
+    limit?: number;
+    cursor?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (input?.query) params.set("q", input.query);
+    if (input?.provider) params.set("provider", input.provider);
+    if (input?.reconciliationStatus) {
+      params.set("status", input.reconciliationStatus);
+    }
+    if (input?.limit !== undefined) {
+      params.set("limit", String(input.limit));
+    }
+    if (input?.cursor) params.set("cursor", input.cursor);
+    const suffix = params.size > 0 ? "?" + params.toString() : "";
+    return request<CmsProviderPaymentSearchResult>(
+      "/billing/provider-payments" + suffix
+    );
+  },
   logs: () => request<IntegrationStatus>("/logs"),
 
   updateSetting: (
