@@ -164,6 +164,7 @@ export interface SubscriptionCancellationScheduleView {
   cancelAtPeriodEnd: boolean;
   effectiveAt: string | null;
   voidedInvoiceIds: string[];
+  reopenedInvoiceIds: string[];
 }
 
 export class SubscriptionBillingConflictError extends Error {
@@ -1196,9 +1197,17 @@ export class SubscriptionBillingService {
     }
 
     let voidedInvoiceIds: string[] = [];
+    let reopenedInvoiceIds: string[] = [];
     if (input.cancelAtPeriodEnd) {
       voidedInvoiceIds =
         await this.voidUnpaidFutureInvoicesInTransaction(
+          client,
+          subscription,
+          effectiveAt
+        );
+    } else {
+      reopenedInvoiceIds =
+        await this.reopenCancellationVoidedInvoicesInTransaction(
           client,
           subscription,
           effectiveAt
@@ -1236,7 +1245,8 @@ export class SubscriptionBillingService {
         version: updatedVersion,
         cancelAtPeriodEnd: input.cancelAtPeriodEnd,
         effectiveAt: effectiveAt.toISOString(),
-        voidedInvoiceIds
+        voidedInvoiceIds,
+        reopenedInvoiceIds
       },
       reason
     });
@@ -1248,7 +1258,8 @@ export class SubscriptionBillingService {
       version: updatedVersion,
       cancelAtPeriodEnd: input.cancelAtPeriodEnd,
       effectiveAt: effectiveAt.toISOString(),
-      voidedInvoiceIds
+      voidedInvoiceIds,
+      reopenedInvoiceIds
     };
   }
 
