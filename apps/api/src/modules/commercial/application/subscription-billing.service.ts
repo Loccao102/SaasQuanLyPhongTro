@@ -551,6 +551,107 @@ export class SubscriptionBillingService {
     );
   }
 
+  async processDueBatch(
+    limit = 100
+  ): Promise<{
+    processed: number;
+    results: Array<{
+      organizationId: string;
+      ok: boolean;
+      invoiceId?: string | null;
+      activatedPaidPeriod?: boolean;
+      transition?: string | null;
+      error?: string;
+    }>;
+  }> {
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+    const candidates = await this.database.query<
+      QueryResultRow & { organization_id: string }
+    >(
+      `WITH billing_settings AS (
+         SELECT (value #>> '{}')::int AS lead_days
+         FROM system_settings
+         WHERE key = 'renewal_invoice_lead_days'
+       )
+       SELECT s.organization_id::text
+       FROM organization_subscriptions s
+       CROSS JOIN billing_settings bs
+       WHERE s.status <> 'CANCELLED'
+         AND (
+           (
+             s.status = 'TRIALING'
+             AND s.trial_ends_at IS NOT NULL
+             AND s.trial_ends_at <=
+               now() + make_interval(days => bs.lead_days)
+           )
+           OR (
+             s.status <> 'TRIALING'
+             AND s.current_period_end IS NOT NULL
+             AND s.current_period_end <=
+               now() + make_interval(days => bs.lead_days)
+           )
+           OR (
+             s.status = 'PAST_DUE'
+             AND s.past_due_at IS NOT NULL
+           )
+           OR (
+             s.status = 'GRACE_PERIOD'
+             AND s.grace_ends_at IS NOT NULL
+           )
+         )
+       ORDER BY
+         COALESCE(
+           s.trial_ends_at,
+           s.current_period_end,
+           s.past_due_at,
+           s.grace_ends_at
+         ),
+         s.organization_id
+       LIMIT $1`,
+      [safeLimit]
+    );
+
+    const results: Array<{
+      organizationId: string;
+      ok: boolean;
+      invoiceId?: string | null;
+      activatedPaidPeriod?: boolean;
+      transition?: string | null;
+      error?: string;
+    }> = [];
+
+    for (const candidate of candidates.rows) {
+      try {
+        const result = await this.processOrganizationBilling(
+          candidate.organization_id
+        );
+        results.push({
+          organizationId: candidate.organization_id,
+          ok: true,
+          invoiceId: result.invoice?.id ?? null,
+          activatedPaidPeriod: result.activatedPaidPeriod,
+          transition: result.transition
+            ? result.transition.from + "->" + result.transition.to
+            : null
+        });
+      } catch (error) {
+        results.push({
+          organizationId: candidate.organization_id,
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unknown billing processing error"
+        });
+      }
+    }
+
+    return {
+      processed: results.length,
+      results
+    };
+  }
+
   processOrganizationBilling(
     organizationId: string
   ): Promise<{
