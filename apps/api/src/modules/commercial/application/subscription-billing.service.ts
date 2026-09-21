@@ -27,14 +27,15 @@ type SubscriptionBillingRow = QueryResultRow & {
 
 type InvoiceRow = QueryResultRow & {
   id: string;
-  organization_id: string;
-  subscription_id: string;
+  organization_id: string | null;
+  subscription_id: string | null;
   plan_id: string;
   plan_version_id: string;
   billing_interval: "MONTHLY" | "YEARLY";
   period_start: Date;
   period_end: Date;
   amount_vnd: string;
+  payment_reference: string;
   status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
   issued_at: Date;
   due_at: Date;
@@ -88,6 +89,7 @@ export interface SubscriptionInvoiceView {
   periodStart: string;
   periodEnd: string;
   amountVnd: number;
+  paymentReference: string;
   paidAmountVnd: number;
   remainingAmountVnd: number;
   status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
@@ -101,8 +103,8 @@ export interface SubscriptionInvoiceView {
 
 export interface SubscriptionPaymentView {
   id: string;
-  organizationId: string;
-  subscriptionId: string;
+  organizationId: string | null;
+  subscriptionId: string | null;
   amountVnd: number;
   allocatedAmountVnd: number;
   unallocatedAmountVnd: number;
@@ -267,6 +269,7 @@ export class SubscriptionBillingService {
          i.period_start,
          i.period_end,
          i.amount_vnd::text,
+         i.payment_reference,
          i.status,
          i.issued_at,
          i.due_at,
@@ -929,6 +932,12 @@ export class SubscriptionBillingService {
     allocation: AllocationRow,
     invoiceId: string
   ): Promise<BillingSettlementView> {
+    if (!payment.organization_id || !payment.subscription_id) {
+      throw new SubscriptionBillingConflictError(
+        "Allocated payment must be assigned to an organization subscription."
+      );
+    }
+
     const invoiceResult = await client.query<InvoiceRow>(
       this.invoiceSelectSql(
         "WHERE i.organization_id = $1 AND i.id = $2"
@@ -1080,6 +1089,7 @@ export class SubscriptionBillingService {
        i.period_start,
        i.period_end,
        i.amount_vnd::text,
+       i.payment_reference,
        i.status,
        i.issued_at,
        i.due_at,
@@ -1163,6 +1173,7 @@ export class SubscriptionBillingService {
       periodStart: row.period_start.toISOString(),
       periodEnd: row.period_end.toISOString(),
       amountVnd: Number(row.amount_vnd),
+      paymentReference: row.payment_reference,
       paidAmountVnd: Number(row.paid_amount_vnd),
       remainingAmountVnd: Number(row.remaining_amount_vnd),
       status: row.status,
