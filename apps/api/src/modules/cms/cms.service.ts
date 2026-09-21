@@ -210,7 +210,10 @@ export class CmsService {
              i.due_at,
              i.status,
              GREATEST(
-               i.amount_vnd - COALESCE(sum(a.amount_vnd), 0),
+               i.amount_vnd - COALESCE(
+                 sum(a.amount_vnd) FILTER (WHERE p.id IS NOT NULL),
+                 0
+               ),
                0
              )::bigint AS remaining_vnd
            FROM saas_subscription_invoices i
