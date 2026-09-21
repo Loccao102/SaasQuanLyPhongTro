@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Pool } from "pg";
+import { SubscriptionManagementService } from "../commercial/application/subscription-management.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { CmsService } from "./cms.service.js";
 import type { PlatformPrincipal } from "./cms.types.js";
@@ -59,7 +60,10 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
 
   const fixturePool = new Pool({ connectionString });
   const database = new DatabaseService();
-  const service = new CmsService(database);
+  const service = new CmsService(
+    database,
+    new SubscriptionManagementService()
+  );
 
   try {
     await cleanup(fixturePool);
