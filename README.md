@@ -48,6 +48,7 @@ Public Invoice ┘                 │
 - [Notification Automation](docs/operations/NOTIFICATION_AUTOMATION.md)
 - [Offline PWA](docs/operations/OFFLINE_PWA.md)
 - [Payment Reconciliation](docs/operations/PAYMENT_RECONCILIATION.md)
+- [Active Development Backlog](develop.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture Decision Records](docs/adr/)
 
