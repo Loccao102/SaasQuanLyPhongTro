@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Docker Compose config
+        run: docker compose -f infra/docker-compose.yml config >/dev/null
+
       - name: Lint
         run: pnpm lint
 
@@ -45,6 +48,21 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+      - name: Database setup command smoke test
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=propops \
+            postgres:17-alpine \
+            psql -h 127.0.0.1 -U propops -d postgres -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS propops_runtime WITH (FORCE);" \
+            -c "CREATE DATABASE propops_runtime;"
+
+          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime \
+            pnpm --filter @propops/api db:setup
+
+          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime \
+            pnpm --filter @propops/api db:setup
 
       - name: Migration smoke test
         run: |
