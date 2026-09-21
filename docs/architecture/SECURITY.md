@@ -117,3 +117,17 @@ Playwright session là credential nhạy cảm:
 - tách worker;
 - không log cookie/token;
 - invalidate khi nghi ngờ lộ.
+
+## Internal worker API
+
+Notification workers never receive tenant/platform browser credentials and do not write PostgreSQL directly.
+
+Worker execution endpoints live under `/api/internal/notifications/*` and require an `INTERNAL_WORKER_TOKEN` bearer token. The token is server-side only and must be stored in deployment secrets.
+
+The API remains the authority for:
+- commercial execution checks;
+- quota consumption;
+- durable job/attempt state;
+- final send verification state.
+
+A worker retry that already consumed quota may reuse the same consumption idempotently, but it must still pass the current subscription/organization write policy before a new provider attempt starts.
