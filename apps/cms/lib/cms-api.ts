@@ -144,6 +144,53 @@ export type CmsBillingSettlement = {
   };
 };
 
+export type CmsProviderPaymentReview = {
+  payment: {
+    id: string;
+    organizationId: string | null;
+    subscriptionId: string | null;
+    amountVnd: number;
+    allocatedAmountVnd: number;
+    unallocatedAmountVnd: number;
+    status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+    reconciliationStatus:
+      | "UNALLOCATED"
+      | "ALLOCATED"
+      | "REVIEW_REQUIRED";
+    source: "MANUAL" | "PROVIDER";
+    provider: string | null;
+    providerTransactionId: string | null;
+    occurredAt: string;
+    createdAt: string;
+  };
+  paymentReference: string | null;
+};
+
+export type CmsReconciliationInvoice = {
+  id: string;
+  organizationId: string;
+  subscriptionId: string;
+  planId: string;
+  planVersionId: string;
+  billingInterval: "MONTHLY" | "YEARLY";
+  periodStart: string;
+  periodEnd: string;
+  amountVnd: number;
+  paymentReference: string;
+  paidAmountVnd: number;
+  remainingAmountVnd: number;
+  status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  isOverdue: boolean;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+};
+
+export type CmsBillingReconciliation = {
+  reviewPayments: CmsProviderPaymentReview[];
+  invoices: CmsReconciliationInvoice[];
+};
+
 export type CmsAuditEvent = {
   id: string;
   at: string;
@@ -262,6 +309,8 @@ export const cmsApi = {
     request<CmsEntitlementOverride[]>("/entitlement-overrides"),
   audit: () => request<CmsAuditEvent[]>("/audit"),
   jobs: () => request<CmsJobsStatus>("/jobs"),
+  billingReconciliation: () =>
+    request<CmsBillingReconciliation>("/billing/reconciliation"),
   logs: () => request<IntegrationStatus>("/logs"),
 
   updateSetting: (
@@ -416,6 +465,23 @@ export const cmsApi = {
       "/organizations/" +
         encodeURIComponent(organizationId) +
         "/billing/payments/manual",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ invoiceId, amountVnd, reason })
+      }
+    ),
+
+  allocateProviderPayment: (
+    paymentId: string,
+    invoiceId: string,
+    amountVnd: number,
+    reason: string
+  ) =>
+    request<CmsBillingSettlement>(
+      "/billing/reconciliation/" +
+        encodeURIComponent(paymentId) +
+        "/allocate",
       {
         method: "POST",
         headers: { "idempotency-key": crypto.randomUUID() },
