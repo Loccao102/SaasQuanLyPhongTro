@@ -167,7 +167,15 @@ export class CmsService {
   async getDashboard(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
 
-    const [orgs, rooms, settings, plans, audit] = await Promise.all([
+    const [
+      orgs,
+      rooms,
+      settings,
+      plans,
+      audit,
+      delinquent,
+      billing
+    ] = await Promise.all([
       this.db.query<QueryResultRow & { count: string }>(
         "SELECT count(*)::text AS count FROM organizations"
       ),
@@ -182,6 +190,53 @@ export class CmsService {
       ),
       this.db.query<QueryResultRow & { count: string }>(
         "SELECT count(*)::text AS count FROM platform_audit_events WHERE occurred_at >= now() - interval '24 hours'"
+      ),
+      this.db.query<QueryResultRow & { count: string }>(
+        `SELECT count(*)::text AS count
+         FROM organization_subscriptions
+         WHERE status IN ('PAST_DUE', 'GRACE_PERIOD', 'SUSPENDED')`
+      ),
+      this.db.query<
+        QueryResultRow & {
+          unpaid_invoice_count: string;
+          overdue_invoice_count: string;
+          outstanding_vnd: string;
+          overdue_vnd: string;
+        }
+      >(
+        `WITH invoice_balances AS (
+           SELECT
+             i.id,
+             i.due_at,
+             i.status,
+             GREATEST(
+               i.amount_vnd - COALESCE(sum(a.amount_vnd), 0),
+               0
+             )::bigint AS remaining_vnd
+           FROM saas_subscription_invoices i
+           LEFT JOIN saas_subscription_payment_allocations a
+             ON a.organization_id = i.organization_id
+            AND a.invoice_id = i.id
+           LEFT JOIN saas_subscription_payments p
+             ON p.organization_id = a.organization_id
+            AND p.id = a.payment_id
+            AND p.status = 'SUCCEEDED'
+           WHERE i.status <> 'VOID'
+           GROUP BY i.id
+         )
+         SELECT
+           count(*) FILTER (
+             WHERE remaining_vnd > 0
+           )::text AS unpaid_invoice_count,
+           count(*) FILTER (
+             WHERE remaining_vnd > 0
+               AND due_at <= now()
+           )::text AS overdue_invoice_count,
+           COALESCE(sum(remaining_vnd), 0)::text AS outstanding_vnd,
+           COALESCE(sum(remaining_vnd) FILTER (
+             WHERE due_at <= now()
+           ), 0)::text AS overdue_vnd
+         FROM invoice_balances`
       )
     ]);
 
@@ -190,7 +245,22 @@ export class CmsService {
       activeRoomCount: Number(rooms.rows[0]?.count ?? 0),
       settingCount: Number(settings.rows[0]?.count ?? 0),
       activePlanCount: Number(plans.rows[0]?.count ?? 0),
-      platformAudit24h: Number(audit.rows[0]?.count ?? 0)
+      platformAudit24h: Number(audit.rows[0]?.count ?? 0),
+      delinquentOrganizationCount: Number(
+        delinquent.rows[0]?.count ?? 0
+      ),
+      unpaidInvoiceCount: Number(
+        billing.rows[0]?.unpaid_invoice_count ?? 0
+      ),
+      overdueInvoiceCount: Number(
+        billing.rows[0]?.overdue_invoice_count ?? 0
+      ),
+      outstandingVnd: Number(
+        billing.rows[0]?.outstanding_vnd ?? 0
+      ),
+      overdueVnd: Number(
+        billing.rows[0]?.overdue_vnd ?? 0
+      )
     };
   }
 
