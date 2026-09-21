@@ -20,6 +20,7 @@ type WebhookEventRow = QueryResultRow & {
   headers: unknown;
   received_at: Date;
   processing_started_at: Date | null;
+  processing_attempts: number;
   processed_at: Date | null;
   last_error_code: string | null;
   last_error_message: string | null;
@@ -41,6 +42,7 @@ export interface SaasBillingWebhookEventView {
   headers: unknown;
   receivedAt: string;
   processingStartedAt: string | null;
+  processingAttempts: number;
   processedAt: string | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
@@ -127,6 +129,7 @@ export class SaasBillingWebhookInboxService {
          headers,
          received_at,
          processing_started_at,
+         processing_attempts,
          processed_at,
          last_error_code,
          last_error_message`,
@@ -192,11 +195,26 @@ export class SaasBillingWebhookInboxService {
            last_error_code,
            last_error_message
          FROM saas_billing_webhook_events
-         WHERE processing_status = 'RECEIVED'
-           AND signature_status = 'VERIFIED'
+         CROSS JOIN LATERAL (
+           SELECT (value #>> '{}')::int AS timeout_seconds
+           FROM system_settings
+           WHERE key = 'billing_webhook_processing_timeout_seconds'
+         ) timeout_config
+         WHERE signature_status = 'VERIFIED'
+           AND (
+             processing_status = 'RECEIVED'
+             OR (
+               processing_status = 'PROCESSING'
+               AND processing_started_at IS NOT NULL
+               AND processing_started_at <=
+                 now() - make_interval(
+                   secs => timeout_config.timeout_seconds
+                 )
+             )
+           )
            AND ($1::text IS NULL OR provider = $1)
          ORDER BY received_at, id
-         FOR UPDATE SKIP LOCKED
+         FOR UPDATE OF saas_billing_webhook_events SKIP LOCKED
          LIMIT 1`,
         [provider?.trim() || null]
       );
@@ -209,6 +227,7 @@ export class SaasBillingWebhookInboxService {
         `UPDATE saas_billing_webhook_events
          SET processing_status = 'PROCESSING',
              processing_started_at = now(),
+             processing_attempts = processing_attempts + 1,
              last_error_code = NULL,
              last_error_message = NULL,
              updated_at = now()
@@ -220,7 +239,8 @@ export class SaasBillingWebhookInboxService {
         ...this.mapEvent({
           ...row,
           processing_status: "PROCESSING",
-          processing_started_at: new Date()
+          processing_started_at: new Date(),
+          processing_attempts: row.processing_attempts + 1
         }),
         rawBody: row.raw_body
       };
@@ -233,63 +253,103 @@ export class SaasBillingWebhookInboxService {
     errorCode?: string | null;
     errorMessage?: string | null;
   }): Promise<SaasBillingWebhookEventView> {
-    return this.database.withTransaction(async (client) => {
-      const result = await client.query<WebhookEventRow>(
-        this.eventSelectSql("WHERE id = $1 FOR UPDATE"),
-        [input.eventId]
+    return this.database.withTransaction((client) =>
+      this.completeInTransaction(client, input)
+    );
+  }
+
+  async completeInTransaction(
+    client: PoolClient,
+    input: {
+      eventId: string;
+      outcome: "PROCESSED" | "REVIEW_REQUIRED" | "IGNORED" | "FAILED";
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }
+  ): Promise<SaasBillingWebhookEventView> {
+    const result = await client.query<WebhookEventRow>(
+      this.eventSelectSql("WHERE id = $1 FOR UPDATE"),
+      [input.eventId]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new BillingWebhookConflictError(
+        "Billing webhook event was not found."
       );
-      const row = result.rows[0];
-      if (!row) {
-        throw new BillingWebhookConflictError(
-          "Billing webhook event was not found."
-        );
-      }
+    }
 
-      if (
-        row.processing_status !== "PROCESSING" &&
-        row.processing_status !== input.outcome
-      ) {
-        throw new BillingWebhookConflictError(
-          "Webhook event is not in PROCESSING state."
-        );
-      }
-
-      if (row.processing_status === input.outcome) {
-        return this.mapEvent(row);
-      }
-
-      const updated = await client.query<WebhookEventRow>(
-        `UPDATE saas_billing_webhook_events
-         SET processing_status = $2,
-             processed_at = now(),
-             last_error_code = $3,
-             last_error_message = $4,
-             updated_at = now()
-         WHERE id = $1
-         RETURNING
-           id::text,
-           provider,
-           provider_event_id,
-           signature_status,
-           processing_status,
-           raw_body,
-           raw_body_sha256,
-           headers,
-           received_at,
-           processing_started_at,
-           processed_at,
-           last_error_code,
-           last_error_message`,
-        [
-          row.id,
-          input.outcome,
-          input.errorCode ?? null,
-          input.errorMessage ?? null
-        ]
+    if (
+      row.processing_status !== "PROCESSING" &&
+      row.processing_status !== input.outcome
+    ) {
+      throw new BillingWebhookConflictError(
+        "Webhook event is not in PROCESSING state."
       );
+    }
 
-      return this.mapEvent(updated.rows[0]!);
-    });
+    if (row.processing_status === input.outcome) {
+      return this.mapEvent(row);
+    }
+
+    const updated = await client.query<WebhookEventRow>(
+      `UPDATE saas_billing_webhook_events
+       SET processing_status = $2,
+           processed_at = now(),
+           last_error_code = $3,
+           last_error_message = $4,
+           updated_at = now()
+       WHERE id = $1
+       RETURNING
+         id::text,
+         provider,
+         provider_event_id,
+         signature_status,
+         processing_status,
+         raw_body,
+         raw_body_sha256,
+         headers,
+         received_at,
+         processing_started_at,
+         processing_attempts,
+         processed_at,
+         last_error_code,
+         last_error_message`,
+      [
+        row.id,
+        input.outcome,
+        input.errorCode ?? null,
+        input.errorMessage ?? null
+      ]
+    );
+
+    return this.mapEvent(updated.rows[0]!);
+  }
+
+  async getProcessingEventInTransaction(
+    client: PoolClient,
+    eventId: string
+  ): Promise<
+    (SaasBillingWebhookEventView & { rawBody: string }) | null
+  > {
+    const result = await client.query<WebhookEventRow>(
+      this.eventSelectSql("WHERE id = $1 FOR UPDATE"),
+      [eventId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    if (
+      row.processing_status !== "PROCESSING" ||
+      row.signature_status !== "VERIFIED"
+    ) {
+      throw new BillingWebhookConflictError(
+        "Webhook event is not a verified PROCESSING event."
+      );
+    }
+
+    return {
+      ...this.mapEvent(row),
+      rawBody: row.raw_body
+    };
   }
 
   private eventSelectSql(whereClause: string): string {
@@ -323,6 +383,7 @@ export class SaasBillingWebhookInboxService {
       receivedAt: row.received_at.toISOString(),
       processingStartedAt:
         row.processing_started_at?.toISOString() ?? null,
+      processingAttempts: row.processing_attempts,
       processedAt: row.processed_at?.toISOString() ?? null,
       lastErrorCode: row.last_error_code,
       lastErrorMessage: row.last_error_message
