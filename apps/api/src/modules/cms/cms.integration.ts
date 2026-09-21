@@ -259,17 +259,53 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
       2
     );
 
+    const firstPlanChange = await service.changeSubscriptionPlan(
+      principal,
+      organizationId,
+      {
+        targetPlanCode: "GROWTH",
+        expectedVersion: 2,
+        reason: "Integration plan switch"
+      },
+      "cms-subscription-plan-change-001"
+    );
+    const replayedPlanChange = await service.changeSubscriptionPlan(
+      principal,
+      organizationId,
+      {
+        targetPlanCode: "GROWTH",
+        expectedVersion: 2,
+        reason: "Integration plan switch"
+      },
+      "cms-subscription-plan-change-001"
+    );
+
+    assert.deepEqual(replayedPlanChange, firstPlanChange);
+    assert.equal(
+      (firstPlanChange as { planCode: string }).planCode,
+      "GROWTH"
+    );
+    assert.equal(
+      (firstPlanChange as { status: string }).status,
+      "PAST_DUE"
+    );
+    assert.equal(
+      (firstPlanChange as { version: number }).version,
+      3
+    );
+
     const subscriptionAudits = await fixturePool.query<{ count: number }>(
       `SELECT count(*)::int AS count
        FROM platform_audit_events
        WHERE organization_id = $1
          AND action IN (
            'SUBSCRIPTION_PROVISIONED',
-           'SUBSCRIPTION_STATUS_CHANGED'
+           'SUBSCRIPTION_STATUS_CHANGED',
+           'SUBSCRIPTION_PLAN_CHANGED'
          )`,
       [organizationId]
     );
-    assert.equal(subscriptionAudits.rows[0]?.count, 2);
+    assert.equal(subscriptionAudits.rows[0]?.count, 3);
 
     const firstOverride = await service.setEntitlementOverride(
       principal,
@@ -304,7 +340,8 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(inspected.roomLimit, 80);
     assert.equal(inspected.roomLimitSource, "OVERRIDE");
     assert.equal(inspected.subscriptionStatus, "PAST_DUE");
-    assert.equal(inspected.subscriptionVersion, 2);
+    assert.equal(inspected.subscriptionVersion, 3);
+    assert.equal(inspected.planCode, "GROWTH");
 
     await service.revokeEntitlementOverride(
       principal,
