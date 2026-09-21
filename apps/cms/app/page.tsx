@@ -82,7 +82,8 @@ function statusTone(status: string): Tone {
       "WARN",
       "DEGRADED",
       "PAUSED",
-      "OPEN"
+      "OPEN",
+      "PARTIALLY_PAID"
     ].includes(status)
   ) {
     return "warning";
@@ -366,13 +367,30 @@ export default function CmsPage() {
         if (!invoice) {
           throw new Error("Organization không có invoice để thanh toán.");
         }
-        if (invoice.status !== "OPEN" && invoice.status !== "OVERDUE") {
-          throw new Error("Invoice hiện tại không còn ở trạng thái cần thanh toán.");
+        if (
+          invoice.status !== "OPEN" &&
+          invoice.status !== "PARTIALLY_PAID"
+        ) {
+          throw new Error(
+            "Invoice hiện tại không còn ở trạng thái nhận thanh toán."
+          );
+        }
+
+        const amountVnd = Number(data.get("paymentAmountVnd"));
+        if (
+          !Number.isInteger(amountVnd) ||
+          amountVnd <= 0 ||
+          amountVnd > invoice.remainingAmountVnd
+        ) {
+          throw new Error(
+            "Số tiền phải là số nguyên dương và không vượt quá số tiền còn lại."
+          );
         }
 
         await cmsApi.recordSubscriptionPayment(
           modal.organization.id,
           invoice.id,
+          amountVnd,
           reason
         );
       }
@@ -725,13 +743,26 @@ export default function CmsPage() {
                               {org.latestInvoice ? (
                                 <>
                                   <StatusBadge
-                                    tone={statusTone(org.latestInvoice.status)}
+                                    tone={statusTone(
+                                      org.latestInvoice.isOverdue &&
+                                        org.latestInvoice.status !== "PAID"
+                                        ? "OVERDUE"
+                                        : org.latestInvoice.status
+                                    )}
                                   >
-                                    {org.latestInvoice.status}
+                                    {org.latestInvoice.isOverdue &&
+                                    org.latestInvoice.status !== "PAID"
+                                      ? "OVERDUE"
+                                      : org.latestInvoice.status}
                                   </StatusBadge>
                                   <strong>
-                                    {money(org.latestInvoice.amountVnd)}
+                                    {money(org.latestInvoice.remainingAmountVnd)}{" "}
+                                    còn lại
                                   </strong>
+                                  <small>
+                                    {money(org.latestInvoice.paidAmountVnd)} đã
+                                    phân bổ / {money(org.latestInvoice.amountVnd)}
+                                  </small>
                                   <small>
                                     {org.billingInterval ?? "—"} · kỳ{" "}
                                     {org.latestInvoice.periodStart
@@ -848,7 +879,9 @@ export default function CmsPage() {
                                   ) : null}
                                   {org.latestInvoice &&
                                   (org.latestInvoice.status === "OPEN" ||
-                                    org.latestInvoice.status === "OVERDUE") ? (
+                                    org.latestInvoice.status ===
+                                      "PARTIALLY_PAID") &&
+                                  org.latestInvoice.remainingAmountVnd > 0 ? (
                                     <button
                                       className="text-button"
                                       type="button"
@@ -859,7 +892,7 @@ export default function CmsPage() {
                                         })
                                       }
                                     >
-                                      Mark paid
+                                      Ghi nhận thanh toán
                                     </button>
                                   ) : null}
                                   {org.subscriptionStatus !== "CANCELLED" ? (
@@ -1418,11 +1451,13 @@ export default function CmsPage() {
 
                 return (
                   <>
-                    <h2>Ghi nhận đã thanh toán</h2>
+                    <h2>Ghi nhận thanh toán</h2>
                     <p className="modal-warning">
                       Đây là thao tác tài chính thủ công cho{" "}
                       <strong>{modal.organization.name}</strong>. Invoice{" "}
-                      {invoice.id} · {money(invoice.amountVnd)} · kỳ{" "}
+                      {invoice.id} · tổng {money(invoice.amountVnd)} · đã phân bổ{" "}
+                      {money(invoice.paidAmountVnd)} · còn lại{" "}
+                      {money(invoice.remainingAmountVnd)}. Kỳ{" "}
                       {invoice.periodStart
                         ? new Date(invoice.periodStart).toLocaleDateString(
                             "vi-VN"
@@ -1434,12 +1469,25 @@ export default function CmsPage() {
                             "vi-VN"
                           )
                         : "—"}
-                      . Sau khi xác nhận, invoice chuyển PAID và subscription
-                      được đưa về ACTIVE cho đúng kỳ này. Thao tác được audit.
+                      .
                     </p>
+                    <label>
+                      Số tiền thực nhận (VND)
+                      <input
+                        name="paymentAmountVnd"
+                        type="number"
+                        min={1}
+                        max={invoice.remainingAmountVnd}
+                        step={1}
+                        defaultValue={invoice.remainingAmountVnd}
+                        required
+                      />
+                    </label>
                     <p className="cms-note">
-                      Chỉ dùng khi đã xác minh tiền thực tế ngoài hệ thống.
-                      Không dùng nút này để giả lập payment gateway.
+                      Thanh toán một phần sẽ giữ invoice PARTIALLY_PAID. Khi số
+                      dư về 0, invoice chuyển PAID; subscription chỉ được đưa về
+                      ACTIVE khi kỳ đã đến hiệu lực. Chỉ dùng sau khi đã xác minh
+                      tiền thực tế ngoài hệ thống. Thao tác được audit.
                     </p>
                   </>
                 );
@@ -1550,7 +1598,7 @@ export default function CmsPage() {
                 {saving
                   ? "Đang lưu…"
                   : modal.kind === "manualSubscriptionPayment"
-                    ? "Ghi nhận đã thanh toán"
+                    ? "Ghi nhận thanh toán"
                     : "Xác nhận thay đổi"}
               </button>
             </div>
