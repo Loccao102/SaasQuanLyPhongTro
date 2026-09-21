@@ -6,6 +6,26 @@ info:
 servers:
   - url: /api/cms
 paths:
+  /bootstrap:
+    get:
+      summary: Resolve the authenticated platform role and granted CMS capabilities
+      responses:
+        "200":
+          description: Platform principal bootstrap
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, role, permissions]
+                properties:
+                  userId: { type: string, format: uuid }
+                  role:
+                    type: string
+                    enum: [PLATFORM_ADMIN, SUPPORT_OPERATOR, OPS_OPERATOR, READ_ONLY_AUDITOR]
+                  permissions:
+                    type: array
+                    items: { type: string }
+        "401": { description: No active platform principal }
   /dashboard:
     get:
       summary: Get operational summary
