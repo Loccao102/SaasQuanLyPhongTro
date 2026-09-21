@@ -545,5 +545,17 @@ export const cmsApi = {
         headers: { "idempotency-key": crypto.randomUUID() },
         body: JSON.stringify({ invoiceId, amountVnd, reason })
       }
+    ),
+
+  requeueBillingWebhook: (eventId: string, reason: string) =>
+    request<CmsBillingWebhookEvent>(
+      "/billing/webhooks/" +
+        encodeURIComponent(eventId) +
+        "/requeue",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ reason })
+      }
     )
 };
