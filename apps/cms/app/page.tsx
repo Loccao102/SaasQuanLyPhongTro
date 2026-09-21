@@ -483,8 +483,41 @@ export default function CmsPage() {
                 <MetricCard
                   label="Organizations"
                   value={String(dashboard.organizationCount)}
-                  detail="Nguồn thật từ SaaS DB"
-                  tone="info"
+                  detail={
+                    dashboard.delinquentOrganizationCount +
+                    " organization delinquent"
+                  }
+                  tone={
+                    dashboard.delinquentOrganizationCount
+                      ? "warning"
+                      : "info"
+                  }
+                />
+                <MetricCard
+                  label="SaaS chưa thu"
+                  value={money(dashboard.outstandingVnd)}
+                  detail={
+                    dashboard.unpaidInvoiceCount +
+                    " invoice còn số dư"
+                  }
+                  tone={
+                    dashboard.outstandingVnd > 0
+                      ? "warning"
+                      : "success"
+                  }
+                />
+                <MetricCard
+                  label="SaaS quá hạn"
+                  value={money(dashboard.overdueVnd)}
+                  detail={
+                    dashboard.overdueInvoiceCount +
+                    " invoice đã đến hạn"
+                  }
+                  tone={
+                    dashboard.overdueVnd > 0
+                      ? "danger"
+                      : "success"
+                  }
                 />
                 <MetricCard
                   label="Active rooms"
@@ -519,6 +552,7 @@ export default function CmsPage() {
                             <th>Organization</th>
                             <th>Subscription</th>
                             <th>Plan</th>
+                            <th>Billing</th>
                             <th>Rooms</th>
                           </tr>
                         </thead>
@@ -527,6 +561,8 @@ export default function CmsPage() {
                             .filter(
                               (org) =>
                                 org.subscriptionStatus !== "ACTIVE" ||
+                                (org.latestInvoice !== null &&
+                                  org.latestInvoice.remainingAmountVnd > 0) ||
                                 (org.roomLimit !== null &&
                                   org.rooms > org.roomLimit)
                             )
@@ -544,6 +580,34 @@ export default function CmsPage() {
                                   </StatusBadge>
                                 </td>
                                 <td>{org.planCode ?? "—"}</td>
+                                <td>
+                                  {org.latestInvoice &&
+                                  org.latestInvoice.remainingAmountVnd > 0 ? (
+                                    <>
+                                      <StatusBadge
+                                        tone={
+                                          org.latestInvoice.isOverdue
+                                            ? "danger"
+                                            : "warning"
+                                        }
+                                      >
+                                        {org.latestInvoice.isOverdue
+                                          ? "OVERDUE"
+                                          : org.latestInvoice.status}
+                                      </StatusBadge>
+                                      <small>
+                                        {money(
+                                          org.latestInvoice.remainingAmountVnd
+                                        )}{" "}
+                                        còn lại
+                                      </small>
+                                    </>
+                                  ) : (
+                                    <StatusBadge tone="success">
+                                      SETTLED
+                                    </StatusBadge>
+                                  )}
+                                </td>
                                 <td>
                                   {org.rooms} / {org.roomLimit ?? "—"}
                                 </td>
