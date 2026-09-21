@@ -1493,6 +1493,29 @@ export class SubscriptionBillingService {
     };
   }
 
+  async getProviderPaymentIngestionByIdInTransaction(
+    client: PoolClient,
+    paymentId: string
+  ): Promise<ProviderPaymentIngestionView> {
+    const result = await client.query<PaymentRow>(
+      this.paymentSelectSql("WHERE p.id = $1"),
+      [paymentId]
+    );
+    const payment = result.rows[0];
+    if (!payment) {
+      throw new SubscriptionBillingNotFoundError(
+        "Provider payment was not found."
+      );
+    }
+    if (payment.source !== "PROVIDER") {
+      throw new SubscriptionBillingConflictError(
+        "Payment is not a provider transaction."
+      );
+    }
+
+    return this.providerIngestionViewForPayment(client, payment);
+  }
+
   private async providerIngestionViewForPayment(
     client: PoolClient,
     payment: PaymentRow
