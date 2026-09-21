@@ -174,6 +174,25 @@ export const cmsApi = {
       }
     ),
 
+  changeSubscriptionPlan: (
+    organizationId: string,
+    input: {
+      targetPlanCode: string;
+      expectedVersion: number;
+      reason: string;
+    }
+  ) =>
+    request<CmsSubscription>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/subscription/change-plan",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(input)
+      }
+    ),
+
   transitionSubscription: (
     organizationId: string,
     input: {
