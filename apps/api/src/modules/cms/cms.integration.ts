@@ -83,10 +83,11 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
 
   const fixturePool = new Pool({ connectionString });
   const database = new DatabaseService();
+  const subscriptionBilling = new SubscriptionBillingService(database);
   const service = new CmsService(
     database,
     new SubscriptionManagementService(),
-    new SubscriptionBillingService(database),
+    subscriptionBilling,
     new NotificationOperationsService(database)
   );
 
@@ -497,6 +498,152 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     );
     assert.equal(billingAfterPayment.latestInvoice?.isOverdue, false);
     assert.ok(billingAfterPayment.latestInvoice?.paidAt);
+
+    const reconciliationInvoice = await fixturePool.query<{
+      id: string;
+      payment_reference: string;
+      amount_vnd: string;
+    }>(
+      `INSERT INTO saas_subscription_invoices (
+         organization_id,
+         subscription_id,
+         plan_id,
+         plan_version_id,
+         billing_interval,
+         period_start,
+         period_end,
+         amount_vnd,
+         status,
+         due_at
+       )
+       SELECT
+         s.organization_id,
+         s.id,
+         s.plan_id,
+         s.plan_version_id,
+         s.billing_interval,
+         s.current_period_end,
+         s.current_period_end + interval '1 month',
+         pv.monthly_price_vnd,
+         'OPEN',
+         s.current_period_end
+       FROM organization_subscriptions s
+       JOIN saas_plan_versions pv
+         ON pv.id = s.plan_version_id
+        AND pv.plan_id = s.plan_id
+       WHERE s.organization_id = $1
+       RETURNING id::text, payment_reference, amount_vnd::text`,
+      [organizationId]
+    );
+    const reconciliationInvoiceId = reconciliationInvoice.rows[0]?.id;
+    const reconciliationReference =
+      reconciliationInvoice.rows[0]?.payment_reference;
+    assert.ok(reconciliationInvoiceId);
+    assert.ok(reconciliationReference);
+    assert.equal(
+      Number(reconciliationInvoice.rows[0]?.amount_vnd),
+      249_000
+    );
+
+    const providerOccurredAt = new Date().toISOString();
+    const reviewPayment = await subscriptionBilling.ingestProviderPayment({
+      provider: "CMS_TEST_BANK",
+      providerTransactionId: "cms-review-payment-001",
+      amountVnd: 300_000,
+      occurredAt: providerOccurredAt,
+      paymentReference: reconciliationReference
+    });
+
+    assert.equal(
+      reviewPayment.payment.reconciliationStatus,
+      "REVIEW_REQUIRED"
+    );
+    assert.equal(reviewPayment.payment.organizationId, organizationId);
+    assert.equal(reviewPayment.allocation, null);
+    assert.equal(reviewPayment.invoice?.id, reconciliationInvoiceId);
+
+    const reconciliationBefore =
+      await service.getBillingReconciliation(principal);
+    const queuedPayment = reconciliationBefore.reviewPayments.find(
+      (item) => item.payment.id === reviewPayment.payment.id
+    );
+    assert.ok(queuedPayment);
+    assert.equal(queuedPayment.paymentReference, reconciliationReference);
+    assert.equal(queuedPayment.payment.unallocatedAmountVnd, 300_000);
+    assert.ok(
+      reconciliationBefore.invoices.some(
+        (invoice) => invoice.id === reconciliationInvoiceId
+      )
+    );
+
+    const firstReconciliation = await service.allocateProviderPayment(
+      principal,
+      reviewPayment.payment.id,
+      {
+        invoiceId: reconciliationInvoiceId,
+        amountVnd: 100_000,
+        reason: "Integration verified provider allocation"
+      },
+      "cms-provider-reconcile-001"
+    );
+    const replayedReconciliation = await service.allocateProviderPayment(
+      principal,
+      reviewPayment.payment.id,
+      {
+        invoiceId: reconciliationInvoiceId,
+        amountVnd: 100_000,
+        reason: "Integration verified provider allocation"
+      },
+      "cms-provider-reconcile-001"
+    );
+
+    assert.deepEqual(replayedReconciliation, firstReconciliation);
+    assert.equal(firstReconciliation.invoice.status, "PARTIALLY_PAID");
+    assert.equal(firstReconciliation.invoice.paidAmountVnd, 100_000);
+    assert.equal(firstReconciliation.invoice.remainingAmountVnd, 149_000);
+    assert.equal(
+      firstReconciliation.payment.reconciliationStatus,
+      "REVIEW_REQUIRED"
+    );
+    assert.equal(
+      firstReconciliation.payment.unallocatedAmountVnd,
+      200_000
+    );
+    assert.equal(firstReconciliation.allocation.amountVnd, 100_000);
+
+    const reconciliationAllocationCount =
+      await fixturePool.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM saas_subscription_payment_allocations
+         WHERE payment_id = $1
+           AND invoice_id = $2`,
+        [reviewPayment.payment.id, reconciliationInvoiceId]
+      );
+    assert.equal(reconciliationAllocationCount.rows[0]?.count, 1);
+
+    const reconciliationOperatorAudit =
+      await fixturePool.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM platform_audit_events
+         WHERE actor_user_id = $1
+           AND action =
+             'SUBSCRIPTION_PROVIDER_PAYMENT_RECONCILED_MANUALLY'
+           AND target_key = $2`,
+        [userId, reviewPayment.payment.id]
+      );
+    assert.equal(reconciliationOperatorAudit.rows[0]?.count, 1);
+
+    const reconciliationFinancialAudit =
+      await fixturePool.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM platform_audit_events
+         WHERE organization_id = $1
+           AND action =
+             'SUBSCRIPTION_PROVIDER_PAYMENT_RECONCILED'
+           AND target_key = $2`,
+        [organizationId, reviewPayment.payment.id]
+      );
+    assert.equal(reconciliationFinancialAudit.rows[0]?.count, 1);
 
     const firstProviderPause =
       await service.updateNotificationProviderControl(
