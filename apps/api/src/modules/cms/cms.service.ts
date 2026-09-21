@@ -220,48 +220,186 @@ export class CmsService {
   async getDashboard(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
 
+    const settingKeys = [
+      "brand_product_name",
+      "brand_product_descriptor",
+      "brand_tagline",
+      "brand_palette",
+      "display_locale",
+      "display_timezone",
+      "display_currency_code",
+      "display_date_format",
+      "display_datetime_format",
+      "display_format_presets",
+      "dashboard_lease_expiry_days",
+      "dashboard_recent_window_hours",
+      "worker_stale_after_seconds",
+      "billing_webhook_processing_timeout_seconds"
+    ];
+
+    const settingsResult = await this.db.query<
+      QueryResultRow & { key: string; value: unknown }
+    >(
+      `SELECT key, value
+       FROM system_settings
+       WHERE key = ANY($1::text[])`,
+      [settingKeys]
+    );
+    const settingMap = new Map(
+      settingsResult.rows.map((row) => [row.key, row.value])
+    );
+    const stringSetting = (key: string, fallback: string) => {
+      const value = settingMap.get(key);
+      return typeof value === "string" && value.trim()
+        ? value
+        : fallback;
+    };
+    const integerSetting = (key: string, fallback: number) => {
+      const value = settingMap.get(key);
+      return Number.isInteger(value) && Number(value) > 0
+        ? Number(value)
+        : fallback;
+    };
+    const jsonSetting = (
+      key: string,
+      fallback: Record<string, unknown>
+    ) => {
+      const value = settingMap.get(key);
+      return typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : fallback;
+    };
+
+    const leaseExpiryDays = integerSetting(
+      "dashboard_lease_expiry_days",
+      30
+    );
+    const recentHours = integerSetting(
+      "dashboard_recent_window_hours",
+      24
+    );
+    const workerStaleAfterSeconds = integerSetting(
+      "worker_stale_after_seconds",
+      60
+    );
+    const webhookStaleAfterSeconds = integerSetting(
+      "billing_webhook_processing_timeout_seconds",
+      300
+    );
+
     const [
-      orgs,
-      rooms,
-      settings,
-      plans,
-      audit,
-      delinquent,
-      billing
+      organizationStats,
+      assetStats,
+      commercialStats,
+      notificationStats,
+      workerStats,
+      webhookStats,
+      platformStats,
+      topOrganizations,
+      planDistribution
     ] = await Promise.all([
-      this.db.query<QueryResultRow & { count: string }>(
-        "SELECT count(*)::text AS count FROM organizations"
-      ),
-      this.db.query<QueryResultRow & { count: string }>(
-        "SELECT count(*)::text AS count FROM rooms WHERE is_active = true"
-      ),
-      this.db.query<QueryResultRow & { count: string }>(
-        "SELECT count(*)::text AS count FROM system_settings"
-      ),
-      this.db.query<QueryResultRow & { count: string }>(
-        "SELECT count(*)::text AS count FROM saas_plans WHERE status = 'ACTIVE'"
-      ),
-      this.db.query<QueryResultRow & { count: string }>(
-        "SELECT count(*)::text AS count FROM platform_audit_events WHERE occurred_at >= now() - interval '24 hours'"
-      ),
-      this.db.query<QueryResultRow & { count: string }>(
-        `SELECT count(*)::text AS count
-         FROM organization_subscriptions
-         WHERE status IN ('PAST_DUE', 'GRACE_PERIOD', 'SUSPENDED')`
+      this.db.query<
+        QueryResultRow & {
+          total: string;
+          active: string;
+          suspended: string;
+          active_memberships: string;
+        }
+      >(
+        `SELECT
+           count(*)::text AS total,
+           count(*) FILTER (WHERE status = 'ACTIVE')::text AS active,
+           count(*) FILTER (WHERE status = 'SUSPENDED')::text AS suspended,
+           (
+             SELECT count(*)::text
+             FROM organization_memberships
+             WHERE status = 'ACTIVE'
+           ) AS active_memberships
+         FROM organizations`
       ),
       this.db.query<
         QueryResultRow & {
+          active_properties: string;
+          active_rooms: string;
+          occupied_rooms: string;
+          active_residents: string;
+          active_leases: string;
+          termination_scheduled_leases: string;
+          expiring_leases: string;
+        }
+      >(
+        `SELECT
+           (
+             SELECT count(*)::text
+             FROM properties
+             WHERE is_active = true
+           ) AS active_properties,
+           (
+             SELECT count(*)::text
+             FROM rooms
+             WHERE is_active = true
+           ) AS active_rooms,
+           (
+             SELECT count(*)::text
+             FROM rooms r
+             WHERE r.is_active = true
+               AND EXISTS (
+                 SELECT 1
+                 FROM leases l
+                 WHERE l.organization_id = r.organization_id
+                   AND l.room_id = r.id
+                   AND l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+               )
+           ) AS occupied_rooms,
+           (
+             SELECT count(*)::text
+             FROM residents
+             WHERE is_active = true
+           ) AS active_residents,
+           (
+             SELECT count(*)::text
+             FROM leases
+             WHERE status = 'ACTIVE'
+           ) AS active_leases,
+           (
+             SELECT count(*)::text
+             FROM leases
+             WHERE status = 'TERMINATION_SCHEDULED'
+           ) AS termination_scheduled_leases,
+           (
+             SELECT count(*)::text
+             FROM leases
+             WHERE status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+               AND planned_end_date IS NOT NULL
+               AND planned_end_date BETWEEN current_date
+                 AND current_date + $1::int
+           ) AS expiring_leases`,
+        [leaseExpiryDays]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          trialing: string;
+          active: string;
+          past_due: string;
+          grace_period: string;
+          suspended: string;
+          cancelled: string;
+          cancel_at_period_end: string;
           unpaid_invoice_count: string;
           overdue_invoice_count: string;
           outstanding_vnd: string;
           overdue_vnd: string;
+          successful_payment_count: string;
+          successful_payment_vnd: string;
+          active_plans: string;
         }
       >(
         `WITH invoice_balances AS (
            SELECT
              i.id,
              i.due_at,
-             i.status,
              GREATEST(
                i.amount_vnd - COALESCE(
                  sum(a.amount_vnd) FILTER (WHERE p.id IS NOT NULL),
@@ -274,63 +412,398 @@ export class CmsService {
              ON a.organization_id = i.organization_id
             AND a.invoice_id = i.id
            LEFT JOIN saas_subscription_payments p
-             ON p.organization_id = a.organization_id
-            AND p.id = a.payment_id
+             ON p.id = a.payment_id
             AND p.status = 'SUCCEEDED'
            WHERE i.status <> 'VOID'
            GROUP BY i.id
          )
          SELECT
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'TRIALING') AS trialing,
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'ACTIVE') AS active,
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'PAST_DUE') AS past_due,
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'GRACE_PERIOD') AS grace_period,
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'SUSPENDED') AS suspended,
+           (SELECT count(*)::text FROM organization_subscriptions WHERE status = 'CANCELLED') AS cancelled,
+           (
+             SELECT count(*)::text
+             FROM organization_subscriptions
+             WHERE cancel_at_period_end = true
+           ) AS cancel_at_period_end,
+           count(*) FILTER (WHERE remaining_vnd > 0)::text AS unpaid_invoice_count,
            count(*) FILTER (
-             WHERE remaining_vnd > 0
-           )::text AS unpaid_invoice_count,
-           count(*) FILTER (
-             WHERE remaining_vnd > 0
-               AND due_at <= now()
+             WHERE remaining_vnd > 0 AND due_at <= now()
            )::text AS overdue_invoice_count,
            COALESCE(sum(remaining_vnd), 0)::text AS outstanding_vnd,
            COALESCE(sum(remaining_vnd) FILTER (
              WHERE due_at <= now()
-           ), 0)::text AS overdue_vnd
-         FROM invoice_balances`
+           ), 0)::text AS overdue_vnd,
+           (
+             SELECT count(*)::text
+             FROM saas_subscription_payments
+             WHERE status = 'SUCCEEDED'
+               AND occurred_at >=
+                 now() - ($1::int * interval '1 hour')
+           ) AS successful_payment_count,
+           (
+             SELECT COALESCE(sum(amount_vnd), 0)::text
+             FROM saas_subscription_payments
+             WHERE status = 'SUCCEEDED'
+               AND occurred_at >=
+                 now() - ($1::int * interval '1 hour')
+           ) AS successful_payment_vnd,
+           (
+             SELECT count(*)::text
+             FROM saas_plans
+             WHERE status = 'ACTIVE'
+           ) AS active_plans
+         FROM invoice_balances`,
+        [recentHours]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          queued: string;
+          running: string;
+          retry_wait: string;
+          manual_review: string;
+          failed: string;
+          sent_recent: string;
+        }
+      >(
+        `SELECT
+           count(*) FILTER (WHERE status = 'QUEUED')::text AS queued,
+           count(*) FILTER (WHERE status = 'RUNNING')::text AS running,
+           count(*) FILTER (WHERE status = 'RETRY_WAIT')::text AS retry_wait,
+           count(*) FILTER (WHERE status = 'MANUAL_REVIEW')::text AS manual_review,
+           count(*) FILTER (WHERE status = 'FAILED')::text AS failed,
+           count(*) FILTER (
+             WHERE status = 'SENT'
+               AND sent_at >= now() - ($1::int * interval '1 hour')
+           )::text AS sent_recent
+         FROM notification_jobs`,
+        [recentHours]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          healthy: string;
+          degraded: string;
+          stale: string;
+          paused_providers: string;
+        }
+      >(
+        `SELECT
+           count(*) FILTER (
+             WHERE h.status = 'HEALTHY'
+               AND h.last_seen_at >=
+                 now() - ($1::int * interval '1 second')
+           )::text AS healthy,
+           count(*) FILTER (
+             WHERE h.status = 'DEGRADED'
+               AND h.last_seen_at >=
+                 now() - ($1::int * interval '1 second')
+           )::text AS degraded,
+           count(*) FILTER (
+             WHERE h.status <> 'STOPPING'
+               AND h.last_seen_at <
+                 now() - ($1::int * interval '1 second')
+           )::text AS stale,
+           (
+             SELECT count(*)::text
+             FROM notification_provider_controls
+             WHERE status = 'PAUSED'
+           ) AS paused_providers
+         FROM notification_worker_heartbeats h`,
+        [workerStaleAfterSeconds]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          received: string;
+          processing: string;
+          review_required: string;
+          failed: string;
+          stale_processing: string;
+          processed_recent: string;
+        }
+      >(
+        `SELECT
+           count(*) FILTER (WHERE processing_status = 'RECEIVED')::text AS received,
+           count(*) FILTER (WHERE processing_status = 'PROCESSING')::text AS processing,
+           count(*) FILTER (WHERE processing_status = 'REVIEW_REQUIRED')::text AS review_required,
+           count(*) FILTER (WHERE processing_status = 'FAILED')::text AS failed,
+           count(*) FILTER (
+             WHERE processing_status = 'PROCESSING'
+               AND processing_started_at IS NOT NULL
+               AND processing_started_at <
+                 now() - ($1::int * interval '1 second')
+           )::text AS stale_processing,
+           count(*) FILTER (
+             WHERE processing_status = 'PROCESSED'
+               AND processed_at >=
+                 now() - ($2::int * interval '1 hour')
+           )::text AS processed_recent
+         FROM saas_billing_webhook_events`,
+        [webhookStaleAfterSeconds, recentHours]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          settings: string;
+          audit_recent: string;
+        }
+      >(
+        `SELECT
+           (SELECT count(*)::text FROM system_settings) AS settings,
+           (
+             SELECT count(*)::text
+             FROM platform_audit_events
+             WHERE occurred_at >=
+               now() - ($1::int * interval '1 hour')
+           ) AS audit_recent`,
+        [recentHours]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          id: string;
+          name: string;
+          slug: string;
+          active_rooms: string;
+          current_leases: string;
+        }
+      >(
+        `SELECT
+           o.id::text,
+           o.name,
+           o.slug,
+           count(DISTINCT r.id) FILTER (
+             WHERE r.is_active = true
+           )::text AS active_rooms,
+           count(DISTINCT l.id) FILTER (
+             WHERE l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+           )::text AS current_leases
+         FROM organizations o
+         LEFT JOIN rooms r
+           ON r.organization_id = o.id
+         LEFT JOIN leases l
+           ON l.organization_id = o.id
+          AND l.room_id = r.id
+         GROUP BY o.id, o.name, o.slug
+         ORDER BY
+           count(DISTINCT r.id) FILTER (WHERE r.is_active = true) DESC,
+           o.name
+         LIMIT 5`
+      ),
+      this.db.query<
+        QueryResultRow & {
+          plan_code: string;
+          plan_name: string;
+          subscriptions: string;
+        }
+      >(
+        `SELECT
+           p.code AS plan_code,
+           p.name AS plan_name,
+           count(s.id)::text AS subscriptions
+         FROM saas_plans p
+         LEFT JOIN organization_subscriptions s
+           ON s.plan_id = p.id
+          AND s.status <> 'CANCELLED'
+         WHERE p.status = 'ACTIVE'
+         GROUP BY p.code, p.name
+         ORDER BY count(s.id) DESC, p.code`
       )
     ]);
 
+    const org = organizationStats.rows[0]!;
+    const assets = assetStats.rows[0]!;
+    const commercial = commercialStats.rows[0]!;
+    const notifications = notificationStats.rows[0]!;
+    const workers = workerStats.rows[0]!;
+    const webhooks = webhookStats.rows[0]!;
+    const platform = platformStats.rows[0]!;
+
+    const activeRooms = Number(assets.active_rooms ?? 0);
+    const occupiedRooms = Number(assets.occupied_rooms ?? 0);
+    const vacantRooms = Math.max(0, activeRooms - occupiedRooms);
+    const occupancyRatePercent =
+      activeRooms === 0
+        ? 0
+        : Math.round((occupiedRooms / activeRooms) * 1000) / 10;
+    const billingReadable = platformRoleHasPermission(
+      principal.role,
+      "platform.billing.read"
+    );
+    const delinquentOrganizationCount =
+      Number(commercial.past_due ?? 0) +
+      Number(commercial.grace_period ?? 0) +
+      Number(commercial.suspended ?? 0);
+
+    const branding = {
+      productName: stringSetting("brand_product_name", "PropOps"),
+      descriptor: stringSetting(
+        "brand_product_descriptor",
+        "SaaS Quản lý Phòng Trọ"
+      ),
+      tagline: stringSetting(
+        "brand_tagline",
+        "Vận hành hiệu quả · Kiến tạo giá trị bền vững"
+      ),
+      palette: jsonSetting("brand_palette", {
+        navy: "#0F2D4A",
+        teal: "#14B8A6",
+        amber: "#F59E0B",
+        background: "#F8FAFC",
+        surface: "#FFFFFF"
+      })
+    };
+    const display = {
+      locale: stringSetting("display_locale", "vi-VN"),
+      timezone: stringSetting(
+        "display_timezone",
+        "Asia/Ho_Chi_Minh"
+      ),
+      currencyCode: stringSetting(
+        "display_currency_code",
+        "VND"
+      ),
+      dateFormat: stringSetting(
+        "display_date_format",
+        "dd/MM/yyyy"
+      ),
+      dateTimeFormat: stringSetting(
+        "display_datetime_format",
+        "dd/MM/yyyy HH:mm"
+      ),
+      presets: jsonSetting("display_format_presets", {})
+    };
+
     return {
-      organizationCount: Number(orgs.rows[0]?.count ?? 0),
-      activeRoomCount: Number(rooms.rows[0]?.count ?? 0),
-      settingCount: Number(settings.rows[0]?.count ?? 0),
-      activePlanCount: Number(plans.rows[0]?.count ?? 0),
-      platformAudit24h: Number(audit.rows[0]?.count ?? 0),
-      delinquentOrganizationCount: platformRoleHasPermission(
-        principal.role,
-        "platform.billing.read"
-      )
-        ? Number(delinquent.rows[0]?.count ?? 0)
+      branding,
+      display,
+      windows: {
+        leaseExpiryDays,
+        recentHours,
+        workerStaleAfterSeconds,
+        webhookStaleAfterSeconds
+      },
+      organizations: {
+        total: Number(org.total ?? 0),
+        active: Number(org.active ?? 0),
+        suspended: Number(org.suspended ?? 0),
+        activeMemberships: Number(org.active_memberships ?? 0)
+      },
+      assets: {
+        activeProperties: Number(assets.active_properties ?? 0),
+        activeRooms,
+        occupiedRooms,
+        vacantRooms,
+        occupancyRatePercent,
+        activeResidents: Number(assets.active_residents ?? 0),
+        activeLeases: Number(assets.active_leases ?? 0),
+        terminationScheduledLeases: Number(
+          assets.termination_scheduled_leases ?? 0
+        ),
+        expiringLeases: Number(assets.expiring_leases ?? 0)
+      },
+      commercial: {
+        trialingSubscriptions: Number(commercial.trialing ?? 0),
+        activeSubscriptions: Number(commercial.active ?? 0),
+        pastDueSubscriptions: Number(commercial.past_due ?? 0),
+        gracePeriodSubscriptions: Number(
+          commercial.grace_period ?? 0
+        ),
+        suspendedSubscriptions: Number(
+          commercial.suspended ?? 0
+        ),
+        cancelledSubscriptions: Number(
+          commercial.cancelled ?? 0
+        ),
+        cancelAtPeriodEndSubscriptions: Number(
+          commercial.cancel_at_period_end ?? 0
+        ),
+        delinquentOrganizationCount: billingReadable
+          ? delinquentOrganizationCount
+          : null,
+        unpaidInvoiceCount: billingReadable
+          ? Number(commercial.unpaid_invoice_count ?? 0)
+          : null,
+        overdueInvoiceCount: billingReadable
+          ? Number(commercial.overdue_invoice_count ?? 0)
+          : null,
+        outstandingVnd: billingReadable
+          ? Number(commercial.outstanding_vnd ?? 0)
+          : null,
+        overdueVnd: billingReadable
+          ? Number(commercial.overdue_vnd ?? 0)
+          : null,
+        successfulPaymentCountRecent: billingReadable
+          ? Number(commercial.successful_payment_count ?? 0)
+          : null,
+        successfulPaymentVndRecent: billingReadable
+          ? Number(commercial.successful_payment_vnd ?? 0)
+          : null,
+        activePlans: Number(commercial.active_plans ?? 0)
+      },
+      automation: {
+        queuedJobs: Number(notifications.queued ?? 0),
+        runningJobs: Number(notifications.running ?? 0),
+        retryWaitJobs: Number(notifications.retry_wait ?? 0),
+        manualReviewJobs: Number(
+          notifications.manual_review ?? 0
+        ),
+        failedJobs: Number(notifications.failed ?? 0),
+        sentJobsRecent: Number(notifications.sent_recent ?? 0),
+        healthyWorkers: Number(workers.healthy ?? 0),
+        degradedWorkers: Number(workers.degraded ?? 0),
+        staleWorkers: Number(workers.stale ?? 0),
+        pausedProviders: Number(workers.paused_providers ?? 0),
+        webhookReceived: Number(webhooks.received ?? 0),
+        webhookProcessing: Number(webhooks.processing ?? 0),
+        webhookReviewRequired: Number(
+          webhooks.review_required ?? 0
+        ),
+        webhookFailed: Number(webhooks.failed ?? 0),
+        webhookStaleProcessing: Number(
+          webhooks.stale_processing ?? 0
+        ),
+        webhookProcessedRecent: Number(
+          webhooks.processed_recent ?? 0
+        )
+      },
+      platform: {
+        settingCount: Number(platform.settings ?? 0),
+        auditRecent: Number(platform.audit_recent ?? 0)
+      },
+      topOrganizations: topOrganizations.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        activeRooms: Number(row.active_rooms ?? 0),
+        currentLeases: Number(row.current_leases ?? 0)
+      })),
+      planDistribution: planDistribution.rows.map((row) => ({
+        planCode: row.plan_code,
+        planName: row.plan_name,
+        subscriptions: Number(row.subscriptions ?? 0)
+      })),
+
+      // Backward-compatible fields while CMS consumers migrate.
+      organizationCount: Number(org.total ?? 0),
+      activeRoomCount: activeRooms,
+      settingCount: Number(platform.settings ?? 0),
+      activePlanCount: Number(commercial.active_plans ?? 0),
+      platformAudit24h: Number(platform.audit_recent ?? 0),
+      delinquentOrganizationCount: billingReadable
+        ? delinquentOrganizationCount
         : null,
-      unpaidInvoiceCount: platformRoleHasPermission(
-        principal.role,
-        "platform.billing.read"
-      )
-        ? Number(billing.rows[0]?.unpaid_invoice_count ?? 0)
+      unpaidInvoiceCount: billingReadable
+        ? Number(commercial.unpaid_invoice_count ?? 0)
         : null,
-      overdueInvoiceCount: platformRoleHasPermission(
-        principal.role,
-        "platform.billing.read"
-      )
-        ? Number(billing.rows[0]?.overdue_invoice_count ?? 0)
+      overdueInvoiceCount: billingReadable
+        ? Number(commercial.overdue_invoice_count ?? 0)
         : null,
-      outstandingVnd: platformRoleHasPermission(
-        principal.role,
-        "platform.billing.read"
-      )
-        ? Number(billing.rows[0]?.outstanding_vnd ?? 0)
+      outstandingVnd: billingReadable
+        ? Number(commercial.outstanding_vnd ?? 0)
         : null,
-      overdueVnd: platformRoleHasPermission(
-        principal.role,
-        "platform.billing.read"
-      )
-        ? Number(billing.rows[0]?.overdue_vnd ?? 0)
+      overdueVnd: billingReadable
+        ? Number(commercial.overdue_vnd ?? 0)
         : null
     };
   }
