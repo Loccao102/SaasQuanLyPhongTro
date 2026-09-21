@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.8.0
+  version: 0.9.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -161,6 +161,35 @@ paths:
         "400": { description: Invalid amount/reason }
         "404": { description: Organization/subscription invoice not found }
         "409": { description: Paid/void invoice, overpayment, invalid state or idempotency conflict }
+  /billing/reconciliation:
+    get:
+      summary: List provider payments requiring review and SaaS invoices with remaining balance
+      responses:
+        "200": { description: REVIEW_REQUIRED provider transactions plus open reconciliation invoices }
+        "403": { description: Missing platform.billing.read }
+  /billing/reconciliation/{paymentId}/allocate:
+    post:
+      summary: Allocate part of a provider payment to a SaaS subscription invoice
+      parameters:
+        - { in: path, name: paymentId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amountVnd, reason]
+              properties:
+                invoiceId: { type: string, format: uuid }
+                amountVnd: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Append-only allocation recorded or idempotently replayed }
+        "400": { description: Invalid amount/reason }
+        "404": { description: Payment or invoice not found }
+        "409": { description: Cross-organization, balance, state or idempotency conflict }
+        "403": { description: Missing platform.billing.manage }
   /entitlement-overrides:
     get:
       summary: List current non-revoked organization entitlement overrides
