@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Prop-Ops CMS API
-  version: 0.5.0
+  version: 0.6.0
   description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
 servers:
   - url: /api/cms
@@ -187,14 +187,27 @@ paths:
         "404": { description: No current override for that organization/key }
   /jobs:
     get:
-      summary: Read job-integration status
+      summary: List durable notification jobs for platform operations
       responses:
-        "200": { description: Returns connected=false until durable jobs exist }
+        "200": { description: Durable notification job state and provider diagnostics }
   /jobs/{jobId}/retry:
     post:
-      summary: Retry a durable job
+      summary: Audit and requeue a FAILED or MANUAL_REVIEW notification job
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
       responses:
-        "501": { description: Not available until durable job persistence is connected }
+        "200": { description: Job requeued or idempotent replay }
+        "409": { description: Job state does not allow manual retry or idempotency conflict }
   /logs:
     get:
       summary: Read observability-integration status
