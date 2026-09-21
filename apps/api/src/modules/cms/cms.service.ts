@@ -43,6 +43,7 @@ import type {
   AllocateProviderPaymentInput,
   ChangeSubscriptionPlanInput,
   PlatformPrincipal,
+  SetSubscriptionCancellationInput,
   ProvisionSubscriptionInput,
   RecordSubscriptionPaymentInput,
   RequeueBillingWebhookInput,
@@ -111,6 +112,7 @@ type OrganizationRow = QueryResultRow & {
   current_period_start: Date | null;
   current_period_end: Date | null;
   trial_ends_at: Date | null;
+  subscription_cancel_at_period_end: boolean | null;
   plan_code: string | null;
   latest_invoice_id: string | null;
   latest_invoice_status:
@@ -607,6 +609,7 @@ export class CmsService {
          s.current_period_start,
          s.current_period_end,
          s.trial_ends_at,
+         s.cancel_at_period_end AS subscription_cancel_at_period_end,
          p.code AS plan_code,
          billing_invoice.id::text AS latest_invoice_id,
          billing_invoice.status AS latest_invoice_status,
@@ -764,6 +767,8 @@ export class CmsService {
       currentPeriodEnd:
         row.current_period_end?.toISOString() ?? null,
       trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
+      cancelAtPeriodEnd:
+        row.subscription_cancel_at_period_end ?? null,
       planCode: row.plan_code,
       latestInvoice:
         row.latest_invoice_id === null
@@ -1043,6 +1048,105 @@ export class CmsService {
         return change.after;
       } catch (error) {
         this.rethrowSubscriptionError(error);
+      }
+    });
+  }
+
+  async setSubscriptionCancellation(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    input: SetSubscriptionCancellationInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.subscriptions.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const expectedVersion = input.expectedVersion;
+    const cancelAtPeriodEnd = input.cancelAtPeriodEnd;
+
+    if (typeof cancelAtPeriodEnd !== "boolean") {
+      throw new BadRequestException(
+        "cancelAtPeriodEnd must be boolean."
+      );
+    }
+    if (!Number.isInteger(expectedVersion) || Number(expectedVersion) < 1) {
+      throw new BadRequestException(
+        "expectedVersion must be a positive integer."
+      );
+    }
+
+    const fingerprint = this.fingerprint({
+      action: cancelAtPeriodEnd
+        ? "SUBSCRIPTION_CANCELLATION_SCHEDULED"
+        : "SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED",
+      organizationId,
+      cancelAtPeriodEnd,
+      expectedVersion,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const result =
+          await this.subscriptionBilling.setCancellationScheduleInTransaction(
+            client,
+            {
+              organizationId,
+              cancelAtPeriodEnd,
+              expectedVersion: Number(expectedVersion),
+              reason
+            }
+          );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: cancelAtPeriodEnd
+            ? "SUBSCRIPTION_CANCELLATION_SCHEDULED"
+            : "SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED",
+          targetType: "ORGANIZATION_SUBSCRIPTION",
+          targetKey: organizationId,
+          organizationId,
+          beforeState: {
+            expectedVersion,
+            cancelAtPeriodEnd: !cancelAtPeriodEnd
+          },
+          afterState: result,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          cancelAtPeriodEnd
+            ? "SUBSCRIPTION_CANCELLATION_SCHEDULED"
+            : "SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED",
+          fingerprint,
+          result
+        );
+
+        return result;
+      } catch (error) {
+        if (error instanceof SubscriptionBillingConflictError) {
+          throw new ConflictException(error.message);
+        }
+        if (error instanceof SubscriptionBillingNotFoundError) {
+          throw new NotFoundException(error.message);
+        }
+        throw error;
       }
     });
   }
