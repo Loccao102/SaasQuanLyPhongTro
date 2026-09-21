@@ -1188,7 +1188,81 @@ export default function CmsPage() {
           )}
 
           {!loading && view === "billing" && (
-            <section className="cms-grid">
+            <>
+              <section
+                className="cms-metrics"
+                aria-label="Billing webhook pipeline summary"
+              >
+                <MetricCard
+                  label="Webhook received"
+                  value={String(
+                    billingReconciliation?.webhookInbox.summary.received ?? 0
+                  )}
+                  detail="Đã persist, đang chờ worker claim"
+                  tone={
+                    (billingReconciliation?.webhookInbox.summary.received ??
+                      0) > 0
+                      ? "warning"
+                      : "success"
+                  }
+                />
+                <MetricCard
+                  label="Processing"
+                  value={String(
+                    billingReconciliation?.webhookInbox.summary.processing ?? 0
+                  )}
+                  detail={
+                    String(
+                      billingReconciliation?.webhookInbox.summary
+                        .staleProcessing ?? 0
+                    ) + " stale"
+                  }
+                  tone={
+                    (billingReconciliation?.webhookInbox.summary
+                      .staleProcessing ?? 0) > 0
+                      ? "danger"
+                      : "info"
+                  }
+                />
+                <MetricCard
+                  label="Webhook review"
+                  value={String(
+                    billingReconciliation?.webhookInbox.summary
+                      .reviewRequired ?? 0
+                  )}
+                  detail="Payload/signature cần operator xem"
+                  tone={
+                    (billingReconciliation?.webhookInbox.summary
+                      .reviewRequired ?? 0) > 0
+                      ? "warning"
+                      : "success"
+                  }
+                />
+                <MetricCard
+                  label="Webhook failed"
+                  value={String(
+                    billingReconciliation?.webhookInbox.summary.failed ?? 0
+                  )}
+                  detail="Terminal processing failures"
+                  tone={
+                    (billingReconciliation?.webhookInbox.summary.failed ?? 0) >
+                    0
+                      ? "danger"
+                      : "success"
+                  }
+                />
+                <MetricCard
+                  label="Processed 24h"
+                  value={String(
+                    billingReconciliation?.webhookInbox.summary.processed24h ??
+                      0
+                  )}
+                  detail="Raw event đã link financial processing"
+                  tone="success"
+                />
+              </section>
+
+              <section className="cms-grid">
               <article className="cms-panel">
                 <SectionHeader
                   title="Provider payments cần review"
@@ -1370,7 +1444,112 @@ export default function CmsPage() {
                   </div>
                 )}
               </article>
+
+              <article className="cms-panel">
+                <SectionHeader
+                  title="Webhook inbox cần chú ý"
+                  action={
+                    <span className="cms-note">
+                      Không hiển thị raw payload hoặc provider headers.
+                    </span>
+                  }
+                />
+                {!billingReconciliation ||
+                billingReconciliation.webhookInbox.events.length === 0 ? (
+                  <div className="empty-state">
+                    Không có billing webhook đang chờ hoặc lỗi.
+                  </div>
+                ) : (
+                  <div className="cms-table-wrap">
+                    <table className="cms-table">
+                      <thead>
+                        <tr>
+                          <th>Provider event</th>
+                          <th>Processing</th>
+                          <th>Signature</th>
+                          <th>Attempts</th>
+                          <th>Last error</th>
+                          <th>Payment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billingReconciliation.webhookInbox.events.map(
+                          (event) => (
+                            <tr key={event.id}>
+                              <td>
+                                <strong>{event.provider}</strong>
+                                <small>{event.providerEventId}</small>
+                                <small>
+                                  {new Date(event.receivedAt).toLocaleString(
+                                    "vi-VN"
+                                  )}
+                                </small>
+                              </td>
+                              <td>
+                                <StatusBadge
+                                  tone={
+                                    event.isStale
+                                      ? "danger"
+                                      : statusTone(event.processingStatus)
+                                  }
+                                >
+                                  {event.isStale
+                                    ? "STALE_PROCESSING"
+                                    : event.processingStatus}
+                                </StatusBadge>
+                              </td>
+                              <td>
+                                <StatusBadge
+                                  tone={
+                                    event.signatureStatus === "VERIFIED"
+                                      ? "success"
+                                      : event.signatureStatus === "INVALID"
+                                        ? "danger"
+                                        : "warning"
+                                  }
+                                >
+                                  {event.signatureStatus}
+                                </StatusBadge>
+                              </td>
+                              <td>
+                                <strong>{event.processingAttempts}</strong>
+                                <small>
+                                  {event.processingStartedAt
+                                    ? "started " +
+                                      new Date(
+                                        event.processingStartedAt
+                                      ).toLocaleString("vi-VN")
+                                    : "not claimed"}
+                                </small>
+                              </td>
+                              <td>
+                                {event.lastErrorCode ?? "—"}
+                                {event.lastErrorMessage ? (
+                                  <small>{event.lastErrorMessage}</small>
+                                ) : null}
+                              </td>
+                              <td>
+                                {event.paymentId ? (
+                                  <>
+                                    <StatusBadge tone="success">
+                                      LINKED
+                                    </StatusBadge>
+                                    <small>{event.paymentId}</small>
+                                  </>
+                                ) : (
+                                  <span className="cms-note">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </article>
             </section>
+            </>
           )}
 
           {!loading && view === "entitlements" && (
