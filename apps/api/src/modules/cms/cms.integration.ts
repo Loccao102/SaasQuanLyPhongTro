@@ -581,7 +581,7 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(reviewPayment.allocation, null);
     assert.equal(reviewPayment.invoice?.id, reconciliationInvoiceId);
 
-    await fixturePool.query(
+    const webhookFixture = await fixturePool.query<{ id: string }>(
       `INSERT INTO saas_billing_webhook_events (
          provider,
          provider_event_id,
@@ -603,9 +603,12 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
          1,
          'CMS_TEST_REVIEW',
          'Integration fixture requires review'
-       )`,
+       )
+       RETURNING id::text`,
       [billingWebhookProvider]
     );
+    const webhookFixtureId = webhookFixture.rows[0]?.id;
+    assert.ok(webhookFixtureId);
 
     const reconciliationBefore =
       await service.getBillingReconciliation(principal);
@@ -634,6 +637,40 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(webhookReviewEvent.processingStatus, "REVIEW_REQUIRED");
     assert.equal(webhookReviewEvent.processingAttempts, 1);
     assert.equal(webhookReviewEvent.paymentId, null);
+    const firstWebhookRequeue = await service.requeueBillingWebhook(
+      principal,
+      webhookFixtureId,
+      {
+        reason: "Integration provider parser fixed"
+      },
+      "cms-webhook-requeue-001"
+    );
+    const replayedWebhookRequeue =
+      await service.requeueBillingWebhook(
+        principal,
+        webhookFixtureId,
+        {
+          reason: "Integration provider parser fixed"
+        },
+        "cms-webhook-requeue-001"
+      );
+
+    assert.deepEqual(replayedWebhookRequeue, firstWebhookRequeue);
+    assert.equal(firstWebhookRequeue.processingStatus, "RECEIVED");
+    assert.equal(firstWebhookRequeue.processingAttempts, 1);
+    assert.equal(firstWebhookRequeue.lastErrorCode, null);
+    assert.equal(firstWebhookRequeue.lastErrorMessage, null);
+
+    const webhookRequeueAudit = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE actor_user_id = $1
+         AND action = 'BILLING_WEBHOOK_REQUEUED'
+         AND target_key = $2`,
+      [userId, webhookFixtureId]
+    );
+    assert.equal(webhookRequeueAudit.rows[0]?.count, 1);
+
 
     const firstReconciliation = await service.allocateProviderPayment(
       principal,
