@@ -188,6 +188,89 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     );
     assert.equal(planVersions.rows[0]?.count, 2);
 
+    const firstProvision = await service.provisionSubscription(
+      principal,
+      organizationId,
+      {
+        planCode: "CMS_TEST",
+        status: "ACTIVE",
+        reason: "Integration subscription provision"
+      },
+      "cms-subscription-provision-001"
+    );
+    const replayedProvision = await service.provisionSubscription(
+      principal,
+      organizationId,
+      {
+        planCode: "CMS_TEST",
+        status: "ACTIVE",
+        reason: "Integration subscription provision"
+      },
+      "cms-subscription-provision-001"
+    );
+
+    assert.deepEqual(replayedProvision, firstProvision);
+    assert.equal(
+      (firstProvision as { status: string }).status,
+      "ACTIVE"
+    );
+    assert.equal(
+      (firstProvision as { version: number }).version,
+      1
+    );
+
+    const currentPlanVersion = await fixturePool.query<{ id: string }>(
+      "SELECT current_version_id::text AS id FROM saas_plans WHERE id = $1",
+      [planId]
+    );
+    assert.equal(
+      (firstProvision as { planVersionId: string }).planVersionId,
+      currentPlanVersion.rows[0]?.id
+    );
+
+    const firstTransition = await service.transitionSubscription(
+      principal,
+      organizationId,
+      {
+        to: "PAST_DUE",
+        expectedVersion: 1,
+        reason: "Integration renewal failure"
+      },
+      "cms-subscription-transition-001"
+    );
+    const replayedTransition = await service.transitionSubscription(
+      principal,
+      organizationId,
+      {
+        to: "PAST_DUE",
+        expectedVersion: 1,
+        reason: "Integration renewal failure"
+      },
+      "cms-subscription-transition-001"
+    );
+
+    assert.deepEqual(replayedTransition, firstTransition);
+    assert.equal(
+      (firstTransition as { status: string }).status,
+      "PAST_DUE"
+    );
+    assert.equal(
+      (firstTransition as { version: number }).version,
+      2
+    );
+
+    const subscriptionAudits = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE organization_id = $1
+         AND action IN (
+           'SUBSCRIPTION_PROVISIONED',
+           'SUBSCRIPTION_STATUS_CHANGED'
+         )`,
+      [organizationId]
+    );
+    assert.equal(subscriptionAudits.rows[0]?.count, 2);
+
     const firstOverride = await service.setEntitlementOverride(
       principal,
       organizationId,
@@ -220,6 +303,8 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.ok(inspected);
     assert.equal(inspected.roomLimit, 80);
     assert.equal(inspected.roomLimitSource, "OVERRIDE");
+    assert.equal(inspected.subscriptionStatus, "PAST_DUE");
+    assert.equal(inspected.subscriptionVersion, 2);
 
     await service.revokeEntitlementOverride(
       principal,
