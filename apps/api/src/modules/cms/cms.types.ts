@@ -70,3 +70,9 @@ export interface RecordSubscriptionPaymentInput {
   amountVnd?: number;
   reason?: string;
 }
+
+export interface AllocateProviderPaymentInput {
+  invoiceId?: string;
+  amountVnd?: number;
+  reason?: string;
+}
