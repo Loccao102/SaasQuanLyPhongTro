@@ -252,6 +252,40 @@ export class SubscriptionBillingService {
     return this.mapInvoice(inserted.rows[0]!);
   }
 
+  async recordManualPaymentInTransaction(
+    client: PoolClient,
+    input: {
+      organizationId: string;
+      invoiceId: string;
+      idempotencyKey: string;
+      recordedByUserId: string;
+      metadata?: unknown;
+    }
+  ): Promise<BillingSettlementView> {
+    const invoiceResult = await client.query<InvoiceRow>(
+      this.invoiceSelectSql(
+        "WHERE organization_id = $1 AND id = $2"
+      ),
+      [input.organizationId, input.invoiceId]
+    );
+    const invoice = invoiceResult.rows[0];
+    if (!invoice) {
+      throw new SubscriptionBillingNotFoundError(
+        "Subscription invoice was not found."
+      );
+    }
+
+    return this.recordSuccessfulPaymentInTransaction(client, {
+      organizationId: input.organizationId,
+      invoiceId: input.invoiceId,
+      amountVnd: Number(invoice.amount_vnd),
+      source: "MANUAL",
+      idempotencyKey: input.idempotencyKey,
+      recordedByUserId: input.recordedByUserId,
+      metadata: input.metadata
+    });
+  }
+
   recordSuccessfulPayment(input: {
     organizationId: string;
     invoiceId: string;
