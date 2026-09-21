@@ -5,6 +5,50 @@ Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, t�
 1. Ghi chỉ số điện/nước nhanh, offline-first.
 2. Tự động hóa phát hành hóa đơn, thu tiền và gạch nợ.
 
+## Chạy hệ thống
+
+### Full Docker
+
+Chỉ cần Docker trên máy:
+
+```bash
+cp .env.example .env
+docker compose -f infra/docker-compose.yml up --build
+```
+
+Nếu máy đã có pnpm:
+
+```bash
+pnpm docker:up
+```
+
+Compose tự chạy PostgreSQL, Redis, migration/seed, API, Admin, Staff, Public Invoice, CMS và ba worker role.
+
+### Chạy ngoài Docker
+
+```bash
+corepack enable
+corepack prepare pnpm@12.4.1 --activate
+pnpm install
+cp .env.example .env
+
+# PostgreSQL/Redis có thể cài native; hoặc chỉ chạy infra bằng Docker:
+pnpm infra:up
+
+pnpm db:setup
+pnpm dev
+```
+
+Các địa chỉ mặc định:
+
+- Admin: http://localhost:3000
+- Staff: http://localhost:3001
+- Public Invoice: http://localhost:3002
+- CMS: http://localhost:3003
+- API: http://localhost:4000/api
+
+Xem [Local Development Runtime](docs/operations/LOCAL_DEVELOPMENT.md) để biết chi tiết.
+
 ## Nguyên tắc kiến trúc
 
 - **Modular Monolith trước, tách service khi có bằng chứng cần thiết.**
@@ -45,6 +89,7 @@ Public Invoice ┘                 │
 - [Scalability](docs/architecture/SCALABILITY.md)
 - [Security & Multi-tenancy](docs/architecture/SECURITY.md)
 - [Design System](docs/design/DESIGN_SYSTEM.md)
+- [Local Development Runtime](docs/operations/LOCAL_DEVELOPMENT.md)
 - [Notification Automation](docs/operations/NOTIFICATION_AUTOMATION.md)
 - [Offline PWA](docs/operations/OFFLINE_PWA.md)
 - [Payment Reconciliation](docs/operations/PAYMENT_RECONCILIATION.md)
