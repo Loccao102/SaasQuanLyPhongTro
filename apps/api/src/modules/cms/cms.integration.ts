@@ -1105,7 +1105,7 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
 
     const dashboard = await service.getDashboard(principal);
 
-    assert.equal(dashboard.branding.productName, "PropOps DB Test");
+    assert.equal(dashboard.branding.productName, "Habi DB Test");
     assert.equal(dashboard.branding.descriptor, "SaaS vận hành nhà cho thuê");
     assert.equal(dashboard.display.locale, "vi-VN");
     assert.equal(dashboard.display.currencyCode, "VND");
