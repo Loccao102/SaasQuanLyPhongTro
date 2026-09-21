@@ -22,6 +22,18 @@ export class InternalWorkerApiClient {
     }
   }
 
+  heartbeat(input: {
+    workerId: string;
+    provider: string;
+    status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
+    lastErrorCode?: string | null;
+    lastErrorMessage?: string | null;
+    metadata?: unknown;
+    pauseProviderReason?: string | null;
+  }): Promise<{ ok: true }> {
+    return this.request("/internal/notifications/heartbeat", input);
+  }
+
   claim(provider: string): Promise<ClaimedNotificationJob | null> {
     return this.request<ClaimedNotificationJob | null>(
       "/internal/notifications/claim",
