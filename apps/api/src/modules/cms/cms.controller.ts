@@ -32,6 +32,11 @@ import type {
 export class CmsController {
   constructor(private readonly cms: CmsService) {}
 
+  @Get("bootstrap")
+  getBootstrap(@Req() request: CmsRequest) {
+    return this.cms.getBootstrap(this.principal(request));
+  }
+
   @Get("dashboard")
   getDashboard(@Req() request: CmsRequest) {
     return this.cms.getDashboard(this.principal(request));
