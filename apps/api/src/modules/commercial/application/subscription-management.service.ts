@@ -199,6 +199,17 @@ export class SubscriptionManagementService {
       reason: string;
     }
   ): Promise<SubscriptionTransitionView> {
+    const organization = await client.query(
+      `SELECT id
+       FROM organizations
+       WHERE id = $1
+       FOR UPDATE`,
+      [input.organizationId]
+    );
+    if (organization.rowCount !== 1) {
+      throw new SubscriptionNotFoundError();
+    }
+
     const currentResult = await client.query<SubscriptionRow>(
       `SELECT
          s.id::text,
@@ -298,6 +309,17 @@ export class SubscriptionManagementService {
       expectedVersion: number;
     }
   ): Promise<SubscriptionTransitionView> {
+    const organization = await client.query(
+      `SELECT id
+       FROM organizations
+       WHERE id = $1
+       FOR UPDATE`,
+      [input.organizationId]
+    );
+    if (organization.rowCount !== 1) {
+      throw new SubscriptionNotFoundError();
+    }
+
     const currentResult = await client.query<SubscriptionRow>(
       `SELECT
          s.id::text,
