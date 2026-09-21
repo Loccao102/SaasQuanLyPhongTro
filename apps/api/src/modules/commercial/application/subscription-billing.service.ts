@@ -275,7 +275,7 @@ export class SubscriptionBillingService {
          i.updated_at,
          '0'::text AS paid_amount_vnd,
          i.amount_vnd::text AS remaining_amount_vnd,
-         false AS is_overdue
+         (i.due_at <= now()) AS is_overdue
        FROM inserted i`,
       [
         subscription.organization_id,
