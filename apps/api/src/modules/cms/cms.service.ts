@@ -104,8 +104,16 @@ type OrganizationRow = QueryResultRow & {
   trial_ends_at: Date | null;
   plan_code: string | null;
   latest_invoice_id: string | null;
-  latest_invoice_status: "OPEN" | "OVERDUE" | "PAID" | "VOID" | null;
+  latest_invoice_status:
+    | "OPEN"
+    | "PARTIALLY_PAID"
+    | "PAID"
+    | "VOID"
+    | null;
   latest_invoice_amount_vnd: string | null;
+  latest_invoice_paid_amount_vnd: string | null;
+  latest_invoice_remaining_amount_vnd: string | null;
+  latest_invoice_is_overdue: boolean | null;
   latest_invoice_due_at: Date | null;
   latest_invoice_paid_at: Date | null;
   latest_invoice_period_start: Date | null;
@@ -465,6 +473,10 @@ export class CmsService {
          billing_invoice.id::text AS latest_invoice_id,
          billing_invoice.status AS latest_invoice_status,
          billing_invoice.amount_vnd::text AS latest_invoice_amount_vnd,
+         billing_invoice.paid_amount_vnd::text AS latest_invoice_paid_amount_vnd,
+         billing_invoice.remaining_amount_vnd::text
+           AS latest_invoice_remaining_amount_vnd,
+         billing_invoice.is_overdue AS latest_invoice_is_overdue,
          billing_invoice.due_at AS latest_invoice_due_at,
          billing_invoice.paid_at AS latest_invoice_paid_at,
          billing_invoice.period_start AS latest_invoice_period_start,
@@ -551,11 +563,29 @@ export class CmsService {
            i.id,
            i.status,
            i.amount_vnd,
+           COALESCE(alloc.paid_amount_vnd, 0)::bigint AS paid_amount_vnd,
+           (
+             i.amount_vnd - COALESCE(alloc.paid_amount_vnd, 0)
+           )::bigint AS remaining_amount_vnd,
+           (
+             i.due_at <= now()
+             AND i.status IN ('OPEN', 'PARTIALLY_PAID')
+           ) AS is_overdue,
            i.due_at,
            i.paid_at,
            i.period_start,
            i.period_end
          FROM saas_subscription_invoices i
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(sum(a.amount_vnd), 0)::bigint AS paid_amount_vnd
+           FROM saas_subscription_payment_allocations a
+           JOIN saas_subscription_payments pay
+             ON pay.organization_id = a.organization_id
+            AND pay.id = a.payment_id
+           WHERE a.organization_id = i.organization_id
+             AND a.invoice_id = i.id
+             AND pay.status = 'SUCCEEDED'
+         ) alloc ON true
          WHERE i.organization_id = o.id
            AND i.status <> 'VOID'
          ORDER BY i.period_start DESC, i.created_at DESC
@@ -604,6 +634,13 @@ export class CmsService {
               id: row.latest_invoice_id,
               status: row.latest_invoice_status,
               amountVnd: Number(row.latest_invoice_amount_vnd),
+              paidAmountVnd: Number(
+                row.latest_invoice_paid_amount_vnd
+              ),
+              remainingAmountVnd: Number(
+                row.latest_invoice_remaining_amount_vnd
+              ),
+              isOverdue: row.latest_invoice_is_overdue ?? false,
               dueAt:
                 row.latest_invoice_due_at?.toISOString() ?? null,
               paidAt:
@@ -882,15 +919,22 @@ export class CmsService {
     const reason = this.requireReason(input.reason);
     const commandKey = this.requireIdempotencyKey(idempotencyKey);
     const invoiceId = input.invoiceId?.trim() ?? "";
+    const amountVnd = input.amountVnd;
 
     if (!invoiceId) {
       throw new BadRequestException("invoiceId is required.");
+    }
+    if (!Number.isInteger(amountVnd) || Number(amountVnd) <= 0) {
+      throw new BadRequestException(
+        "amountVnd must be a positive integer VND amount."
+      );
     }
 
     const fingerprint = this.fingerprint({
       action: "SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY",
       organizationId,
       invoiceId,
+      amountVnd,
       reason
     });
 
@@ -916,6 +960,7 @@ export class CmsService {
             {
               organizationId,
               invoiceId,
+              amountVnd: Number(amountVnd),
               idempotencyKey:
                 "cms-manual-" +
                 this.fingerprint({
@@ -923,6 +968,7 @@ export class CmsService {
                   commandKey
                 }),
               recordedByUserId: principal.userId,
+              reason,
               metadata: {
                 reason,
                 source: "CMS"
@@ -938,6 +984,7 @@ export class CmsService {
           organizationId,
           beforeState: {
             invoiceId,
+            amountVnd,
             requestedBy: principal.userId
           },
           afterState: settlement,
