@@ -10,6 +10,8 @@ import {
 const organizationId = "d1000000-0000-0000-0000-000000000001";
 const operatorUserId = "d2000000-0000-0000-0000-000000000001";
 const batchOrganizationId = "d1000000-0000-0000-0000-000000000002";
+const cancellationOrganizationId =
+  "d1000000-0000-0000-0000-000000000003";
 
 async function cleanup(pool: Pool): Promise<void> {
   await pool.query(
@@ -60,6 +62,33 @@ async function cleanupBatch(pool: Pool): Promise<void> {
   await pool.query(
     "DELETE FROM organizations WHERE id = $1",
     [batchOrganizationId]
+  );
+}
+
+async function cleanupCancellation(pool: Pool): Promise<void> {
+  await pool.query(
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
+    [cancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
+    [cancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
+    [cancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM platform_audit_events WHERE organization_id = $1",
+    [cancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organization_subscriptions WHERE organization_id = $1",
+    [cancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organizations WHERE id = $1",
+    [cancellationOrganizationId]
   );
 }
 
@@ -405,6 +434,203 @@ test("bounded billing sweep creates one renewal invoice and is repeat-safe", asy
   } finally {
     await database.onModuleDestroy();
     await cleanupBatch(fixturePool);
+    await fixturePool.end();
+  }
+});
+
+
+test("scheduled cancellation voids and reopens renewal safely before applying at period end", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const billing = new SubscriptionBillingService(database);
+
+  try {
+    await cleanupCancellation(fixturePool);
+
+    await fixturePool.query(
+      `INSERT INTO organizations (
+         id, slug, name, organization_type, status
+       )
+       VALUES (
+         $1,
+         'billing-cancellation-org',
+         'Billing Cancellation Org',
+         'INDIVIDUAL',
+         'ACTIVE'
+       )`,
+      [cancellationOrganizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status,
+         billing_interval,
+         current_period_start,
+         current_period_end
+       )
+       SELECT
+         $1,
+         p.id,
+         p.current_version_id,
+         'ACTIVE',
+         'MONTHLY',
+         now() - interval '27 days',
+         now() + interval '3 days'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [cancellationOrganizationId]
+    );
+
+    const renewal = await billing.ensureRenewalInvoice(
+      cancellationOrganizationId
+    );
+    assert.ok(renewal);
+    assert.equal(renewal.status, "OPEN");
+
+    const scheduled = await database.withTransaction((client) =>
+      billing.setCancellationScheduleInTransaction(client, {
+        organizationId: cancellationOrganizationId,
+        cancelAtPeriodEnd: true,
+        expectedVersion: 1,
+        reason: "Integration schedule period-end cancellation"
+      })
+    );
+
+    assert.equal(scheduled.cancelAtPeriodEnd, true);
+    assert.equal(scheduled.version, 2);
+    assert.deepEqual(scheduled.voidedInvoiceIds, [renewal.id]);
+    assert.deepEqual(scheduled.reopenedInvoiceIds, []);
+
+    const voidedInvoice = await fixturePool.query<{
+      status: string;
+      void_reason: string | null;
+      voided_at: Date | null;
+    }>(
+      `SELECT status, void_reason, voided_at
+       FROM saas_subscription_invoices
+       WHERE id = $1`,
+      [renewal.id]
+    );
+    assert.equal(voidedInvoice.rows[0]?.status, "VOID");
+    assert.equal(
+      voidedInvoice.rows[0]?.void_reason,
+      "SCHEDULED_CANCELLATION"
+    );
+    assert.ok(voidedInvoice.rows[0]?.voided_at);
+
+    assert.equal(
+      await billing.ensureRenewalInvoice(cancellationOrganizationId),
+      null
+    );
+
+    const undone = await database.withTransaction((client) =>
+      billing.setCancellationScheduleInTransaction(client, {
+        organizationId: cancellationOrganizationId,
+        cancelAtPeriodEnd: false,
+        expectedVersion: 2,
+        reason: "Integration undo period-end cancellation"
+      })
+    );
+
+    assert.equal(undone.cancelAtPeriodEnd, false);
+    assert.equal(undone.version, 3);
+    assert.deepEqual(undone.voidedInvoiceIds, []);
+    assert.deepEqual(undone.reopenedInvoiceIds, [renewal.id]);
+
+    const reopened = await billing.ensureRenewalInvoice(
+      cancellationOrganizationId
+    );
+    assert.ok(reopened);
+    assert.equal(reopened.id, renewal.id);
+    assert.equal(reopened.status, "OPEN");
+
+    const rescheduled = await database.withTransaction((client) =>
+      billing.setCancellationScheduleInTransaction(client, {
+        organizationId: cancellationOrganizationId,
+        cancelAtPeriodEnd: true,
+        expectedVersion: 3,
+        reason: "Integration reschedule period-end cancellation"
+      })
+    );
+    assert.equal(rescheduled.version, 4);
+    assert.deepEqual(rescheduled.voidedInvoiceIds, [renewal.id]);
+
+    await fixturePool.query(
+      `UPDATE organization_subscriptions
+       SET current_period_end = now() - interval '1 second'
+       WHERE organization_id = $1`,
+      [cancellationOrganizationId]
+    );
+
+    const sweep = await billing.processDueBatch(50);
+    const result = sweep.results.find(
+      (item) => item.organizationId === cancellationOrganizationId
+    );
+    assert.ok(result);
+    assert.equal(result.ok, true);
+    assert.equal(result.invoiceId, null);
+    assert.equal(result.activatedPaidPeriod, false);
+    assert.equal(result.transition, "ACTIVE->CANCELLED");
+
+    const subscription = await fixturePool.query<{
+      status: string;
+      version: number;
+      cancel_at_period_end: boolean;
+    }>(
+      `SELECT status, version, cancel_at_period_end
+       FROM organization_subscriptions
+       WHERE organization_id = $1`,
+      [cancellationOrganizationId]
+    );
+    assert.equal(subscription.rows[0]?.status, "CANCELLED");
+    assert.equal(subscription.rows[0]?.version, 5);
+    assert.equal(
+      subscription.rows[0]?.cancel_at_period_end,
+      false
+    );
+
+    const repeatSweep = await billing.processDueBatch(50);
+    assert.equal(
+      repeatSweep.results.some(
+        (item) => item.organizationId === cancellationOrganizationId
+      ),
+      false
+    );
+
+    const audits = await fixturePool.query<{
+      action: string;
+      count: number;
+    }>(
+      `SELECT action, count(*)::int AS count
+       FROM platform_audit_events
+       WHERE organization_id = $1
+       GROUP BY action`,
+      [cancellationOrganizationId]
+    );
+    const auditCounts = new Map(
+      audits.rows.map((row) => [row.action, row.count])
+    );
+    assert.equal(
+      auditCounts.get("SUBSCRIPTION_CANCELLATION_SCHEDULED"),
+      2
+    );
+    assert.equal(
+      auditCounts.get("SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED"),
+      1
+    );
+    assert.equal(
+      auditCounts.get("SUBSCRIPTION_SCHEDULED_CANCELLATION_APPLIED"),
+      1
+    );
+  } finally {
+    await database.onModuleDestroy();
+    await cleanupCancellation(fixturePool);
     await fixturePool.end();
   }
 });
