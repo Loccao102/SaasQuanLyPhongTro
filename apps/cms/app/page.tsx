@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type FormEvent
 } from "react";
 import {
@@ -327,6 +328,16 @@ export default function CmsPage() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 1
     }).format(value) + "%";
+  const palette = dashboard?.branding.palette ?? {};
+  const paletteValue = (key: string, fallback: string) =>
+    typeof palette[key] === "string" ? (palette[key] as string) : fallback;
+  const brandStyle = {
+    "--brand-navy": paletteValue("navy", "#0F2D4A"),
+    "--brand-teal": paletteValue("teal", "#14B8A6"),
+    "--brand-amber": paletteValue("amber", "#F59E0B"),
+    "--brand-background": paletteValue("background", "#F8FAFC"),
+    "--brand-surface": paletteValue("surface", "#FFFFFF")
+  } as CSSProperties;
 
   async function submitModal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -625,7 +636,7 @@ export default function CmsPage() {
   }
 
   return (
-    <div className="cms-shell">
+    <div className="cms-shell" style={brandStyle}>
       <aside className="cms-sidebar">
         <div className="cms-brand">
           <img
