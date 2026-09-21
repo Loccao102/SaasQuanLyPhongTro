@@ -48,8 +48,30 @@ A sweep may:
 
 Duplicate sweeps are safe because the backend owns unique invoice constraints, organization locking and lifecycle transitions.
 
+### Billing webhook
+
+```text
+WORKER_ROLE=BILLING_WEBHOOK
+INTERNAL_API_BASE_URL=http://localhost:4000/api
+INTERNAL_WORKER_TOKEN=replace-with-a-long-random-worker-token
+BILLING_WEBHOOK_PROVIDER=DEV_JSON_BANK
+BILLING_WEBHOOK_POLL_INTERVAL_MS=1500
+```
+
+This role claims already-persisted, signature-verified raw provider events through `/api/internal/billing-webhooks/*`.
+
+The worker:
+- never writes PostgreSQL directly;
+- loads exactly one provider adapter per process;
+- converts the provider payload into either a normalized payment or an explicit REVIEW_REQUIRED / IGNORED / FAILED outcome;
+- never invents `occurredAt` from worker clock time;
+- sends normalized payment data back to the backend, where PaymentTransaction creation/allocation and webhook PROCESSED state commit atomically;
+- safely replays a lost response through backend payment/event fingerprints.
+
+`DEV_JSON_BANK` is local-development plumbing only and is blocked when `NODE_ENV=production`. A production provider such as SePay requires its own signature verification + raw-event persistence adapter and its own deterministic normalization adapter.
+
 ## Deployment invariant
 
-Run NOTIFICATION and BILLING as separate processes/containers even though they use the same package. Do not run Playwright and billing scheduling in the same process.
+Run NOTIFICATION, BILLING and BILLING_WEBHOOK as separate processes/containers even though they use the same package. Do not run browser automation, subscription scheduling and payment-webhook parsing in the same process.
 
 The Playwright Zalo adapter remains a separate follow-up from the durable notification runtime foundation.
