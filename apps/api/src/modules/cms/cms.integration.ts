@@ -16,6 +16,10 @@ const planVersionId = "94000000-0000-0000-0000-000000000001";
 const testSettingKey = "cms_integration_flag";
 const testProvider = "PLAYWRIGHT_ZALO";
 const billingWebhookProvider = "CMS_TEST_BANK";
+const cmsCancellationUserId =
+  "95000000-0000-0000-0000-000000000001";
+const cmsCancellationOrganizationId =
+  "96000000-0000-0000-0000-000000000001";
 
 const principal: PlatformPrincipal = {
   userId,
@@ -81,6 +85,47 @@ async function cleanup(pool: Pool): Promise<void> {
     userId
   ]);
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+}
+
+async function cleanupCmsCancellation(
+  pool: Pool
+): Promise<void> {
+  await pool.query(
+    "DELETE FROM platform_command_receipts WHERE actor_user_id = $1",
+    [cmsCancellationUserId]
+  );
+  await pool.query(
+    "DELETE FROM platform_audit_events WHERE actor_user_id = $1 OR organization_id = $2",
+    [cmsCancellationUserId, cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
+    [cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
+    [cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
+    [cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organization_subscriptions WHERE organization_id = $1",
+    [cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM organizations WHERE id = $1",
+    [cmsCancellationOrganizationId]
+  );
+  await pool.query(
+    "DELETE FROM platform_operators WHERE user_id = $1",
+    [cmsCancellationUserId]
+  );
+  await pool.query(
+    "DELETE FROM users WHERE id = $1",
+    [cmsCancellationUserId]
+  );
 }
 
 test("CMS configuration commands are transactional, idempotent and auditable", async () => {
@@ -855,6 +900,173 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.equal(overrideAudits.rows[0]?.count, 2);
   } finally {
     await cleanup(fixturePool);
+    await database.onModuleDestroy();
+    await fixturePool.end();
+  }
+});
+
+
+test("CMS scheduled subscription cancellation is idempotent, auditable and reversible", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const subscriptionBilling = new SubscriptionBillingService(database);
+  const service = new CmsService(
+    database,
+    new SubscriptionManagementService(),
+    subscriptionBilling,
+    new NotificationOperationsService(database),
+    new SaasBillingWebhookInboxService(database)
+  );
+  const cancellationPrincipal: PlatformPrincipal = {
+    userId: cmsCancellationUserId,
+    role: "PLATFORM_ADMIN"
+  };
+
+  try {
+    await cleanupCmsCancellation(fixturePool);
+
+    await fixturePool.query(
+      `INSERT INTO users (id, email, display_name, status)
+       VALUES (
+         $1,
+         'cms-cancellation@example.invalid',
+         'CMS Cancellation Operator',
+         'ACTIVE'
+       )`,
+      [cmsCancellationUserId]
+    );
+    await fixturePool.query(
+      `INSERT INTO platform_operators (user_id, role, status)
+       VALUES ($1, 'PLATFORM_ADMIN', 'ACTIVE')`,
+      [cmsCancellationUserId]
+    );
+    await fixturePool.query(
+      `INSERT INTO organizations (
+         id, slug, name, organization_type, status
+       )
+       VALUES (
+         $1,
+         'cms-cancellation-org',
+         'CMS Cancellation Org',
+         'INDIVIDUAL',
+         'ACTIVE'
+       )`,
+      [cmsCancellationOrganizationId]
+    );
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status,
+         billing_interval,
+         current_period_start,
+         current_period_end
+       )
+       SELECT
+         $1,
+         p.id,
+         p.current_version_id,
+         'ACTIVE',
+         'MONTHLY',
+         now() - interval '27 days',
+         now() + interval '3 days'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [cmsCancellationOrganizationId]
+    );
+
+    const renewal = await subscriptionBilling.ensureRenewalInvoice(
+      cmsCancellationOrganizationId
+    );
+    assert.ok(renewal);
+
+    const first = await service.setSubscriptionCancellation(
+      cancellationPrincipal,
+      cmsCancellationOrganizationId,
+      {
+        cancelAtPeriodEnd: true,
+        expectedVersion: 1,
+        reason: "CMS integration scheduled cancellation"
+      },
+      "cms-cancellation-001"
+    );
+    const replayed = await service.setSubscriptionCancellation(
+      cancellationPrincipal,
+      cmsCancellationOrganizationId,
+      {
+        cancelAtPeriodEnd: true,
+        expectedVersion: 1,
+        reason: "CMS integration scheduled cancellation"
+      },
+      "cms-cancellation-001"
+    );
+
+    assert.deepEqual(replayed, first);
+    assert.equal(first.cancelAtPeriodEnd, true);
+    assert.equal(first.version, 2);
+    assert.deepEqual(first.voidedInvoiceIds, [renewal.id]);
+
+    const scheduledOrganizations =
+      await service.listOrganizations(cancellationPrincipal);
+    const scheduledOrganization = scheduledOrganizations.find(
+      (organization) =>
+        organization.id === cmsCancellationOrganizationId
+    );
+    assert.ok(scheduledOrganization);
+    assert.equal(scheduledOrganization.cancelAtPeriodEnd, true);
+    assert.equal(scheduledOrganization.subscriptionVersion, 2);
+
+    const scheduleOperatorAudit = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE actor_user_id = $1
+         AND organization_id = $2
+         AND action = 'SUBSCRIPTION_CANCELLATION_SCHEDULED'`,
+      [cmsCancellationUserId, cmsCancellationOrganizationId]
+    );
+    assert.equal(scheduleOperatorAudit.rows[0]?.count, 1);
+
+    const undone = await service.setSubscriptionCancellation(
+      cancellationPrincipal,
+      cmsCancellationOrganizationId,
+      {
+        cancelAtPeriodEnd: false,
+        expectedVersion: 2,
+        reason: "CMS integration cancellation reversed"
+      },
+      "cms-cancellation-002"
+    );
+
+    assert.equal(undone.cancelAtPeriodEnd, false);
+    assert.equal(undone.version, 3);
+    assert.deepEqual(undone.reopenedInvoiceIds, [renewal.id]);
+
+    const undoneOrganizations =
+      await service.listOrganizations(cancellationPrincipal);
+    const undoneOrganization = undoneOrganizations.find(
+      (organization) =>
+        organization.id === cmsCancellationOrganizationId
+    );
+    assert.ok(undoneOrganization);
+    assert.equal(undoneOrganization.cancelAtPeriodEnd, false);
+    assert.equal(undoneOrganization.subscriptionVersion, 3);
+
+    const undoOperatorAudit = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE actor_user_id = $1
+         AND organization_id = $2
+         AND action =
+           'SUBSCRIPTION_CANCELLATION_SCHEDULE_REVOKED'`,
+      [cmsCancellationUserId, cmsCancellationOrganizationId]
+    );
+    assert.equal(undoOperatorAudit.rows[0]?.count, 1);
+  } finally {
+    await cleanupCmsCancellation(fixturePool);
     await database.onModuleDestroy();
     await fixturePool.end();
   }
