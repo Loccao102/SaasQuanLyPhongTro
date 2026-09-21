@@ -237,6 +237,9 @@ export default function CmsPage() {
         const status = String(
           data.get("subscriptionStatus") ?? ""
         ) as "TRIALING" | "ACTIVE";
+        const billingInterval = String(
+          data.get("billingInterval") ?? "MONTHLY"
+        ) as "MONTHLY" | "YEARLY";
         const rawTrialEndsAt = String(data.get("trialEndsAt") ?? "").trim();
         const trialEndsAt =
           status === "TRIALING" && rawTrialEndsAt
@@ -246,6 +249,7 @@ export default function CmsPage() {
         await cmsApi.provisionSubscription(modal.organization.id, {
           planCode,
           status,
+          billingInterval,
           trialEndsAt,
           reason
         });
