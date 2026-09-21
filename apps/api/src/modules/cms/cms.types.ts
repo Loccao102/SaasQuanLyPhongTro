@@ -35,3 +35,16 @@ export interface UpdateEntitlementOverrideInput {
 export interface RevokeEntitlementOverrideInput {
   reason?: string;
 }
+
+export interface ProvisionSubscriptionInput {
+  planCode?: string;
+  status?: "TRIALING" | "ACTIVE";
+  trialEndsAt?: string | null;
+  reason?: string;
+}
+
+export interface TransitionSubscriptionInput {
+  to?: "TRIALING" | "ACTIVE" | "PAST_DUE" | "GRACE_PERIOD" | "SUSPENDED" | "CANCELLED";
+  expectedVersion?: number;
+  reason?: string;
+}
