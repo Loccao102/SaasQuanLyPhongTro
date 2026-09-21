@@ -16,6 +16,7 @@ import {
   cmsApi,
   type CmsAuditEvent,
   type CmsBillingReconciliation,
+  type CmsBillingWebhookEvent,
   type CmsBootstrap,
   type CmsDashboard,
   type CmsEntitlementOverride,
@@ -54,6 +55,10 @@ type ModalState =
   | {
       kind: "allocateProviderPayment";
       payment: CmsProviderPaymentReview;
+    }
+  | {
+      kind: "requeueBillingWebhook";
+      event: CmsBillingWebhookEvent;
     }
   | { kind: "retryNotificationJob"; job: CmsNotificationJob }
   | {
@@ -527,6 +532,13 @@ export default function CmsPage() {
           modal.payment.payment.id,
           invoiceId,
           amountVnd,
+          reason
+        );
+      }
+
+      if (modal.kind === "requeueBillingWebhook") {
+        await cmsApi.requeueBillingWebhook(
+          modal.event.id,
           reason
         );
       }
@@ -1470,6 +1482,7 @@ export default function CmsPage() {
                           <th>Attempts</th>
                           <th>Last error</th>
                           <th>Payment</th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
@@ -1536,6 +1549,28 @@ export default function CmsPage() {
                                     </StatusBadge>
                                     <small>{event.paymentId}</small>
                                   </>
+                                ) : (
+                                  <span className="cms-note">—</span>
+                                )}
+                              </td>
+                              <td>
+                                {hasPermission("platform.billing.manage") &&
+                                event.signatureStatus === "VERIFIED" &&
+                                (event.processingStatus === "FAILED" ||
+                                  event.processingStatus ===
+                                    "REVIEW_REQUIRED") ? (
+                                  <button
+                                    className="text-button"
+                                    type="button"
+                                    onClick={() =>
+                                      setModal({
+                                        kind: "requeueBillingWebhook",
+                                        event
+                                      })
+                                    }
+                                  >
+                                    Requeue
+                                  </button>
                                 ) : (
                                   <span className="cms-note">—</span>
                                 )}
@@ -2206,6 +2241,23 @@ export default function CmsPage() {
                 );
               })()}
 
+            {modal.kind === "requeueBillingWebhook" && (
+              <>
+                <h2>Requeue billing webhook</h2>
+                <p className="modal-warning">
+                  {modal.event.provider} · {modal.event.providerEventId} ·{" "}
+                  {modal.event.processingStatus}. Event sẽ quay về RECEIVED và
+                  worker có thể claim lại. Processing attempts hiện tại{" "}
+                  {modal.event.processingAttempts} được giữ nguyên để audit.
+                </p>
+                <p className="cms-note">
+                  Chỉ requeue sau khi nguyên nhân lỗi/review đã được xử lý.
+                  Backend sẽ từ chối event chưa verify signature, event đã link
+                  payment hoặc trạng thái không phù hợp.
+                </p>
+              </>
+            )}
+
             {modal.kind === "entitlement" && (
               <>
                 <h2>Thêm entitlement override</h2>
@@ -2314,7 +2366,9 @@ export default function CmsPage() {
                     ? "Ghi nhận thanh toán"
                     : modal.kind === "allocateProviderPayment"
                       ? "Allocate payment"
-                      : "Xác nhận thay đổi"}
+                      : modal.kind === "requeueBillingWebhook"
+                        ? "Requeue webhook"
+                        : "Xác nhận thay đổi"}
               </button>
             </div>
           </form>
