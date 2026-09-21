@@ -14,8 +14,6 @@ if (existsSync(envPath)) {
   );
 }
 
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-
 const services = [
   { name: "api", args: ["--filter", "@propops/api", "dev"] },
   { name: "admin", args: ["--filter", "@propops/admin", "dev"] },
@@ -59,10 +57,11 @@ function stopAll(exitCode = 0) {
 }
 
 for (const service of services) {
-  const child = spawn(pnpm, service.args, {
+  const child = spawn("pnpm", service.args, {
     cwd: process.cwd(),
     env: { ...process.env, ...service.env },
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32"
   });
 
   children.add(child);
