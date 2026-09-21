@@ -6,12 +6,23 @@ import {
   Post,
   UseGuards
 } from "@nestjs/common";
+import { NotificationOperationsService } from "./application/notification-operations.service.js";
 import { NotificationWorkerService } from "./application/notification-worker.service.js";
 import type { NotificationProviderResult } from "./domain/notification-provider.js";
 import { InternalWorkerGuard } from "./internal-worker.guard.js";
 
 type ClaimInput = {
   provider?: string;
+};
+
+type HeartbeatInput = {
+  workerId?: string;
+  provider?: string;
+  status?: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  metadata?: unknown;
+  pauseProviderReason?: string | null;
 };
 
 type CompleteInput = {
@@ -100,7 +111,37 @@ function parseProviderResult(value: unknown): NotificationProviderResult {
 @Controller("internal/notifications")
 @UseGuards(InternalWorkerGuard)
 export class NotificationInternalController {
-  constructor(private readonly worker: NotificationWorkerService) {}
+  constructor(
+    private readonly worker: NotificationWorkerService,
+    private readonly operations: NotificationOperationsService
+  ) {}
+
+  @Post("heartbeat")
+  async heartbeat(@Body() input: HeartbeatInput) {
+    const workerId = requireNonEmptyString(input.workerId, "workerId");
+    const provider = requireNonEmptyString(input.provider, "provider");
+
+    if (
+      input.status !== "STARTING" &&
+      input.status !== "HEALTHY" &&
+      input.status !== "DEGRADED" &&
+      input.status !== "STOPPING"
+    ) {
+      throw new BadRequestException("Invalid worker heartbeat status.");
+    }
+
+    await this.operations.reportHeartbeat({
+      workerId,
+      provider,
+      status: input.status,
+      lastErrorCode: input.lastErrorCode ?? null,
+      lastErrorMessage: input.lastErrorMessage ?? null,
+      metadata: input.metadata,
+      pauseProviderReason: input.pauseProviderReason ?? null
+    });
+
+    return { ok: true };
+  }
 
   @Post("claim")
   claim(@Body() input: ClaimInput) {
