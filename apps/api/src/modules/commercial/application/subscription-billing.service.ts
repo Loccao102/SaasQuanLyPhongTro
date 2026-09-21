@@ -375,8 +375,104 @@ export class SubscriptionBillingService {
     const params: unknown[] = [];
 
     if (query) {
-      const pattern =
-        "%" + query.replace(/[\\%_]/g, "\\  async listProviderPaymentReviews(") + "%";
+      const escapedQuery = query.replace(
+        /[\\%_]/g,
+        (match) => "\\" + match
+      );
+      params.push("%" + escapedQuery + "%");
+      const placeholder = "$" + String(params.length);
+      clauses.push(
+        "(" +
+          "p.id::text ILIKE " +
+          placeholder +
+          " ESCAPE '\\\\' OR " +
+          "p.provider_transaction_id ILIKE " +
+          placeholder +
+          " ESCAPE '\\\\' OR " +
+          "COALESCE(p.metadata ->> 'paymentReference', '') ILIKE " +
+          placeholder +
+          " ESCAPE '\\\\'" +
+          ")"
+      );
+    }
+
+    if (provider) {
+      params.push(provider);
+      clauses.push(
+        "upper(COALESCE(p.provider, '')) = upper($" +
+          String(params.length) +
+          ")"
+      );
+    }
+
+    if (reconciliationStatus) {
+      params.push(reconciliationStatus);
+      clauses.push(
+        "p.reconciliation_status = $" + String(params.length)
+      );
+    }
+
+    if (input?.cursor) {
+      const cursor = this.decodeProviderPaymentCursor(input.cursor);
+      params.push(cursor.occurredAt);
+      const occurredPlaceholder = "$" + String(params.length);
+      params.push(cursor.id);
+      const idPlaceholder = "$" + String(params.length);
+      clauses.push(
+        "(" +
+          "p.occurred_at < " +
+          occurredPlaceholder +
+          "::timestamptz OR (" +
+          "p.occurred_at = " +
+          occurredPlaceholder +
+          "::timestamptz AND p.id < " +
+          idPlaceholder +
+          "::uuid))"
+      );
+    }
+
+    params.push(limit + 1);
+    const limitPlaceholder = "$" + String(params.length);
+    const result = await this.database.query<PaymentRow>(
+      this.paymentSelectSql(
+        "WHERE " +
+          clauses.join(" AND ") +
+          " ORDER BY p.occurred_at DESC, p.id DESC LIMIT " +
+          limitPlaceholder
+      ),
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const pageRows = result.rows.slice(0, limit);
+    const items = pageRows.map((row) => {
+      const metadata =
+        typeof row.metadata === "object" &&
+        row.metadata !== null &&
+        !Array.isArray(row.metadata)
+          ? (row.metadata as Record<string, unknown>)
+          : null;
+
+      return {
+        payment: this.mapPayment(row),
+        paymentReference:
+          typeof metadata?.paymentReference === "string"
+            ? metadata.paymentReference
+            : null
+      };
+    });
+
+    const lastRow = pageRows.at(-1);
+    return {
+      items,
+      nextCursor:
+        hasMore && lastRow
+          ? this.encodeProviderPaymentCursor(lastRow)
+          : null
+    };
+  }
+
+  async listProviderPaymentReviews(") + "%";
       params.push(pattern);
       const index = params.length;
       clauses.push(
