@@ -20,6 +20,7 @@ import {
   type CmsOrganization,
   type CmsPlan,
   type CmsSetting,
+  type CmsSubscriptionStatus,
   type IntegrationStatus
 } from "../lib/cms-api";
 
@@ -38,6 +39,8 @@ type ModalState =
   | { kind: "plan"; code: string }
   | { kind: "entitlement" }
   | { kind: "revokeEntitlement"; override: CmsEntitlementOverride }
+  | { kind: "provisionSubscription"; organization: CmsOrganization }
+  | { kind: "transitionSubscription"; organization: CmsOrganization }
   | null;
 
 const navItems: Array<{ id: View; label: string }> = [
@@ -62,10 +65,29 @@ function statusTone(status: string): Tone {
   ) {
     return "warning";
   }
-  if (["SUSPENDED", "FAILED", "ERROR", "DISABLED"].includes(status)) {
+  if (["SUSPENDED", "CANCELLED", "FAILED", "ERROR", "DISABLED"].includes(status)) {
     return "danger";
   }
   return "neutral";
+}
+
+function subscriptionTargets(
+  status: string
+): CmsSubscriptionStatus[] {
+  switch (status) {
+    case "TRIALING":
+      return ["ACTIVE", "CANCELLED"];
+    case "ACTIVE":
+      return ["PAST_DUE", "CANCELLED"];
+    case "PAST_DUE":
+      return ["ACTIVE", "GRACE_PERIOD", "CANCELLED"];
+    case "GRACE_PERIOD":
+      return ["ACTIVE", "SUSPENDED", "CANCELLED"];
+    case "SUSPENDED":
+      return ["ACTIVE", "CANCELLED"];
+    default:
+      return [];
+  }
 }
 
 function money(value: number): string {
@@ -194,6 +216,41 @@ export default function CmsPage() {
         );
       }
 
+      if (modal.kind === "provisionSubscription") {
+        const planCode = String(data.get("planCode") ?? "");
+        const status = String(
+          data.get("subscriptionStatus") ?? ""
+        ) as "TRIALING" | "ACTIVE";
+        const rawTrialEndsAt = String(data.get("trialEndsAt") ?? "").trim();
+        const trialEndsAt =
+          status === "TRIALING" && rawTrialEndsAt
+            ? new Date(rawTrialEndsAt).toISOString()
+            : null;
+
+        await cmsApi.provisionSubscription(modal.organization.id, {
+          planCode,
+          status,
+          trialEndsAt,
+          reason
+        });
+      }
+
+      if (modal.kind === "transitionSubscription") {
+        const expectedVersion = modal.organization.subscriptionVersion;
+        if (expectedVersion === null) {
+          throw new Error("Subscription version is missing. Refresh and retry.");
+        }
+
+        const to = String(
+          data.get("targetStatus") ?? ""
+        ) as CmsSubscriptionStatus;
+        await cmsApi.transitionSubscription(modal.organization.id, {
+          to,
+          expectedVersion,
+          reason
+        });
+      }
+
       if (modal.kind === "entitlement") {
         const organizationId = String(data.get("organizationId") ?? "");
         const key = String(data.get("entitlementKey") ?? "") as CmsEntitlementOverride["key"];
@@ -239,12 +296,14 @@ export default function CmsPage() {
         );
       }
 
-      const [nextAudit, nextDashboard] = await Promise.all([
+      const [nextAudit, nextDashboard, nextOrganizations] = await Promise.all([
         cmsApi.audit(),
-        cmsApi.dashboard()
+        cmsApi.dashboard(),
+        cmsApi.organizations()
       ]);
       setAudit(nextAudit);
       setDashboard(nextDashboard);
+      setOrganizations(nextOrganizations);
       setModal(null);
     } catch (saveError) {
       setError(
@@ -549,6 +608,7 @@ export default function CmsPage() {
                         <th>Rooms</th>
                         <th>Staff</th>
                         <th>Automation quota</th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
@@ -570,6 +630,11 @@ export default function CmsPage() {
                               >
                                 {org.subscriptionStatus}
                               </StatusBadge>
+                              <small>
+                                {org.subscriptionVersion !== null
+                                  ? "v" + String(org.subscriptionVersion)
+                                  : "No subscription version"}
+                              </small>
                             </td>
                             <td className={roomOver ? "danger-text" : undefined}>
                               {org.rooms} / {org.roomLimit ?? "—"}
@@ -580,6 +645,39 @@ export default function CmsPage() {
                             <td>
                               {org.automationQuota?.toLocaleString("vi-VN") ??
                                 "—"}
+                            </td>
+                            <td>
+                              {org.subscriptionStatus === "UNASSIGNED" ? (
+                                <button
+                                  className="text-button"
+                                  type="button"
+                                  disabled={plans.length === 0}
+                                  onClick={() =>
+                                    setModal({
+                                      kind: "provisionSubscription",
+                                      organization: org
+                                    })
+                                  }
+                                >
+                                  Provision
+                                </button>
+                              ) : subscriptionTargets(org.subscriptionStatus)
+                                  .length > 0 ? (
+                                <button
+                                  className="text-button"
+                                  type="button"
+                                  onClick={() =>
+                                    setModal({
+                                      kind: "transitionSubscription",
+                                      organization: org
+                                    })
+                                  }
+                                >
+                                  Transition
+                                </button>
+                              ) : (
+                                <span className="cms-note">Terminal</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -827,6 +925,62 @@ export default function CmsPage() {
                   </>
                 );
               })()}
+
+            {modal.kind === "provisionSubscription" && (
+              <>
+                <h2>Provision subscription</h2>
+                <p className="modal-warning">
+                  {modal.organization.name} sẽ snapshot current plan version.
+                  Plan thay đổi về sau không rewrite subscription này.
+                </p>
+                <label>
+                  Plan
+                  <select name="planCode" required>
+                    {plans
+                      .filter((plan) => plan.status === "ACTIVE")
+                      .map((plan) => (
+                        <option value={plan.code} key={plan.code}>
+                          {plan.name} · v{plan.version}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Initial status
+                  <select name="subscriptionStatus" defaultValue="TRIALING">
+                    <option value="TRIALING">TRIALING</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                  </select>
+                </label>
+                <label>
+                  Trial end (optional; ignored for ACTIVE)
+                  <input name="trialEndsAt" type="datetime-local" />
+                </label>
+              </>
+            )}
+
+            {modal.kind === "transitionSubscription" && (
+              <>
+                <h2>Transition subscription</h2>
+                <p className="modal-warning">
+                  {modal.organization.name} · {modal.organization.subscriptionStatus}
+                  {" → "}target state. Current optimistic version:{" "}
+                  {modal.organization.subscriptionVersion ?? "—"}.
+                </p>
+                <label>
+                  Target status
+                  <select name="targetStatus" required>
+                    {subscriptionTargets(
+                      modal.organization.subscriptionStatus
+                    ).map((status) => (
+                      <option value={status} key={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
 
             {modal.kind === "entitlement" && (
               <>
