@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
 import { AutomationQuotaService } from "../../commercial/application/automation-quota.service.js";
+import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
 import {
   decideNotificationCompletion,
@@ -57,7 +58,8 @@ export class NotificationJobStateConflictError extends Error {
 export class NotificationWorkerService {
   constructor(
     private readonly database: DatabaseService,
-    private readonly quota: AutomationQuotaService
+    private readonly quota: AutomationQuotaService,
+    private readonly commercialPolicy: CommercialPolicyService
   ) {}
 
   claimNext(provider: string): Promise<ClaimedNotificationJob | null> {
@@ -106,6 +108,11 @@ export class NotificationWorkerService {
       if (!row) {
         return null;
       }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        row.organization_id
+      );
 
       await this.quota.consumeInTransaction(client, {
         organizationId: row.organization_id,
