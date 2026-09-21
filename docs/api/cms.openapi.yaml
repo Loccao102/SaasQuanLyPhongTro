@@ -210,6 +210,26 @@ paths:
         "404": { description: Payment or invoice not found }
         "409": { description: Cross-organization, balance, state or idempotency conflict }
         "403": { description: Missing platform.billing.manage }
+  /billing/webhooks/{eventId}/requeue:
+    post:
+      summary: Requeue a verified FAILED or REVIEW_REQUIRED billing webhook event
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Event returned to RECEIVED or idempotently replayed }
+        "400": { description: Invalid reason }
+        "403": { description: Missing platform.billing.manage }
+        "409": { description: Signature/state/payment-link or idempotency conflict }
   /entitlement-overrides:
     get:
       summary: List current non-revoked organization entitlement overrides
