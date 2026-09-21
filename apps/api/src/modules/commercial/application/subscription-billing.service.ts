@@ -136,6 +136,16 @@ export interface ProviderPaymentReviewView {
   paymentReference: string | null;
 }
 
+export type ProviderPaymentReconciliationStatus =
+  | "UNALLOCATED"
+  | "ALLOCATED"
+  | "REVIEW_REQUIRED";
+
+export interface ProviderPaymentSearchResult {
+  items: ProviderPaymentReviewView[];
+  nextCursor: string | null;
+}
+
 export interface ProviderPaymentIngestionView {
   payment: SubscriptionPaymentView;
   invoice: SubscriptionInvoiceView | null;
@@ -319,6 +329,137 @@ export class SubscriptionBillingService {
     );
 
     return this.mapInvoice(inserted.rows[0]!);
+  }
+
+  async searchProviderPayments(input?: {
+    query?: string | null;
+    provider?: string | null;
+    reconciliationStatus?: ProviderPaymentReconciliationStatus | null;
+    limit?: number;
+    cursor?: string | null;
+  }): Promise<ProviderPaymentSearchResult> {
+    const limit = input?.limit ?? 50;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment search limit must be between 1 and 100."
+      );
+    }
+
+    const query = input?.query?.trim() || null;
+    const provider = input?.provider?.trim() || null;
+    const reconciliationStatus =
+      input?.reconciliationStatus ?? null;
+
+    if (query && query.length > 200) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment search query is too long."
+      );
+    }
+    if (provider && provider.length > 100) {
+      throw new SubscriptionBillingConflictError(
+        "Provider filter is too long."
+      );
+    }
+    if (
+      reconciliationStatus !== null &&
+      reconciliationStatus !== "UNALLOCATED" &&
+      reconciliationStatus !== "ALLOCATED" &&
+      reconciliationStatus !== "REVIEW_REQUIRED"
+    ) {
+      throw new SubscriptionBillingConflictError(
+        "Invalid provider payment reconciliation status."
+      );
+    }
+
+    const clauses = ["p.source = 'PROVIDER'"];
+    const params: unknown[] = [];
+
+    if (query) {
+      const pattern =
+        "%" + query.replace(/[\\%_]/g, "\\  async listProviderPaymentReviews(") + "%";
+      params.push(pattern);
+      const index = params.length;
+      clauses.push(
+        `(
+          p.id::text ILIKE ${index} ESCAPE '\\'
+          OR p.provider_transaction_id ILIKE ${index} ESCAPE '\\'
+          OR COALESCE(p.metadata ->> 'paymentReference', '')
+            ILIKE ${index} ESCAPE '\\'
+        )`
+      );
+    }
+
+    if (provider) {
+      params.push(provider);
+      clauses.push(
+        "upper(COALESCE(p.provider, '')) = upper($" +
+          String(params.length) +
+          ")"
+      );
+    }
+
+    if (reconciliationStatus) {
+      params.push(reconciliationStatus);
+      clauses.push(
+        "p.reconciliation_status = $" + String(params.length)
+      );
+    }
+
+    if (input?.cursor) {
+      const cursor = this.decodeProviderPaymentCursor(input.cursor);
+      params.push(cursor.occurredAt);
+      const occurredIndex = params.length;
+      params.push(cursor.id);
+      const idIndex = params.length;
+      clauses.push(
+        `(
+          p.occurred_at < ${occurredIndex}::timestamptz
+          OR (
+            p.occurred_at = ${occurredIndex}::timestamptz
+            AND p.id < ${idIndex}::uuid
+          )
+        )`
+      );
+    }
+
+    params.push(limit + 1);
+    const result = await this.database.query<PaymentRow>(
+      this.paymentSelectSql(
+        "WHERE " +
+          clauses.join(" AND ") +
+          " ORDER BY p.occurred_at DESC, p.id DESC LIMIT $" +
+          String(params.length)
+      ),
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const pageRows = result.rows.slice(0, limit);
+    const items = pageRows.map((row) => {
+      const metadata =
+        typeof row.metadata === "object" &&
+        row.metadata !== null &&
+        !Array.isArray(row.metadata)
+          ? (row.metadata as Record<string, unknown>)
+          : null;
+
+      return {
+        payment: this.mapPayment(row),
+        paymentReference:
+          typeof metadata?.paymentReference === "string"
+            ? metadata.paymentReference
+            : null
+      };
+    });
+
+    const lastRow = pageRows.at(-1);
+    return {
+      items,
+      nextCursor:
+        hasMore && lastRow
+          ? this.encodeProviderPaymentCursor(lastRow)
+          : null
+    };
   }
 
   async listProviderPaymentReviews(
@@ -2076,6 +2217,53 @@ export class SubscriptionBillingService {
       );
     }
     return value;
+  }
+
+  private encodeProviderPaymentCursor(row: PaymentRow): string {
+    return Buffer.from(
+      JSON.stringify({
+        occurredAt: row.occurred_at.toISOString(),
+        id: row.id
+      }),
+      "utf8"
+    ).toString("base64url");
+  }
+
+  private decodeProviderPaymentCursor(value: string): {
+    occurredAt: string;
+    id: string;
+  } {
+    if (value.length > 1000) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment cursor is too long."
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(value, "base64url").toString("utf8")
+      ) as { occurredAt?: unknown; id?: unknown };
+
+      if (
+        typeof parsed.occurredAt !== "string" ||
+        Number.isNaN(new Date(parsed.occurredAt).getTime()) ||
+        typeof parsed.id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          parsed.id
+        )
+      ) {
+        throw new Error("invalid cursor");
+      }
+
+      return {
+        occurredAt: new Date(parsed.occurredAt).toISOString(),
+        id: parsed.id
+      };
+    } catch {
+      throw new SubscriptionBillingConflictError(
+        "Invalid provider payment cursor."
+      );
+    }
   }
 
   private invoiceSelectSql(whereClause: string): string {
