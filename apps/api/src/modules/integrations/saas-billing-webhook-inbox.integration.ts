@@ -77,6 +77,7 @@ test("billing webhook inbox persists raw events idempotently and gates processin
     assert.ok(claimed);
     assert.equal(claimed.id, first.id);
     assert.equal(claimed.processingStatus, "PROCESSING");
+    assert.equal(claimed.processingAttempts, 1);
     assert.equal(
       claimed.rawBody,
       '{"transaction":"tx-001","amount":99000}'
@@ -84,6 +85,18 @@ test("billing webhook inbox persists raw events idempotently and gates processin
 
     const noSecondClaim = await inbox.claimNext(provider);
     assert.equal(noSecondClaim, null);
+
+    await fixturePool.query(
+      `UPDATE saas_billing_webhook_events
+       SET processing_started_at = now() - interval '10 minutes'
+       WHERE id = $1`,
+      [claimed.id]
+    );
+
+    const reclaimed = await inbox.claimNext(provider);
+    assert.ok(reclaimed);
+    assert.equal(reclaimed.id, claimed.id);
+    assert.equal(reclaimed.processingAttempts, 2);
 
     const completed = await inbox.complete({
       eventId: claimed.id,
