@@ -51,6 +51,11 @@ type ModalState =
   | { kind: "provisionSubscription"; organization: CmsOrganization }
   | { kind: "transitionSubscription"; organization: CmsOrganization }
   | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
+  | {
+      kind: "subscriptionCancellation";
+      organization: CmsOrganization;
+      cancelAtPeriodEnd: boolean;
+    }
   | { kind: "manualSubscriptionPayment"; organization: CmsOrganization }
   | {
       kind: "allocateProviderPayment";
@@ -411,6 +416,22 @@ export default function CmsPage() {
           expectedVersion,
           reason
         });
+      }
+
+      if (modal.kind === "subscriptionCancellation") {
+        const expectedVersion = modal.organization.subscriptionVersion;
+        if (expectedVersion === null) {
+          throw new Error("Subscription version is missing. Refresh and retry.");
+        }
+
+        await cmsApi.setSubscriptionCancellation(
+          modal.organization.id,
+          {
+            cancelAtPeriodEnd: modal.cancelAtPeriodEnd,
+            expectedVersion,
+            reason
+          }
+        );
       }
 
       if (modal.kind === "entitlement") {
@@ -995,6 +1016,27 @@ export default function CmsPage() {
                                   ? "v" + String(org.subscriptionVersion)
                                   : "No subscription version"}
                               </small>
+                              {org.cancelAtPeriodEnd ? (
+                                <>
+                                  <StatusBadge tone="warning">
+                                    CANCEL_AT_PERIOD_END
+                                  </StatusBadge>
+                                  <small>
+                                    effective{" "}
+                                    {org.subscriptionStatus === "TRIALING"
+                                      ? org.trialEndsAt
+                                        ? new Date(
+                                            org.trialEndsAt
+                                          ).toLocaleString("vi-VN")
+                                        : "—"
+                                      : org.currentPeriodEnd
+                                        ? new Date(
+                                            org.currentPeriodEnd
+                                          ).toLocaleString("vi-VN")
+                                        : "—"}
+                                  </small>
+                                </>
+                              ) : null}
                             </td>
                             <td>
                               {org.latestInvoice ? (
@@ -1158,6 +1200,32 @@ export default function CmsPage() {
                                       }
                                     >
                                       Ghi nhận thanh toán
+                                    </button>
+                                  ) : null}
+                                  {hasPermission(
+                                    "platform.subscriptions.manage"
+                                  ) &&
+                                  (org.subscriptionStatus === "ACTIVE" ||
+                                    org.subscriptionStatus === "TRIALING") ? (
+                                    <button
+                                      className={
+                                        org.cancelAtPeriodEnd
+                                          ? "text-button"
+                                          : "text-button text-button--danger"
+                                      }
+                                      type="button"
+                                      onClick={() =>
+                                        setModal({
+                                          kind: "subscriptionCancellation",
+                                          organization: org,
+                                          cancelAtPeriodEnd:
+                                            !org.cancelAtPeriodEnd
+                                        })
+                                      }
+                                    >
+                                      {org.cancelAtPeriodEnd
+                                        ? "Undo scheduled cancel"
+                                        : "Cancel at period end"}
                                     </button>
                                   ) : null}
                                   {hasPermission(
@@ -2098,6 +2166,40 @@ export default function CmsPage() {
               </>
             )}
 
+            {modal.kind === "subscriptionCancellation" && (
+              <>
+                <h2>
+                  {modal.cancelAtPeriodEnd
+                    ? "Cancel subscription at period end"
+                    : "Undo scheduled cancellation"}
+                </h2>
+                <p className="modal-warning">
+                  {modal.organization.name} ·{" "}
+                  {modal.organization.subscriptionStatus}.{" "}
+                  {modal.cancelAtPeriodEnd
+                    ? "Subscription vẫn hoạt động tới hết kỳ hiện tại; scheduler sẽ chuyển CANCELLED khi kỳ kết thúc và không tạo renewal invoice mới."
+                    : "Subscription sẽ tiếp tục renew bình thường; scheduler có thể tạo lại renewal invoice khi nằm trong lead window."}
+                </p>
+                <p className="cms-note">
+                  Effective at:{" "}
+                  {modal.organization.subscriptionStatus === "TRIALING"
+                    ? modal.organization.trialEndsAt
+                      ? new Date(
+                          modal.organization.trialEndsAt
+                        ).toLocaleString("vi-VN")
+                      : "—"
+                    : modal.organization.currentPeriodEnd
+                      ? new Date(
+                          modal.organization.currentPeriodEnd
+                        ).toLocaleString("vi-VN")
+                      : "—"}
+                  . Nếu future billing period đã có tiền được allocate, backend
+                  sẽ từ chối schedule cancellation cho tới khi refund/credit
+                  policy được xử lý.
+                </p>
+              </>
+            )}
+
             {modal.kind === "changeSubscriptionPlan" && (
               <>
                 <h2>Change subscription plan</h2>
@@ -2368,7 +2470,11 @@ export default function CmsPage() {
                       ? "Allocate payment"
                       : modal.kind === "requeueBillingWebhook"
                         ? "Requeue webhook"
-                        : "Xác nhận thay đổi"}
+                        : modal.kind === "subscriptionCancellation"
+                          ? modal.cancelAtPeriodEnd
+                            ? "Schedule cancellation"
+                            : "Undo cancellation"
+                          : "Xác nhận thay đổi"}
               </button>
             </div>
           </form>
