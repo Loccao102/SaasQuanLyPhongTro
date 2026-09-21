@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { SubscriptionBillingService } from "../commercial/application/subscription-billing.service.js";
 import { SubscriptionManagementService } from "../commercial/application/subscription-management.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { SaasBillingWebhookInboxService } from "../integrations/saas-billing-webhook-inbox.service.js";
 import { NotificationOperationsService } from "../notifications/application/notification-operations.service.js";
 import { CmsService } from "./cms.service.js";
 import type { PlatformPrincipal } from "./cms.types.js";
@@ -93,7 +94,8 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     database,
     new SubscriptionManagementService(),
     subscriptionBilling,
-    new NotificationOperationsService(database)
+    new NotificationOperationsService(database),
+    new SaasBillingWebhookInboxService(database)
   );
 
   try {
