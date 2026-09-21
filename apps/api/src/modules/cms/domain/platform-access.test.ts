@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { platformRoleHasPermission } from "./platform-access.js";
+import {
+  platformPermissionsForRole,
+  platformRoleHasPermission
+} from "./platform-access.js";
 
 test("platform admin has settings permission", () => {
   assert.equal(
@@ -72,5 +75,55 @@ test("subscription lifecycle management is platform-admin only by default", () =
       "platform.subscriptions.manage"
     ),
     false
+  );
+});
+
+test("billing permissions are platform-admin only by default", () => {
+  assert.equal(
+    platformRoleHasPermission("PLATFORM_ADMIN", "platform.billing.read"),
+    true
+  );
+  assert.equal(
+    platformRoleHasPermission("PLATFORM_ADMIN", "platform.billing.manage"),
+    true
+  );
+
+  for (const role of [
+    "SUPPORT_OPERATOR",
+    "OPS_OPERATOR",
+    "READ_ONLY_AUDITOR"
+  ] as const) {
+    assert.equal(
+      platformRoleHasPermission(role, "platform.billing.read"),
+      false
+    );
+    assert.equal(
+      platformRoleHasPermission(role, "platform.billing.manage"),
+      false
+    );
+  }
+});
+
+test("permission bootstrap returns only capabilities granted to the role", () => {
+  const support = platformPermissionsForRole("SUPPORT_OPERATOR");
+  assert.deepEqual(
+    support,
+    [
+      "platform.cms.read",
+      "platform.organizations.inspect",
+      "platform.audit.read"
+    ]
+  );
+
+  const ops = platformPermissionsForRole("OPS_OPERATOR");
+  assert.deepEqual(
+    ops,
+    [
+      "platform.cms.read",
+      "platform.jobs.read",
+      "platform.jobs.manage",
+      "platform.audit.read",
+      "platform.logs.read"
+    ]
   );
 });
