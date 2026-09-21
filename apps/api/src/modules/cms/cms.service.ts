@@ -8,6 +8,11 @@ import {
 } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import {
+  SubscriptionBillingConflictError,
+  SubscriptionBillingNotFoundError,
+  SubscriptionBillingService
+} from "../commercial/application/subscription-billing.service.js";
+import {
   ConcurrentSubscriptionUpdateError,
   InvalidSubscriptionPlanChangeError,
   InvalidSubscriptionProvisioningError,
@@ -32,6 +37,7 @@ import type {
   ChangeSubscriptionPlanInput,
   PlatformPrincipal,
   ProvisionSubscriptionInput,
+  RecordSubscriptionPaymentInput,
   RevokeEntitlementOverrideInput,
   RetryNotificationJobInput,
   TransitionSubscriptionInput,
@@ -92,7 +98,18 @@ type OrganizationRow = QueryResultRow & {
   staff_count: number;
   subscription_status: string | null;
   subscription_version: number | null;
+  billing_interval: "MONTHLY" | "YEARLY" | null;
+  current_period_start: Date | null;
+  current_period_end: Date | null;
+  trial_ends_at: Date | null;
   plan_code: string | null;
+  latest_invoice_id: string | null;
+  latest_invoice_status: "OPEN" | "OVERDUE" | "PAID" | "VOID" | null;
+  latest_invoice_amount_vnd: string | null;
+  latest_invoice_due_at: Date | null;
+  latest_invoice_paid_at: Date | null;
+  latest_invoice_period_start: Date | null;
+  latest_invoice_period_end: Date | null;
   room_limit: number | null;
   staff_limit: number | null;
   automation_quota: number | null;
@@ -135,6 +152,7 @@ export class CmsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly subscriptionManagement: SubscriptionManagementService,
+    private readonly subscriptionBilling: SubscriptionBillingService,
     private readonly notificationOperations: NotificationOperationsService
   ) {}
 
@@ -439,7 +457,18 @@ export class CmsService {
          COALESCE(staff_usage.staff_count, 0)::int AS staff_count,
          s.status AS subscription_status,
          s.version AS subscription_version,
+         s.billing_interval,
+         s.current_period_start,
+         s.current_period_end,
+         s.trial_ends_at,
          p.code AS plan_code,
+         billing_invoice.id::text AS latest_invoice_id,
+         billing_invoice.status AS latest_invoice_status,
+         billing_invoice.amount_vnd::text AS latest_invoice_amount_vnd,
+         billing_invoice.due_at AS latest_invoice_due_at,
+         billing_invoice.paid_at AS latest_invoice_paid_at,
+         billing_invoice.period_start AS latest_invoice_period_start,
+         billing_invoice.period_end AS latest_invoice_period_end,
          COALESCE(room_override.value, pv.room_limit) AS room_limit,
          COALESCE(staff_override.value, pv.staff_limit) AS staff_limit,
          COALESCE(automation_override.value, pv.automation_quota) AS automation_quota,
@@ -519,6 +548,21 @@ export class CmsService {
        ) automation_override ON true
        LEFT JOIN LATERAL (
          SELECT
+           i.id,
+           i.status,
+           i.amount_vnd,
+           i.due_at,
+           i.paid_at,
+           i.period_start,
+           i.period_end
+         FROM saas_subscription_invoices i
+         WHERE i.organization_id = o.id
+           AND i.status <> 'VOID'
+         ORDER BY i.period_start DESC, i.created_at DESC
+         LIMIT 1
+       ) billing_invoice ON true
+       LEFT JOIN LATERAL (
+         SELECT
            aqp.reserved_actions,
            aqp.consumed_actions
          FROM automation_quota_periods aqp
@@ -546,7 +590,29 @@ export class CmsService {
       staff: row.staff_count,
       subscriptionStatus: row.subscription_status ?? "UNASSIGNED",
       subscriptionVersion: row.subscription_version,
+      billingInterval: row.billing_interval,
+      currentPeriodStart:
+        row.current_period_start?.toISOString() ?? null,
+      currentPeriodEnd:
+        row.current_period_end?.toISOString() ?? null,
+      trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
       planCode: row.plan_code,
+      latestInvoice:
+        row.latest_invoice_id === null
+          ? null
+          : {
+              id: row.latest_invoice_id,
+              status: row.latest_invoice_status,
+              amountVnd: Number(row.latest_invoice_amount_vnd),
+              dueAt:
+                row.latest_invoice_due_at?.toISOString() ?? null,
+              paidAt:
+                row.latest_invoice_paid_at?.toISOString() ?? null,
+              periodStart:
+                row.latest_invoice_period_start?.toISOString() ?? null,
+              periodEnd:
+                row.latest_invoice_period_end?.toISOString() ?? null
+            },
       roomLimit: row.room_limit,
       staffLimit: row.staff_limit,
       automationQuota: row.automation_quota,
@@ -802,6 +868,98 @@ export class CmsService {
         return change.after;
       } catch (error) {
         this.rethrowSubscriptionError(error);
+      }
+    });
+  }
+
+  async recordSubscriptionPayment(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    input: RecordSubscriptionPaymentInput,
+    idempotencyKey: string | undefined
+  ) {
+    this.requirePermission(principal, "platform.billing.manage");
+    const reason = this.requireReason(input.reason);
+    const commandKey = this.requireIdempotencyKey(idempotencyKey);
+    const invoiceId = input.invoiceId?.trim() ?? "";
+
+    if (!invoiceId) {
+      throw new BadRequestException("invoiceId is required.");
+    }
+
+    const fingerprint = this.fingerprint({
+      action: "SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY",
+      organizationId,
+      invoiceId,
+      reason
+    });
+
+    return this.db.withTransaction(async (client) => {
+      const receipt = await this.readReceipt(
+        client,
+        principal.userId,
+        commandKey
+      );
+      if (receipt) {
+        if (receipt.request_fingerprint !== fingerprint) {
+          throw new ConflictException(
+            "Idempotency-Key was already used with a different request."
+          );
+        }
+        return receipt.response;
+      }
+
+      try {
+        const settlement =
+          await this.subscriptionBilling.recordManualPaymentInTransaction(
+            client,
+            {
+              organizationId,
+              invoiceId,
+              idempotencyKey:
+                "cms-manual-" +
+                this.fingerprint({
+                  actorUserId: principal.userId,
+                  commandKey
+                }),
+              recordedByUserId: principal.userId,
+              metadata: {
+                reason,
+                source: "CMS"
+              }
+            }
+          );
+
+        await this.insertAudit(client, {
+          actorUserId: principal.userId,
+          action: "SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY",
+          targetType: "SAAS_SUBSCRIPTION_INVOICE",
+          targetKey: invoiceId,
+          organizationId,
+          beforeState: {
+            invoiceId,
+            requestedBy: principal.userId
+          },
+          afterState: settlement,
+          reason
+        });
+        await this.insertReceipt(
+          client,
+          principal.userId,
+          commandKey,
+          "SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY",
+          fingerprint,
+          settlement
+        );
+        return settlement;
+      } catch (error) {
+        if (error instanceof SubscriptionBillingNotFoundError) {
+          throw new NotFoundException(error.message);
+        }
+        if (error instanceof SubscriptionBillingConflictError) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
       }
     });
   }
