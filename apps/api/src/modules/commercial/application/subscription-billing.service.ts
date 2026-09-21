@@ -27,8 +27,8 @@ type SubscriptionBillingRow = QueryResultRow & {
 
 type InvoiceRow = QueryResultRow & {
   id: string;
-  organization_id: string | null;
-  subscription_id: string | null;
+  organization_id: string;
+  subscription_id: string;
   plan_id: string;
   plan_version_id: string;
   billing_interval: "MONTHLY" | "YEARLY";
@@ -49,8 +49,8 @@ type InvoiceRow = QueryResultRow & {
 
 type PaymentRow = QueryResultRow & {
   id: string;
-  organization_id: string;
-  subscription_id: string;
+  organization_id: string | null;
+  subscription_id: string | null;
   amount_vnd: string;
   status: "SUCCEEDED" | "FAILED" | "REFUNDED";
   reconciliation_status: "UNALLOCATED" | "ALLOCATED" | "REVIEW_REQUIRED";
