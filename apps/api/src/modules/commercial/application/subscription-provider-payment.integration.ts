@@ -250,6 +250,55 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
     assert.equal(unmatched.payment.organizationId, null);
     assert.equal(unmatched.payment.subscriptionId, null);
 
+    const transactionSearch = await billing.searchProviderPayments({
+      query: "provider-tx-overpay",
+      provider,
+      limit: 20
+    });
+    assert.equal(transactionSearch.items.length, 1);
+    assert.equal(
+      transactionSearch.items[0]?.payment.id,
+      overpay.payment.id
+    );
+
+    const referenceSearch = await billing.searchProviderPayments({
+      query: invoice.paymentReference.toLowerCase(),
+      provider,
+      limit: 20
+    });
+    assert.equal(referenceSearch.items.length, 2);
+    assert.ok(
+      referenceSearch.items.some(
+        (item) => item.payment.id === partial.payment.id
+      )
+    );
+    assert.ok(
+      referenceSearch.items.some(
+        (item) => item.payment.id === overpay.payment.id
+      )
+    );
+
+    const firstReviewPage = await billing.searchProviderPayments({
+      provider,
+      reconciliationStatus: "REVIEW_REQUIRED",
+      limit: 1
+    });
+    assert.equal(firstReviewPage.items.length, 1);
+    assert.ok(firstReviewPage.nextCursor);
+
+    const secondReviewPage = await billing.searchProviderPayments({
+      provider,
+      reconciliationStatus: "REVIEW_REQUIRED",
+      limit: 1,
+      cursor: firstReviewPage.nextCursor
+    });
+    assert.equal(secondReviewPage.items.length, 1);
+    assert.notEqual(
+      secondReviewPage.items[0]?.payment.id,
+      firstReviewPage.items[0]?.payment.id
+    );
+    assert.equal(secondReviewPage.nextCursor, null);
+
     const invoiceAfter = (await billing.listInvoices(organizationId))[0];
     assert.ok(invoiceAfter);
     assert.equal(invoiceAfter.status, "PARTIALLY_PAID");
