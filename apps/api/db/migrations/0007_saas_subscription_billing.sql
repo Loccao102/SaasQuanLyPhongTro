@@ -24,6 +24,8 @@ CREATE TABLE saas_subscription_invoices (
   issued_at timestamptz NOT NULL DEFAULT now(),
   due_at timestamptz NOT NULL,
   paid_at timestamptz,
+  void_reason text,
+  voided_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (organization_id, subscription_id)
@@ -35,7 +37,20 @@ CREATE TABLE saas_subscription_invoices (
   UNIQUE (organization_id, id),
   UNIQUE (subscription_id, period_start, period_end),
   CHECK (period_end > period_start),
-  CHECK (paid_at IS NULL OR status = 'PAID')
+  CHECK (paid_at IS NULL OR status = 'PAID'),
+  CHECK (
+    (
+      status = 'VOID'
+      AND void_reason IS NOT NULL
+      AND voided_at IS NOT NULL
+    )
+    OR
+    (
+      status <> 'VOID'
+      AND void_reason IS NULL
+      AND voided_at IS NULL
+    )
+  )
 );
 
 CREATE INDEX saas_subscription_invoices_due_idx
