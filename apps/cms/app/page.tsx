@@ -332,10 +332,10 @@ export default function CmsPage() {
   const paletteValue = (key: string, fallback: string) =>
     typeof palette[key] === "string" ? (palette[key] as string) : fallback;
   const brandStyle = {
-    "--brand-navy": paletteValue("navy", "#0F2D4A"),
-    "--brand-teal": paletteValue("teal", "#14B8A6"),
-    "--brand-amber": paletteValue("amber", "#F59E0B"),
-    "--brand-background": paletteValue("background", "#F8FAFC"),
+    "--brand-navy": paletteValue("navy", "#25355C"),
+    "--brand-teal": paletteValue("teal", "#35C6A8"),
+    "--brand-amber": paletteValue("amber", "#FFB36B"),
+    "--brand-background": paletteValue("background", "#F7FAF9"),
     "--brand-surface": paletteValue("surface", "#FFFFFF")
   } as CSSProperties;
 
@@ -641,13 +641,13 @@ export default function CmsPage() {
         <div className="cms-brand">
           <img
             className="cms-brand__mark"
-            src="/propops-mark.svg"
+            src="/habi-mark.svg"
             alt=""
             width={42}
             height={42}
           />
           <div>
-            <strong>{dashboard?.branding.productName ?? "PropOps"}</strong>
+            <strong>{dashboard?.branding.productName ?? "Habi"}</strong>
             <span>Control Plane</span>
           </div>
         </div>
@@ -689,7 +689,7 @@ export default function CmsPage() {
           <div>
             <span className="cms-eyebrow">
               {dashboard?.branding.tagline ??
-                "VẬN HÀNH HIỆU QUẢ · KIẾN TẠO GIÁ TRỊ BỀN VỮNG"}
+                "NHÀ GỌN. VIỆC TRÔI."}
             </span>
             <h1>{visibleNavItems.find((item) => item.id === view)?.label}</h1>
           </div>
@@ -712,7 +712,7 @@ export default function CmsPage() {
               <section className="cms-hero">
                 <div className="cms-hero__brand">
                   <img
-                    src="/propops-logo.svg"
+                    src="/habi-logo.svg"
                     alt={dashboard.branding.productName}
                     className="cms-hero__logo"
                   />
@@ -803,7 +803,7 @@ export default function CmsPage() {
                 title="SaaS subscription & billing"
                 action={
                   <span className="cms-note">
-                    Financial KPI là billing của PropOps, không phải doanh thu tiền trọ
+                    Financial KPI là billing của Habi, không phải doanh thu tiền trọ
                   </span>
                 }
               />
