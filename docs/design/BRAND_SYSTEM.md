@@ -1,70 +1,74 @@
-# PropOps Brand System
+# Habi Brand System
 
 ## Product name
 
-**PropOps**
+**Habi**
 
-Meaning:
+The name comes from **habitat** — a place where people live — but is intentionally short, friendly and product-like.
 
-- **Prop** — Property;
-- **Ops** — Operations.
+It is broad enough to grow beyond boarding houses into:
 
-The name is intentionally broader than “nhà trọ” so the product can expand from boarding-house management into mini apartments, rental properties and professional property operations without rebranding.
+- rental homes;
+- mini apartments;
+- multi-property operations;
+- property management workflows.
 
 Vietnamese descriptor:
 
 ```text
-SaaS Quản lý Phòng Trọ
+SaaS vận hành nhà cho thuê
 ```
 
 Primary tagline:
 
 ```text
-Vận hành hiệu quả · Kiến tạo giá trị bền vững
+Nhà gọn. Việc trôi.
 ```
+
+The tagline should feel practical rather than corporate: the product reduces operational friction so landlords and staff can keep properties, contracts, billing and communication moving.
 
 ## Logo concept
 
-The PropOps mark combines:
+The Habi mark is built from:
 
-- a house/property outline;
-- ascending operational/data bars;
-- a forward/upward swoosh;
-- an amber sun/accent.
+- two rounded property/room pillars;
+- a connecting H-shaped bridge;
+- a soft roof/arch;
+- an apricot accent dot.
 
-The mark should communicate property operations, measurable performance and growth without looking like a banking or pure accounting product.
+The mark should read as both **H** and **home/habitat** at small sizes.
 
 Canonical assets:
 
 ```text
-apps/cms/public/propops-mark.svg
-apps/cms/public/propops-logo.svg
+apps/cms/public/habi-mark.svg
+apps/cms/public/habi-logo.svg
 apps/cms/app/icon.svg
 ```
 
 ## Default palette
 
-The canonical defaults are stored in PostgreSQL `system_settings` by migration `0009_brand_dashboard_defaults.sql`.
+Canonical defaults are stored in PostgreSQL `system_settings`.
 
 ```text
-Navy       #0F2D4A
-Teal       #14B8A6
-Amber      #F59E0B
-Background #F8FAFC
+Indigo     #25355C
+Mint       #35C6A8
+Apricot    #FFB36B
+Background #F7FAF9
 Surface    #FFFFFF
 ```
 
 Meaning:
 
-- Navy — trust, stability, operations;
-- Teal — efficiency, growth, modern SaaS;
-- Amber — warning/accent/human warmth.
+- Indigo — dependable operations without feeling like a bank;
+- Mint — movement, clarity and modern software;
+- Apricot — warmth, attention and human-scale rental operations.
 
-The CMS reads `brand_palette` from the database and maps it to CSS custom properties, so changing the palette through configuration does not require a code change.
+The CMS maps `brand_palette` from PostgreSQL to CSS custom properties, so theme changes can be applied through configuration without rebuilding the frontend.
 
 ## Display defaults
 
-PostgreSQL also seeds reusable display-format settings:
+PostgreSQL seeds reusable display-format settings:
 
 ```text
 display_locale          vi-VN
@@ -75,33 +79,51 @@ display_datetime_format dd/MM/yyyy HH:mm
 display_format_presets  JSON
 ```
 
-Dashboard/business formatting should consume these settings rather than inventing a different currency/date convention in each frontend.
+Dashboards, reports and future customer-facing surfaces should consume these settings instead of inventing separate formatting conventions.
 
 ## Surface naming
 
 Use:
 
 ```text
-PropOps                product/platform
-PropOps Control Plane  internal platform CMS
-PropOps Admin          landlord/operator application (future apps/web)
-PropOps Staff          staff/PWA surface (future)
+Habi                product/platform
+Habi Control Plane  internal platform operations
+Habi Admin          landlord/operator application
+Habi Staff          staff/PWA application
 ```
 
-Do not call the Control Plane simply “CMS” in customer-facing branding.
+Do not expose the internal term “CMS” as the primary customer-facing product name.
+
+## Tone
+
+Habi should feel:
+
+- operationally capable;
+- friendly;
+- compact;
+- clear;
+- modern;
+- Vietnamese-first without looking provincial.
+
+Avoid:
+
+- overly corporate banking visual language;
+- property-industry clichés such as generic skyscraper logos;
+- luxury real-estate styling;
+- playful visuals that reduce trust in billing/contract workflows.
 
 ## Dashboard rule
 
-A dashboard number must be one of:
+A dashboard value must be one of:
 
 1. directly queried from source-of-truth tables;
 2. deterministically derived from source-of-truth rows;
-3. clearly marked unavailable when the domain is not implemented.
+3. clearly marked unavailable when the relevant domain is not implemented.
 
-Never insert demo values into a production dashboard to make the UI look populated.
+Never insert demo values into production dashboards just to make the UI look populated.
 
-For example:
+Examples:
 
-- room occupancy can be derived from active rooms and current leases;
-- SaaS billing exposure comes from subscription invoices/payments;
-- rental revenue must **not** be shown until the renter-invoice/payment domain exists.
+- occupancy is derived from active rooms and current leases;
+- Habi subscription billing exposure comes from SaaS invoices/payments;
+- rental revenue must not be shown until the renter-invoice/payment domain exists.
