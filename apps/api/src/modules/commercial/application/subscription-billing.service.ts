@@ -35,21 +35,24 @@ type InvoiceRow = QueryResultRow & {
   period_start: Date;
   period_end: Date;
   amount_vnd: string;
-  status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+  status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
   issued_at: Date;
   due_at: Date;
   paid_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  paid_amount_vnd: string;
+  remaining_amount_vnd: string;
+  is_overdue: boolean;
 };
 
 type PaymentRow = QueryResultRow & {
   id: string;
   organization_id: string;
   subscription_id: string;
-  invoice_id: string;
   amount_vnd: string;
   status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+  reconciliation_status: "UNALLOCATED" | "ALLOCATED" | "REVIEW_REQUIRED";
   source: "MANUAL" | "PROVIDER";
   provider: string | null;
   provider_transaction_id: string | null;
@@ -57,6 +60,19 @@ type PaymentRow = QueryResultRow & {
   occurred_at: Date;
   recorded_by_user_id: string | null;
   metadata: unknown;
+  created_at: Date;
+  allocated_amount_vnd: string;
+  unallocated_amount_vnd: string;
+};
+
+type AllocationRow = QueryResultRow & {
+  id: string;
+  organization_id: string;
+  payment_id: string;
+  invoice_id: string;
+  amount_vnd: string;
+  allocated_by_user_id: string | null;
+  reason: string;
   created_at: Date;
 };
 
@@ -72,7 +88,10 @@ export interface SubscriptionInvoiceView {
   periodStart: string;
   periodEnd: string;
   amountVnd: number;
-  status: "OPEN" | "OVERDUE" | "PAID" | "VOID";
+  paidAmountVnd: number;
+  remainingAmountVnd: number;
+  status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  isOverdue: boolean;
   issuedAt: string;
   dueAt: string;
   paidAt: string | null;
@@ -84,9 +103,11 @@ export interface SubscriptionPaymentView {
   id: string;
   organizationId: string;
   subscriptionId: string;
-  invoiceId: string;
   amountVnd: number;
+  allocatedAmountVnd: number;
+  unallocatedAmountVnd: number;
   status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+  reconciliationStatus: "UNALLOCATED" | "ALLOCATED" | "REVIEW_REQUIRED";
   source: "MANUAL" | "PROVIDER";
   provider: string | null;
   providerTransactionId: string | null;
@@ -97,9 +118,21 @@ export interface SubscriptionPaymentView {
   createdAt: string;
 }
 
+export interface SubscriptionPaymentAllocationView {
+  id: string;
+  organizationId: string;
+  paymentId: string;
+  invoiceId: string;
+  amountVnd: number;
+  allocatedByUserId: string | null;
+  reason: string;
+  createdAt: string;
+}
+
 export interface BillingSettlementView {
   invoice: SubscriptionInvoiceView;
   payment: SubscriptionPaymentView;
+  allocation: SubscriptionPaymentAllocationView;
   subscription: {
     organizationId: string;
     status: SubscriptionStatus;
@@ -199,7 +232,7 @@ export class SubscriptionBillingService {
 
     const existing = await client.query<InvoiceRow>(
       this.invoiceSelectSql(
-        "WHERE subscription_id = $1 AND period_start = $2 AND period_end = $3"
+        "WHERE i.subscription_id = $1 AND i.period_start = $2 AND i.period_end = $3"
       ),
       [subscription.id, periodStart, periodEnd]
     );
@@ -208,35 +241,42 @@ export class SubscriptionBillingService {
     }
 
     const inserted = await client.query<InvoiceRow>(
-      `INSERT INTO saas_subscription_invoices (
-         organization_id,
-         subscription_id,
-         plan_id,
-         plan_version_id,
-         billing_interval,
-         period_start,
-         period_end,
-         amount_vnd,
-         status,
-         due_at
+      `WITH inserted AS (
+         INSERT INTO saas_subscription_invoices (
+           organization_id,
+           subscription_id,
+           plan_id,
+           plan_version_id,
+           billing_interval,
+           period_start,
+           period_end,
+           amount_vnd,
+           status,
+           due_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::bigint, 'OPEN', $6)
+         RETURNING *
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::bigint, 'OPEN', $6)
-       RETURNING
-         id::text,
-         organization_id::text,
-         subscription_id::text,
-         plan_id::text,
-         plan_version_id::text,
-         billing_interval,
-         period_start,
-         period_end,
-         amount_vnd::text,
-         status,
-         issued_at,
-         due_at,
-         paid_at,
-         created_at,
-         updated_at`,
+       SELECT
+         i.id::text,
+         i.organization_id::text,
+         i.subscription_id::text,
+         i.plan_id::text,
+         i.plan_version_id::text,
+         i.billing_interval,
+         i.period_start,
+         i.period_end,
+         i.amount_vnd::text,
+         i.status,
+         i.issued_at,
+         i.due_at,
+         i.paid_at,
+         i.created_at,
+         i.updated_at,
+         '0'::text AS paid_amount_vnd,
+         i.amount_vnd::text AS remaining_amount_vnd,
+         false AS is_overdue
+       FROM inserted i`,
       [
         subscription.organization_id,
         subscription.id,
@@ -257,68 +297,16 @@ export class SubscriptionBillingService {
     input: {
       organizationId: string;
       invoiceId: string;
+      amountVnd: number;
       idempotencyKey: string;
       recordedByUserId: string;
-      metadata?: unknown;
-    }
-  ): Promise<BillingSettlementView> {
-    const invoiceResult = await client.query<InvoiceRow>(
-      this.invoiceSelectSql(
-        "WHERE organization_id = $1 AND id = $2"
-      ),
-      [input.organizationId, input.invoiceId]
-    );
-    const invoice = invoiceResult.rows[0];
-    if (!invoice) {
-      throw new SubscriptionBillingNotFoundError(
-        "Subscription invoice was not found."
-      );
-    }
-
-    return this.recordSuccessfulPaymentInTransaction(client, {
-      organizationId: input.organizationId,
-      invoiceId: input.invoiceId,
-      amountVnd: Number(invoice.amount_vnd),
-      source: "MANUAL",
-      idempotencyKey: input.idempotencyKey,
-      recordedByUserId: input.recordedByUserId,
-      metadata: input.metadata
-    });
-  }
-
-  recordSuccessfulPayment(input: {
-    organizationId: string;
-    invoiceId: string;
-    amountVnd: number;
-    source: "MANUAL" | "PROVIDER";
-    provider?: string | null;
-    providerTransactionId?: string | null;
-    idempotencyKey: string;
-    occurredAt?: string;
-    recordedByUserId?: string | null;
-    metadata?: unknown;
-  }): Promise<BillingSettlementView> {
-    return this.database.withTransaction((client) =>
-      this.recordSuccessfulPaymentInTransaction(client, input)
-    );
-  }
-
-  async recordSuccessfulPaymentInTransaction(
-    client: PoolClient,
-    input: {
-      organizationId: string;
-      invoiceId: string;
-      amountVnd: number;
-      source: "MANUAL" | "PROVIDER";
-      provider?: string | null;
-      providerTransactionId?: string | null;
-      idempotencyKey: string;
-      occurredAt?: string;
-      recordedByUserId?: string | null;
+      reason: string;
       metadata?: unknown;
     }
   ): Promise<BillingSettlementView> {
     const idempotencyKey = input.idempotencyKey.trim();
+    const reason = input.reason.trim();
+
     if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
       throw new SubscriptionBillingConflictError(
         "Payment idempotency key must be between 8 and 200 characters."
@@ -329,35 +317,58 @@ export class SubscriptionBillingService {
         "Payment amount must be a positive integer VND amount."
       );
     }
+    if (reason.length < 3) {
+      throw new SubscriptionBillingConflictError(
+        "Manual payment allocation reason is required."
+      );
+    }
 
     await this.lockOrganization(client, input.organizationId);
 
     const existingPayment = await client.query<PaymentRow>(
       this.paymentSelectSql(
-        "WHERE organization_id = $1 AND idempotency_key = $2"
+        "WHERE p.organization_id = $1 AND p.idempotency_key = $2"
       ),
       [input.organizationId, idempotencyKey]
     );
     if (existingPayment.rows[0]) {
       const payment = existingPayment.rows[0];
       if (
-        payment.invoice_id !== input.invoiceId ||
         Number(payment.amount_vnd) !== input.amountVnd ||
-        payment.source !== input.source ||
-        payment.provider !== (input.provider?.trim() || null) ||
-        payment.provider_transaction_id !==
-          (input.providerTransactionId?.trim() || null)
+        payment.source !== "MANUAL"
       ) {
         throw new SubscriptionBillingConflictError(
           "Payment idempotency key was reused with different settlement input."
         );
       }
-      return this.settlementViewForPayment(client, payment);
+
+      const allocationResult = await client.query<AllocationRow>(
+        this.allocationSelectSql(
+          "WHERE a.payment_id = $1 AND a.invoice_id = $2"
+        ),
+        [payment.id, input.invoiceId]
+      );
+      const allocation = allocationResult.rows[0];
+      if (
+        !allocation ||
+        Number(allocation.amount_vnd) !== input.amountVnd
+      ) {
+        throw new SubscriptionBillingConflictError(
+          "Payment idempotency key was reused for a different invoice allocation."
+        );
+      }
+
+      return this.settlementView(
+        client,
+        payment,
+        allocation,
+        input.invoiceId
+      );
     }
 
     const invoiceResult = await client.query<InvoiceRow>(
       this.invoiceSelectSql(
-        "WHERE organization_id = $1 AND id = $2 FOR UPDATE"
+        "WHERE i.organization_id = $1 AND i.id = $2 FOR UPDATE OF i"
       ),
       [input.organizationId, input.invoiceId]
     );
@@ -369,17 +380,17 @@ export class SubscriptionBillingService {
     }
     if (invoice.status === "VOID") {
       throw new SubscriptionBillingConflictError(
-        "Void subscription invoice cannot be paid."
+        "Void subscription invoice cannot receive payment."
       );
     }
-    if (invoice.status === "PAID") {
+    if (invoice.status === "PAID" || Number(invoice.remaining_amount_vnd) <= 0) {
       throw new SubscriptionBillingConflictError(
         "Subscription invoice is already paid."
       );
     }
-    if (Number(invoice.amount_vnd) !== input.amountVnd) {
+    if (input.amountVnd > Number(invoice.remaining_amount_vnd)) {
       throw new SubscriptionBillingConflictError(
-        "Payment amount must exactly match the subscription invoice amount."
+        "Payment exceeds the remaining subscription invoice amount."
       );
     }
 
@@ -394,129 +405,157 @@ export class SubscriptionBillingService {
     }
     if (subscription.status === "CANCELLED") {
       throw new SubscriptionBillingConflictError(
-        "Cancelled subscription cannot be reactivated by payment."
-      );
-    }
-
-    const provider = input.provider?.trim() || null;
-    const providerTransactionId =
-      input.providerTransactionId?.trim() || null;
-    if (input.source === "PROVIDER" && !provider) {
-      throw new SubscriptionBillingConflictError(
-        "Provider payment source requires provider name."
-      );
-    }
-
-    const occurredAt = input.occurredAt
-      ? new Date(input.occurredAt)
-      : new Date();
-    if (Number.isNaN(occurredAt.getTime())) {
-      throw new SubscriptionBillingConflictError(
-        "Payment occurredAt must be a valid date-time."
+        "Cancelled subscription cannot receive payment allocation."
       );
     }
 
     const paymentResult = await client.query<PaymentRow>(
-      `INSERT INTO saas_subscription_payments (
-         organization_id,
-         subscription_id,
-         invoice_id,
-         amount_vnd,
-         status,
-         source,
-         provider,
-         provider_transaction_id,
-         idempotency_key,
-         occurred_at,
-         recorded_by_user_id,
-         metadata
+      `WITH inserted AS (
+         INSERT INTO saas_subscription_payments (
+           organization_id,
+           subscription_id,
+           amount_vnd,
+           status,
+           reconciliation_status,
+           source,
+           idempotency_key,
+           occurred_at,
+           recorded_by_user_id,
+           metadata
+         )
+         VALUES (
+           $1, $2, $3, 'SUCCEEDED', 'ALLOCATED', 'MANUAL',
+           $4, now(), $5, $6::jsonb
+         )
+         RETURNING *
        )
-       VALUES (
-         $1, $2, $3, $4, 'SUCCEEDED', $5, $6, $7, $8, $9, $10, $11::jsonb
-       )
-       RETURNING
-         id::text,
-         organization_id::text,
-         subscription_id::text,
-         invoice_id::text,
-         amount_vnd::text,
-         status,
-         source,
-         provider,
-         provider_transaction_id,
-         idempotency_key,
-         occurred_at,
-         recorded_by_user_id::text,
-         metadata,
-         created_at`,
+       SELECT
+         p.id::text,
+         p.organization_id::text,
+         p.subscription_id::text,
+         p.amount_vnd::text,
+         p.status,
+         p.reconciliation_status,
+         p.source,
+         p.provider,
+         p.provider_transaction_id,
+         p.idempotency_key,
+         p.occurred_at,
+         p.recorded_by_user_id::text,
+         p.metadata,
+         p.created_at,
+         p.amount_vnd::text AS allocated_amount_vnd,
+         '0'::text AS unallocated_amount_vnd
+       FROM inserted p`,
       [
         input.organizationId,
         invoice.subscription_id,
-        invoice.id,
         input.amountVnd,
-        input.source,
-        provider,
-        providerTransactionId,
         idempotencyKey,
-        occurredAt,
-        input.recordedByUserId ?? null,
+        input.recordedByUserId,
         JSON.stringify(input.metadata ?? {})
       ]
     );
+    const payment = paymentResult.rows[0]!;
+
+    const allocationResult = await client.query<AllocationRow>(
+      `INSERT INTO saas_subscription_payment_allocations (
+         organization_id,
+         payment_id,
+         invoice_id,
+         amount_vnd,
+         allocated_by_user_id,
+         reason
+       )
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING
+         id::text,
+         organization_id::text,
+         payment_id::text,
+         invoice_id::text,
+         amount_vnd::text,
+         allocated_by_user_id::text,
+         reason,
+         created_at`,
+      [
+        input.organizationId,
+        payment.id,
+        invoice.id,
+        input.amountVnd,
+        input.recordedByUserId,
+        reason
+      ]
+    );
+    const allocation = allocationResult.rows[0]!;
+
+    const paidAfter = Number(invoice.paid_amount_vnd) + input.amountVnd;
+    const remainingAfter = Number(invoice.amount_vnd) - paidAfter;
+    const invoiceStatus =
+      remainingAfter === 0 ? "PAID" : "PARTIALLY_PAID";
 
     await client.query(
       `UPDATE saas_subscription_invoices
-       SET status = 'PAID',
-           paid_at = COALESCE(paid_at, $3),
+       SET status = $3,
+           paid_at = CASE
+             WHEN $3 = 'PAID' THEN COALESCE(paid_at, now())
+             ELSE NULL
+           END,
            updated_at = now()
        WHERE organization_id = $1
          AND id = $2`,
-      [input.organizationId, invoice.id, occurredAt]
+      [input.organizationId, invoice.id, invoiceStatus]
     );
 
-    await client.query(
-      `UPDATE organization_subscriptions
-       SET status = 'ACTIVE',
-           current_period_start = $2,
-           current_period_end = $3,
-           trial_ends_at = NULL,
-           past_due_at = NULL,
-           grace_ends_at = NULL,
-           version = version + 1,
-           updated_at = now()
-       WHERE organization_id = $1`,
-      [input.organizationId, invoice.period_start, invoice.period_end]
+    if (invoiceStatus === "PAID") {
+      await this.activatePaidPeriodInTransaction(
+        client,
+        input.organizationId
+      );
+    }
+
+    const refreshedInvoiceResult = await client.query<InvoiceRow>(
+      this.invoiceSelectSql(
+        "WHERE i.organization_id = $1 AND i.id = $2"
+      ),
+      [input.organizationId, invoice.id]
     );
+    const refreshedInvoice = refreshedInvoiceResult.rows[0]!;
 
     await this.insertSystemAudit(client, {
       organizationId: input.organizationId,
-      action: "SUBSCRIPTION_PAYMENT_SETTLED",
+      action: "SUBSCRIPTION_PAYMENT_ALLOCATED",
       targetType: "SAAS_SUBSCRIPTION_INVOICE",
       targetKey: invoice.id,
       beforeState: {
         invoiceStatus: invoice.status,
+        paidAmountVnd: Number(invoice.paid_amount_vnd),
+        remainingAmountVnd: Number(invoice.remaining_amount_vnd),
         subscriptionStatus: subscription.status,
         subscriptionVersion: subscription.version
       },
       afterState: {
-        invoiceStatus: "PAID",
-        subscriptionStatus: "ACTIVE",
-        subscriptionVersion: subscription.version + 1,
-        paymentId: paymentResult.rows[0]!.id
+        invoiceStatus: refreshedInvoice.status,
+        paidAmountVnd: refreshedInvoice.paid_amount_vnd,
+        remainingAmountVnd: refreshedInvoice.remaining_amount_vnd,
+        paymentId: payment.id,
+        allocationId: allocation.id
       },
-      reason:
-        input.source === "MANUAL"
-          ? "Manual SaaS subscription payment recorded"
-          : "Provider SaaS subscription payment settled"
+      reason
     });
 
-    return this.settlementViewForPayment(client, paymentResult.rows[0]!);
+    return this.settlementView(
+      client,
+      payment,
+      allocation,
+      invoice.id
+    );
   }
 
   processOrganizationBilling(
     organizationId: string
   ): Promise<{
     invoice: SubscriptionInvoiceView | null;
+    activatedPaidPeriod: boolean;
     transition:
       | {
           from: SubscriptionStatus;
@@ -531,11 +570,18 @@ export class SubscriptionBillingService {
         client,
         organizationId
       );
-      const transition = await this.advanceDelinquencyInTransaction(
-        client,
-        organizationId
-      );
-      return { invoice, transition };
+      const activatedPaidPeriod =
+        await this.activatePaidPeriodInTransaction(
+          client,
+          organizationId
+        );
+      const transition = activatedPaidPeriod
+        ? null
+        : await this.advanceDelinquencyInTransaction(
+            client,
+            organizationId
+          );
+      return { invoice, activatedPaidPeriod, transition };
     });
   }
 
@@ -546,11 +592,96 @@ export class SubscriptionBillingService {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
     const result = await this.database.query<InvoiceRow>(
       this.invoiceSelectSql(
-        "WHERE organization_id = $1 ORDER BY period_start DESC LIMIT $2"
+        "WHERE i.organization_id = $1 ORDER BY i.period_start DESC LIMIT $2"
       ),
       [organizationId, safeLimit]
     );
     return result.rows.map((row) => this.mapInvoice(row));
+  }
+
+  private async activatePaidPeriodInTransaction(
+    client: PoolClient,
+    organizationId: string
+  ): Promise<boolean> {
+    const subscription = await this.loadSubscriptionForUpdate(
+      client,
+      organizationId
+    );
+    if (subscription.status === "CANCELLED") {
+      return false;
+    }
+
+    const paidInvoiceResult = await client.query<InvoiceRow>(
+      this.invoiceSelectSql(
+        `WHERE i.organization_id = $1
+           AND i.status = 'PAID'
+           AND i.period_start <= now()
+           AND i.period_end > now()
+         ORDER BY i.period_start DESC
+         LIMIT 1
+         FOR UPDATE OF i`
+      ),
+      [organizationId]
+    );
+    const invoice = paidInvoiceResult.rows[0];
+    if (!invoice) {
+      return false;
+    }
+
+    const samePeriod =
+      subscription.current_period_start?.getTime() ===
+        invoice.period_start.getTime() &&
+      subscription.current_period_end?.getTime() ===
+        invoice.period_end.getTime();
+    const alreadyActive =
+      subscription.status === "ACTIVE" &&
+      samePeriod &&
+      subscription.trial_ends_at === null &&
+      subscription.past_due_at === null &&
+      subscription.grace_ends_at === null;
+
+    if (alreadyActive) {
+      return false;
+    }
+
+    await client.query(
+      `UPDATE organization_subscriptions
+       SET status = 'ACTIVE',
+           current_period_start = $2,
+           current_period_end = $3,
+           trial_ends_at = NULL,
+           past_due_at = NULL,
+           grace_ends_at = NULL,
+           version = version + 1,
+           updated_at = now()
+       WHERE organization_id = $1`,
+      [organizationId, invoice.period_start, invoice.period_end]
+    );
+
+    await this.insertSystemAudit(client, {
+      organizationId,
+      action: "SUBSCRIPTION_PAID_PERIOD_ACTIVATED",
+      targetType: "SAAS_SUBSCRIPTION",
+      targetKey: subscription.id,
+      beforeState: {
+        status: subscription.status,
+        version: subscription.version,
+        currentPeriodStart:
+          subscription.current_period_start?.toISOString() ?? null,
+        currentPeriodEnd:
+          subscription.current_period_end?.toISOString() ?? null
+      },
+      afterState: {
+        status: "ACTIVE",
+        version: subscription.version + 1,
+        currentPeriodStart: invoice.period_start.toISOString(),
+        currentPeriodEnd: invoice.period_end.toISOString(),
+        invoiceId: invoice.id
+      },
+      reason: "Fully paid SaaS billing period became effective."
+    });
+
+    return true;
   }
 
   private async advanceDelinquencyInTransaction(
@@ -570,29 +701,18 @@ export class SubscriptionBillingService {
       return null;
     }
 
-    const overdueInvoice = await client.query<InvoiceRow>(
+    const dueUnpaidInvoice = await client.query<InvoiceRow>(
       this.invoiceSelectSql(
-        `WHERE organization_id = $1
-           AND status IN ('OPEN', 'OVERDUE')
-           AND due_at <= now()
-         ORDER BY due_at
+        `WHERE i.organization_id = $1
+           AND i.status IN ('OPEN', 'PARTIALLY_PAID')
+           AND i.due_at <= now()
+         ORDER BY i.due_at
          LIMIT 1
-         FOR UPDATE`
+         FOR UPDATE OF i`
       ),
       [organizationId]
     );
-    const invoice = overdueInvoice.rows[0];
-
-    if (invoice && invoice.status === "OPEN") {
-      await client.query(
-        `UPDATE saas_subscription_invoices
-         SET status = 'OVERDUE',
-             updated_at = now()
-         WHERE organization_id = $1
-           AND id = $2`,
-        [organizationId, invoice.id]
-      );
-    }
+    const invoice = dueUnpaidInvoice.rows[0];
 
     let target: SubscriptionStatus | null = null;
     let reason = "";
@@ -603,7 +723,7 @@ export class SubscriptionBillingService {
         subscription.status === "ACTIVE")
     ) {
       target = "PAST_DUE";
-      reason = "Renewal invoice reached due date without successful payment.";
+      reason = "Renewal invoice reached due date with remaining balance.";
     } else if (
       subscription.status === "PAST_DUE" &&
       subscription.past_due_at
@@ -685,7 +805,12 @@ export class SubscriptionBillingService {
       },
       afterState: {
         status: target,
-        version: transition.subscription.version
+        version: transition.subscription.version,
+        invoiceId: invoice?.id ?? null,
+        remainingAmountVnd:
+          invoice === undefined
+            ? null
+            : Number(invoice.remaining_amount_vnd)
       },
       reason
     });
@@ -697,18 +822,33 @@ export class SubscriptionBillingService {
     };
   }
 
-  private async settlementViewForPayment(
+  private async settlementView(
     client: PoolClient,
-    payment: PaymentRow
+    payment: PaymentRow,
+    allocation: AllocationRow,
+    invoiceId: string
   ): Promise<BillingSettlementView> {
     const invoiceResult = await client.query<InvoiceRow>(
-      this.invoiceSelectSql("WHERE id = $1"),
-      [payment.invoice_id]
+      this.invoiceSelectSql(
+        "WHERE i.organization_id = $1 AND i.id = $2"
+      ),
+      [payment.organization_id, invoiceId]
     );
     const invoice = invoiceResult.rows[0];
     if (!invoice) {
       throw new SubscriptionBillingNotFoundError(
         "Settlement invoice was not found."
+      );
+    }
+
+    const refreshedPaymentResult = await client.query<PaymentRow>(
+      this.paymentSelectSql("WHERE p.id = $1"),
+      [payment.id]
+    );
+    const refreshedPayment = refreshedPaymentResult.rows[0];
+    if (!refreshedPayment) {
+      throw new SubscriptionBillingNotFoundError(
+        "Settlement payment was not found."
       );
     }
 
@@ -740,7 +880,8 @@ export class SubscriptionBillingService {
 
     return {
       invoice: this.mapInvoice(invoice),
-      payment: this.mapPayment(payment),
+      payment: this.mapPayment(refreshedPayment),
+      allocation: this.mapAllocation(allocation),
       subscription: {
         organizationId: row.organization_id,
         status: row.status,
@@ -829,42 +970,84 @@ export class SubscriptionBillingService {
 
   private invoiceSelectSql(whereClause: string): string {
     return `SELECT
-       id::text,
-       organization_id::text,
-       subscription_id::text,
-       plan_id::text,
-       plan_version_id::text,
-       billing_interval,
-       period_start,
-       period_end,
-       amount_vnd::text,
-       status,
-       issued_at,
-       due_at,
-       paid_at,
-       created_at,
-       updated_at
-     FROM saas_subscription_invoices
+       i.id::text,
+       i.organization_id::text,
+       i.subscription_id::text,
+       i.plan_id::text,
+       i.plan_version_id::text,
+       i.billing_interval,
+       i.period_start,
+       i.period_end,
+       i.amount_vnd::text,
+       i.status,
+       i.issued_at,
+       i.due_at,
+       i.paid_at,
+       i.created_at,
+       i.updated_at,
+       COALESCE(alloc.paid_amount_vnd, 0)::text AS paid_amount_vnd,
+       (i.amount_vnd - COALESCE(alloc.paid_amount_vnd, 0))::text
+         AS remaining_amount_vnd,
+       (
+         i.due_at <= now()
+         AND i.status IN ('OPEN', 'PARTIALLY_PAID')
+       ) AS is_overdue
+     FROM saas_subscription_invoices i
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(sum(a.amount_vnd), 0)::bigint AS paid_amount_vnd
+       FROM saas_subscription_payment_allocations a
+       JOIN saas_subscription_payments p
+         ON p.organization_id = a.organization_id
+        AND p.id = a.payment_id
+       WHERE a.organization_id = i.organization_id
+         AND a.invoice_id = i.id
+         AND p.status = 'SUCCEEDED'
+     ) alloc ON true
      ${whereClause}`;
   }
 
   private paymentSelectSql(whereClause: string): string {
     return `SELECT
-       id::text,
-       organization_id::text,
-       subscription_id::text,
-       invoice_id::text,
-       amount_vnd::text,
-       status,
-       source,
-       provider,
-       provider_transaction_id,
-       idempotency_key,
-       occurred_at,
-       recorded_by_user_id::text,
-       metadata,
-       created_at
-     FROM saas_subscription_payments
+       p.id::text,
+       p.organization_id::text,
+       p.subscription_id::text,
+       p.amount_vnd::text,
+       p.status,
+       p.reconciliation_status,
+       p.source,
+       p.provider,
+       p.provider_transaction_id,
+       p.idempotency_key,
+       p.occurred_at,
+       p.recorded_by_user_id::text,
+       p.metadata,
+       p.created_at,
+       COALESCE(alloc.allocated_amount_vnd, 0)::text
+         AS allocated_amount_vnd,
+       (p.amount_vnd - COALESCE(alloc.allocated_amount_vnd, 0))::text
+         AS unallocated_amount_vnd
+     FROM saas_subscription_payments p
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(sum(a.amount_vnd), 0)::bigint
+         AS allocated_amount_vnd
+       FROM saas_subscription_payment_allocations a
+       WHERE a.organization_id = p.organization_id
+         AND a.payment_id = p.id
+     ) alloc ON true
+     ${whereClause}`;
+  }
+
+  private allocationSelectSql(whereClause: string): string {
+    return `SELECT
+       a.id::text,
+       a.organization_id::text,
+       a.payment_id::text,
+       a.invoice_id::text,
+       a.amount_vnd::text,
+       a.allocated_by_user_id::text,
+       a.reason,
+       a.created_at
+     FROM saas_subscription_payment_allocations a
      ${whereClause}`;
   }
 
@@ -879,7 +1062,10 @@ export class SubscriptionBillingService {
       periodStart: row.period_start.toISOString(),
       periodEnd: row.period_end.toISOString(),
       amountVnd: Number(row.amount_vnd),
+      paidAmountVnd: Number(row.paid_amount_vnd),
+      remainingAmountVnd: Number(row.remaining_amount_vnd),
       status: row.status,
+      isOverdue: row.is_overdue,
       issuedAt: row.issued_at.toISOString(),
       dueAt: row.due_at.toISOString(),
       paidAt: row.paid_at?.toISOString() ?? null,
@@ -893,9 +1079,11 @@ export class SubscriptionBillingService {
       id: row.id,
       organizationId: row.organization_id,
       subscriptionId: row.subscription_id,
-      invoiceId: row.invoice_id,
       amountVnd: Number(row.amount_vnd),
+      allocatedAmountVnd: Number(row.allocated_amount_vnd),
+      unallocatedAmountVnd: Number(row.unallocated_amount_vnd),
       status: row.status,
+      reconciliationStatus: row.reconciliation_status,
       source: row.source,
       provider: row.provider,
       providerTransactionId: row.provider_transaction_id,
@@ -903,6 +1091,21 @@ export class SubscriptionBillingService {
       occurredAt: row.occurred_at.toISOString(),
       recordedByUserId: row.recorded_by_user_id,
       metadata: row.metadata,
+      createdAt: row.created_at.toISOString()
+    };
+  }
+
+  private mapAllocation(
+    row: AllocationRow
+  ): SubscriptionPaymentAllocationView {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      paymentId: row.payment_id,
+      invoiceId: row.invoice_id,
+      amountVnd: Number(row.amount_vnd),
+      allocatedByUserId: row.allocated_by_user_id,
+      reason: row.reason,
       createdAt: row.created_at.toISOString()
     };
   }
