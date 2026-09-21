@@ -45,6 +45,7 @@ type ModalState =
   | { kind: "provisionSubscription"; organization: CmsOrganization }
   | { kind: "transitionSubscription"; organization: CmsOrganization }
   | { kind: "changeSubscriptionPlan"; organization: CmsOrganization }
+  | { kind: "manualSubscriptionPayment"; organization: CmsOrganization }
   | { kind: "retryNotificationJob"; job: CmsNotificationJob }
   | {
       kind: "notificationProviderControl";
@@ -65,7 +66,11 @@ const navItems: Array<{ id: View; label: string }> = [
 ];
 
 function statusTone(status: string): Tone {
-  if (["ACTIVE", "TRIALING", "INFO", "ENABLED", "HEALTHY"].includes(status)) {
+  if (
+    ["ACTIVE", "TRIALING", "INFO", "ENABLED", "HEALTHY", "PAID"].includes(
+      status
+    )
+  ) {
     return "success";
   }
   if (
@@ -76,12 +81,22 @@ function statusTone(status: string): Tone {
       "RETRY",
       "WARN",
       "DEGRADED",
-      "PAUSED"
+      "PAUSED",
+      "OPEN"
     ].includes(status)
   ) {
     return "warning";
   }
-  if (["SUSPENDED", "CANCELLED", "FAILED", "ERROR", "DISABLED"].includes(status)) {
+  if (
+    [
+      "SUSPENDED",
+      "CANCELLED",
+      "FAILED",
+      "ERROR",
+      "DISABLED",
+      "OVERDUE"
+    ].includes(status)
+  ) {
     return "danger";
   }
   return "neutral";
@@ -342,6 +357,22 @@ export default function CmsPage() {
         await cmsApi.updateNotificationProviderControl(
           modal.provider.provider,
           modal.targetStatus,
+          reason
+        );
+      }
+
+      if (modal.kind === "manualSubscriptionPayment") {
+        const invoice = modal.organization.latestInvoice;
+        if (!invoice) {
+          throw new Error("Organization không có invoice để thanh toán.");
+        }
+        if (invoice.status !== "OPEN" && invoice.status !== "OVERDUE") {
+          throw new Error("Invoice hiện tại không còn ở trạng thái cần thanh toán.");
+        }
+
+        await cmsApi.recordSubscriptionPayment(
+          modal.organization.id,
+          invoice.id,
           reason
         );
       }
@@ -658,6 +689,7 @@ export default function CmsPage() {
                         <th>Organization</th>
                         <th>Plan</th>
                         <th>Subscription</th>
+                        <th>Billing</th>
                         <th>Rooms</th>
                         <th>Staff</th>
                         <th>Automation quota</th>
@@ -688,6 +720,69 @@ export default function CmsPage() {
                                   ? "v" + String(org.subscriptionVersion)
                                   : "No subscription version"}
                               </small>
+                            </td>
+                            <td>
+                              {org.latestInvoice ? (
+                                <>
+                                  <StatusBadge
+                                    tone={statusTone(org.latestInvoice.status)}
+                                  >
+                                    {org.latestInvoice.status}
+                                  </StatusBadge>
+                                  <strong>
+                                    {money(org.latestInvoice.amountVnd)}
+                                  </strong>
+                                  <small>
+                                    {org.billingInterval ?? "—"} · kỳ{" "}
+                                    {org.latestInvoice.periodStart
+                                      ? new Date(
+                                          org.latestInvoice.periodStart
+                                        ).toLocaleDateString("vi-VN")
+                                      : "—"}
+                                    {" → "}
+                                    {org.latestInvoice.periodEnd
+                                      ? new Date(
+                                          org.latestInvoice.periodEnd
+                                        ).toLocaleDateString("vi-VN")
+                                      : "—"}
+                                  </small>
+                                  <small>
+                                    {org.latestInvoice.status === "PAID"
+                                      ? "Paid " +
+                                        (org.latestInvoice.paidAt
+                                          ? new Date(
+                                              org.latestInvoice.paidAt
+                                            ).toLocaleString("vi-VN")
+                                          : "")
+                                      : "Due " +
+                                        (org.latestInvoice.dueAt
+                                          ? new Date(
+                                              org.latestInvoice.dueAt
+                                            ).toLocaleString("vi-VN")
+                                          : "—")}
+                                  </small>
+                                </>
+                              ) : (
+                                <>
+                                  <strong>No invoice</strong>
+                                  <small>
+                                    {org.billingInterval ?? "—"} ·{" "}
+                                    {org.subscriptionStatus === "TRIALING"
+                                      ? "trial ends " +
+                                        (org.trialEndsAt
+                                          ? new Date(
+                                              org.trialEndsAt
+                                            ).toLocaleDateString("vi-VN")
+                                          : "—")
+                                      : "period ends " +
+                                        (org.currentPeriodEnd
+                                          ? new Date(
+                                              org.currentPeriodEnd
+                                            ).toLocaleDateString("vi-VN")
+                                          : "—")}
+                                  </small>
+                                </>
+                              )}
                             </td>
                             <td className={roomOver ? "danger-text" : undefined}>
                               {org.rooms} / {org.roomLimit ?? "—"}
@@ -749,6 +844,22 @@ export default function CmsPage() {
                                       }
                                     >
                                       Transition
+                                    </button>
+                                  ) : null}
+                                  {org.latestInvoice &&
+                                  (org.latestInvoice.status === "OPEN" ||
+                                    org.latestInvoice.status === "OVERDUE") ? (
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      onClick={() =>
+                                        setModal({
+                                          kind: "manualSubscriptionPayment",
+                                          organization: org
+                                        })
+                                      }
+                                    >
+                                      Mark paid
                                     </button>
                                   ) : null}
                                   {org.subscriptionStatus !== "CANCELLED" ? (
@@ -1241,6 +1352,13 @@ export default function CmsPage() {
                   </select>
                 </label>
                 <label>
+                  Billing interval
+                  <select name="billingInterval" defaultValue="MONTHLY">
+                    <option value="MONTHLY">MONTHLY</option>
+                    <option value="YEARLY">YEARLY</option>
+                  </select>
+                </label>
+                <label>
                   Trial end (optional; ignored for ACTIVE)
                   <input name="trialEndsAt" type="datetime-local" />
                 </label>
@@ -1292,6 +1410,40 @@ export default function CmsPage() {
                 </label>
               </>
             )}
+
+            {modal.kind === "manualSubscriptionPayment" &&
+              (() => {
+                const invoice = modal.organization.latestInvoice;
+                if (!invoice) return null;
+
+                return (
+                  <>
+                    <h2>Ghi nhận đã thanh toán</h2>
+                    <p className="modal-warning">
+                      Đây là thao tác tài chính thủ công cho{" "}
+                      <strong>{modal.organization.name}</strong>. Invoice{" "}
+                      {invoice.id} · {money(invoice.amountVnd)} · kỳ{" "}
+                      {invoice.periodStart
+                        ? new Date(invoice.periodStart).toLocaleDateString(
+                            "vi-VN"
+                          )
+                        : "—"}
+                      {" → "}
+                      {invoice.periodEnd
+                        ? new Date(invoice.periodEnd).toLocaleDateString(
+                            "vi-VN"
+                          )
+                        : "—"}
+                      . Sau khi xác nhận, invoice chuyển PAID và subscription
+                      được đưa về ACTIVE cho đúng kỳ này. Thao tác được audit.
+                    </p>
+                    <p className="cms-note">
+                      Chỉ dùng khi đã xác minh tiền thực tế ngoài hệ thống.
+                      Không dùng nút này để giả lập payment gateway.
+                    </p>
+                  </>
+                );
+              })()}
 
             {modal.kind === "entitlement" && (
               <>
@@ -1395,7 +1547,11 @@ export default function CmsPage() {
                 Hủy
               </button>
               <button className="primary-button" type="submit" disabled={saving}>
-                {saving ? "Đang lưu…" : "Xác nhận thay đổi"}
+                {saving
+                  ? "Đang lưu…"
+                  : modal.kind === "manualSubscriptionPayment"
+                    ? "Ghi nhận đã thanh toán"
+                    : "Xác nhận thay đổi"}
               </button>
             </div>
           </form>
