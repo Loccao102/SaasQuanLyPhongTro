@@ -5,30 +5,34 @@ import { DatabaseService } from "../../database/database.service.js";
 import { SubscriptionBillingService } from "./subscription-billing.service.js";
 
 const organizationId = "e1000000-0000-0000-0000-000000000001";
+const secondOrganizationId = "e1000000-0000-0000-0000-000000000002";
 const provider = "TEST_PROVIDER";
 
 async function cleanup(pool: Pool): Promise<void> {
   await pool.query(
-    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id = $1",
-    [organizationId]
+    "DELETE FROM saas_subscription_payment_allocations WHERE organization_id IN ($1, $2)",
+    [organizationId, secondOrganizationId]
   );
   await pool.query(
     "DELETE FROM saas_subscription_payments WHERE organization_id = $1 OR provider = $2",
     [organizationId, provider]
   );
   await pool.query(
-    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
-    [organizationId]
+    "DELETE FROM saas_subscription_invoices WHERE organization_id IN ($1, $2)",
+    [organizationId, secondOrganizationId]
   );
   await pool.query(
-    "DELETE FROM platform_audit_events WHERE organization_id = $1",
-    [organizationId]
+    "DELETE FROM platform_audit_events WHERE organization_id IN ($1, $2)",
+    [organizationId, secondOrganizationId]
   );
   await pool.query(
-    "DELETE FROM organization_subscriptions WHERE organization_id = $1",
-    [organizationId]
+    "DELETE FROM organization_subscriptions WHERE organization_id IN ($1, $2)",
+    [organizationId, secondOrganizationId]
   );
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
+  await pool.query(
+    "DELETE FROM organizations WHERE id IN ($1, $2)",
+    [organizationId, secondOrganizationId]
+  );
 }
 
 test("provider payment auto-matches unique reference and routes unsafe cases to review", async () => {
@@ -77,6 +81,43 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
        FROM saas_plans p
        WHERE p.code = 'STARTER'`,
       [organizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organizations (
+         id, slug, name, organization_type, status
+       )
+       VALUES (
+         $1,
+         'provider-payment-org-b',
+         'Provider Payment Org B',
+         'INDIVIDUAL',
+         'ACTIVE'
+       )`,
+      [secondOrganizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status,
+         billing_interval,
+         current_period_start,
+         current_period_end
+       )
+       SELECT
+         $1,
+         p.id,
+         p.current_version_id,
+         'ACTIVE',
+         'MONTHLY',
+         now() - interval '27 days',
+         now() + interval '3 days'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [secondOrganizationId]
     );
 
     const invoice = await billing.ensureRenewalInvoice(organizationId);
@@ -170,6 +211,26 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
       invoice.paymentReference
     );
     assert.equal(replayedOverpay.allocation, null);
+
+    const secondInvoice = await billing.ensureRenewalInvoice(
+      secondOrganizationId
+    );
+    assert.ok(secondInvoice);
+
+    await assert.rejects(
+      () =>
+        database.withTransaction((client) =>
+          billing.allocateProviderPaymentInTransaction(client, {
+            paymentId: overpay.payment.id,
+            invoiceId: secondInvoice.id,
+            amountVnd: 1_000,
+            allocatedByUserId:
+              "e2000000-0000-0000-0000-000000000001",
+            reason: "Cross organization allocation must fail"
+          })
+        ),
+      /different organization subscription/
+    );
 
     const unmatched = await billing.ingestProviderPayment({
       provider,
