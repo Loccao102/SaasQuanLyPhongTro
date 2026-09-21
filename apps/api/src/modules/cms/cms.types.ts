@@ -39,6 +39,7 @@ export interface RevokeEntitlementOverrideInput {
 export interface ProvisionSubscriptionInput {
   planCode?: string;
   status?: "TRIALING" | "ACTIVE";
+  billingInterval?: "MONTHLY" | "YEARLY";
   trialEndsAt?: string | null;
   reason?: string;
 }
