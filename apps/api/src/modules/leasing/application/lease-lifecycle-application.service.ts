@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { PoolClient } from "pg";
+import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { AccessControlService } from "../../identity/access-control.service.js";
 import type {
@@ -65,7 +66,8 @@ export class LeaseTerminationRecordNotFoundError extends Error {
 export class LeaseLifecycleApplicationService {
   constructor(
     private readonly database: DatabaseService,
-    private readonly accessControl: AccessControlService
+    private readonly accessControl: AccessControlService,
+    private readonly commercialPolicy: CommercialPolicyService
   ) {}
 
   async activate(input: LeaseCommandInput): Promise<LeaseCommandResponse> {
@@ -224,6 +226,11 @@ export class LeaseLifecycleApplicationService {
 
         return receipt.response as LeaseCommandResponse;
       }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        input.organizationId
+      );
 
       const previousVersion = context.lease.version;
       const transition = await operation(repository, context);

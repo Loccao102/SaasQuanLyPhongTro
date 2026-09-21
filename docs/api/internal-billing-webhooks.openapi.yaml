@@ -1,0 +1,78 @@
+openapi: 3.1.0
+info:
+  title: Prop-Ops Internal SaaS Billing Webhook Processing API
+  version: 0.1.0
+  description: >
+    Server-to-server processing boundary for already-persisted provider
+    callbacks. This is not a public payment-provider webhook endpoint.
+servers:
+  - url: /api/internal/billing-webhooks
+security:
+  - workerBearer: []
+paths:
+  /claim:
+    post:
+      summary: Claim one verified raw billing webhook event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string }
+      responses:
+        "200":
+          description: Claimed event with raw body, or null when no eligible event exists
+        "401": { description: Invalid or missing internal service bearer token }
+  /{eventId}/payment:
+    post:
+      summary: Commit a normalized provider payment and mark the raw event processed atomically
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerTransactionId, amountVnd, occurredAt]
+              properties:
+                providerTransactionId: { type: string, minLength: 1 }
+                amountVnd: { type: integer, minimum: 1 }
+                occurredAt: { type: string, format: date-time }
+                paymentReference: { type: [string, "null"] }
+                metadata: { type: object }
+      responses:
+        "200":
+          description: Payment ingestion result and processed event; exact replay is idempotent
+        "400": { description: Invalid normalized payment input }
+        "401": { description: Invalid or missing internal service bearer token }
+        "409": { description: Event state or normalized replay fingerprint conflict }
+  /{eventId}/outcome:
+    post:
+      summary: Complete a claimed event without creating a payment transaction
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome:
+                  type: string
+                  enum: [REVIEW_REQUIRED, IGNORED, FAILED]
+                errorCode: { type: [string, "null"] }
+                errorMessage: { type: [string, "null"] }
+      responses:
+        "200": { description: Event completed without financial mutation }
+        "401": { description: Invalid or missing internal service bearer token }
+        "409": { description: Event is not in a completable processing state }
+components:
+  securitySchemes:
+    workerBearer:
+      type: http
+      scheme: bearer

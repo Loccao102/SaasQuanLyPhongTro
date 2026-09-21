@@ -8,6 +8,9 @@ Pilot 200 phòng chỉ là dữ liệu khởi đầu, không phải giới hạn
 
 ## 2. Các client
 
+### CMS / Internal Control Surface
+Ứng dụng nội bộ cho đội vận hành SaaS để cấu hình system settings, plans/limits, inspect organization, theo dõi jobs/logs và audit. CMS là product surface riêng nhưng không sở hữu business data/DB riêng; mọi mutation đi qua backend application/domain services.
+
 ### Admin Web
 Quản lý tài sản, địa bàn, biểu giá, kỳ chốt, phân công, hóa đơn, thu nợ, báo cáo và cấu hình integration.
 
@@ -54,6 +57,8 @@ Playwright chạy thành worker riêng để browser crash/logout không ảnh h
 ## 5. Persistence
 
 PostgreSQL là source of truth. Redis chỉ dùng cho queue/cache/ephemeral coordination, không phải source of truth tài chính.
+
+CMS không có business DB riêng; nó thao tác SaaS state thông qua backend contracts.
 
 ## 6. Core vs Edge
 

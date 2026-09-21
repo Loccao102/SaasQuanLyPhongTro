@@ -43,6 +43,29 @@ Authorization phải thỏa cả:
 
 Frontend chỉ phản ánh quyền để UX rõ ràng; enforcement bắt buộc nằm server-side.
 
+## CMS / Platform operators
+
+CMS là cross-organization surface dành cho platform operator và không được cấp quyền chỉ dựa trên tenant membership.
+
+Baseline platform capabilities:
+- `platform.cms.read`;
+- `platform.settings.manage`;
+- `platform.plans.manage`;
+- `platform.entitlements.manage`;
+- `platform.subscriptions.manage`;
+- `platform.organizations.inspect`;
+- `platform.jobs.manage`;
+- `platform.audit.read`;
+- `platform.logs.read`.
+
+Rules:
+- UI visibility is not authorization; backend always enforces platform permission.
+- CMS never writes PostgreSQL directly.
+- No generic SQL editor or raw secret viewer.
+- Settings/plan/subscription/entitlement/job retry mutations require audit with actor, target, before/after, reason and timestamp.
+- Cross-organization reads exist only through explicit `/api/cms/*` endpoints/application services.
+- Tenant OWNER/ADMIN does not automatically become a CMS/platform principal.
+
 ## Public invoice
 
 Public invoice không yêu cầu account nhưng phải dùng token:
@@ -74,7 +97,8 @@ Ghi audit cho:
 - manual payment allocation;
 - thay đổi bank/integration config;
 - admin impersonation nếu có;
-- thay đổi role/scope và các thao tác quyền hạn nhạy cảm.
+- thay đổi role/scope và các thao tác quyền hạn nhạy cảm;
+- CMS settings/plan/subscription/entitlement/job retry mutations.
 
 ## Webhooks
 
@@ -93,3 +117,17 @@ Playwright session là credential nhạy cảm:
 - tách worker;
 - không log cookie/token;
 - invalidate khi nghi ngờ lộ.
+
+## Internal worker API
+
+Notification workers never receive tenant/platform browser credentials and do not write PostgreSQL directly.
+
+Worker execution endpoints live under `/api/internal/notifications/*` and require an `INTERNAL_WORKER_TOKEN` bearer token. The token is server-side only and must be stored in deployment secrets.
+
+The API remains the authority for:
+- commercial execution checks;
+- quota consumption;
+- durable job/attempt state;
+- final send verification state.
+
+A worker retry that already consumed quota may reuse the same consumption idempotently, but it must still pass the current subscription/organization write policy before a new provider attempt starts.

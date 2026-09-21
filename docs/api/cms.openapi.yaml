@@ -1,0 +1,355 @@
+openapi: 3.1.0
+info:
+  title: Prop-Ops CMS API
+  version: 0.9.0
+  description: Platform-operator API backed by SaaS-owned modules and PostgreSQL.
+servers:
+  - url: /api/cms
+paths:
+  /bootstrap:
+    get:
+      summary: Resolve the authenticated platform role and granted CMS capabilities
+      responses:
+        "200":
+          description: Platform principal bootstrap
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, role, permissions]
+                properties:
+                  userId: { type: string, format: uuid }
+                  role:
+                    type: string
+                    enum: [PLATFORM_ADMIN, SUPPORT_OPERATOR, OPS_OPERATOR, READ_ONLY_AUDITOR]
+                  permissions:
+                    type: array
+                    items: { type: string }
+        "401": { description: No active platform principal }
+  /dashboard:
+    get:
+      summary: Get operational summary
+      responses:
+        "200": { description: OK }
+        "401": { description: No active platform principal }
+  /settings:
+    get:
+      summary: List system settings
+      responses:
+        "200": { description: OK }
+  /settings/{key}:
+    patch:
+      summary: Versioned, audited system-setting update
+      parameters:
+        - { in: path, name: key, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, expectedVersion, reason]
+              properties:
+                value: {}
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Updated or replayed idempotent response }
+        "409": { description: Version conflict or reused idempotency key with different payload }
+  /plans:
+    get:
+      summary: List current SaaS plan versions
+      responses:
+        "200": { description: OK }
+  /plans/{code}:
+    patch:
+      summary: Create a new plan version and make it current
+      parameters:
+        - { in: path, name: code, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monthlyPriceVnd, roomLimit, staffLimit, automationQuota, expectedVersion, reason]
+              properties:
+                monthlyPriceVnd: { type: integer, minimum: 0 }
+                roomLimit: { type: integer, minimum: 1 }
+                staffLimit: { type: integer, minimum: 1 }
+                automationQuota: { type: integer, minimum: 0 }
+                expectedVersion: { type: integer, minimum: 1 }
+                effectiveAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: New current plan version }
+        "409": { description: Version conflict or idempotency conflict }
+  /organizations:
+    get:
+      summary: Inspect organizations, subscriptions and current room/staff usage
+      responses:
+        "200": { description: OK }
+  /organizations/{organizationId}/subscription:
+    post:
+      summary: Provision an organization subscription from the current plan version
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode, status, reason]
+              properties:
+                planCode: { type: string }
+                status: { type: string, enum: [TRIALING, ACTIVE] }
+                trialEndsAt: { type: [string, "null"], format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Provisioned subscription or idempotent replay }
+        "404": { description: Organization or active plan not found }
+        "409": { description: Subscription already exists or idempotency conflict }
+  /organizations/{organizationId}/subscription/transition:
+    post:
+      summary: Transition organization subscription lifecycle state
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, expectedVersion, reason]
+              properties:
+                to:
+                  type: string
+                  enum: [TRIALING, ACTIVE, PAST_DUE, GRACE_PERIOD, SUSPENDED, CANCELLED]
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Transitioned subscription or idempotent replay }
+        "400": { description: Invalid lifecycle transition }
+        "404": { description: Subscription not found }
+        "409": { description: Optimistic version or idempotency conflict }
+  /organizations/{organizationId}/subscription/change-plan:
+    post:
+      summary: Change subscription to the current version of a target plan without payment side effects
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetPlanCode, expectedVersion, reason]
+              properties:
+                targetPlanCode: { type: string }
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Subscription plan snapshot changed or idempotent replay }
+        "400": { description: Invalid/cancelled/no-op plan change }
+        "404": { description: Subscription or target plan not found }
+        "409": { description: Optimistic version or idempotency conflict }
+  /organizations/{organizationId}/subscription/cancellation:
+    post:
+      summary: Schedule or revoke cancellation at the current SaaS period end
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancelAtPeriodEnd, expectedVersion, reason]
+              properties:
+                cancelAtPeriodEnd: { type: boolean }
+                expectedVersion: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200":
+          description: Cancellation schedule updated; unpaid cancellation-created renewal invoice voids/reopens are returned
+        "400": { description: Invalid command input }
+        "404": { description: Organization subscription not found }
+        "409":
+          description: Concurrent version, invalid status, duplicate state or future funded period conflict
+        "403": { description: Missing platform.subscriptions.manage }
+  /organizations/{organizationId}/billing/payments/manual:
+    post:
+      summary: Record and allocate a verified manual SaaS subscription payment
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amountVnd, reason]
+              properties:
+                invoiceId: { type: string, format: uuid }
+                amountVnd: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Payment transaction and invoice allocation recorded or idempotently replayed }
+        "400": { description: Invalid amount/reason }
+        "404": { description: Organization/subscription invoice not found }
+        "409": { description: Paid/void invoice, overpayment, invalid state or idempotency conflict }
+  /billing/reconciliation:
+    get:
+      summary: List provider payments requiring review and SaaS invoices with remaining balance
+      responses:
+        "200": { description: REVIEW_REQUIRED provider transactions plus open reconciliation invoices }
+        "403": { description: Missing platform.billing.read }
+  /billing/reconciliation/{paymentId}/allocate:
+    post:
+      summary: Allocate part of a provider payment to a SaaS subscription invoice
+      parameters:
+        - { in: path, name: paymentId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, amountVnd, reason]
+              properties:
+                invoiceId: { type: string, format: uuid }
+                amountVnd: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Append-only allocation recorded or idempotently replayed }
+        "400": { description: Invalid amount/reason }
+        "404": { description: Payment or invoice not found }
+        "409": { description: Cross-organization, balance, state or idempotency conflict }
+        "403": { description: Missing platform.billing.manage }
+  /billing/webhooks/{eventId}/requeue:
+    post:
+      summary: Requeue a verified FAILED or REVIEW_REQUIRED billing webhook event
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Event returned to RECEIVED or idempotently replayed }
+        "400": { description: Invalid reason }
+        "403": { description: Missing platform.billing.manage }
+        "409": { description: Signature/state/payment-link or idempotency conflict }
+  /entitlement-overrides:
+    get:
+      summary: List current non-revoked organization entitlement overrides
+      responses:
+        "200": { description: OK }
+  /organizations/{organizationId}/entitlement-overrides/{key}:
+    patch:
+      summary: Set or supersede an organization entitlement override
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: key, required: true, schema: { type: string, enum: [room_limit, staff_limit, automation_actions_monthly, advanced_reports, audit_log] } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, reason]
+              properties:
+                value: {}
+                expiresAt: { type: [string, "null"], format: date-time }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Override set or idempotently replayed }
+        "400": { description: Invalid key, value, expiry or reason }
+        "409": { description: Reused idempotency key with different payload }
+  /organizations/{organizationId}/entitlement-overrides/{key}/revoke:
+    post:
+      summary: Revoke an organization entitlement override
+      parameters:
+        - { in: path, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: key, required: true, schema: { type: string, enum: [room_limit, staff_limit, automation_actions_monthly, advanced_reports, audit_log] } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Override revoked or idempotently replayed }
+        "404": { description: No current override for that organization/key }
+  /jobs:
+    get:
+      summary: List durable notification jobs for platform operations
+      responses:
+        "200": { description: Durable notification job state and provider diagnostics }
+  /jobs/providers/{provider}/control:
+    patch:
+      summary: Pause or resume a notification provider globally
+      parameters:
+        - { in: path, name: provider, required: true, schema: { type: string } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [ACTIVE, PAUSED] }
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Provider control updated or idempotent replay }
+        "409": { description: Idempotency conflict }
+  /jobs/{jobId}/retry:
+    post:
+      summary: Audit and requeue a FAILED or MANUAL_REVIEW notification job
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, minLength: 8 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3 }
+      responses:
+        "200": { description: Job requeued or idempotent replay }
+        "409": { description: Job state does not allow manual retry or idempotency conflict }
+  /logs:
+    get:
+      summary: Read observability-integration status
+      responses:
+        "200": { description: Returns connected=false until observability is connected }
+  /audit:
+    get:
+      summary: List durable platform audit events
+      responses:
+        "200": { description: OK }

@@ -1,4 +1,4 @@
-# SaaS Quản Lý Phòng Trọ — Prop-Ops
+# Habi — SaaS vận hành nhà cho thuê
 
 Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, tập trung vào hai luồng cốt lõi:
 
@@ -21,7 +21,8 @@ Nền tảng SaaS quản lý vận hành chuỗi phòng trọ/chung cư mini, t�
 ## Kiến trúc cấp cao
 
 ```text
-Admin Web ─────┐
+CMS ───────────┐
+Admin Web ─────┤
 Staff PWA ─────┼──> Backend API (Modular Monolith) ──> PostgreSQL
 Public Invoice ┘                 │
                                  ├──> Redis / Job Queue
@@ -38,6 +39,8 @@ Public Invoice ┘                 │
 ## Tài liệu
 
 - [System Overview](docs/architecture/OVERVIEW.md)
+- [CMS / Internal Control Surface](docs/architecture/CMS.md)
+- [CMS Workflows](docs/design/CMS_WORKFLOWS.md)
 - [Domain Model](docs/architecture/DOMAIN_MODEL.md)
 - [Scalability](docs/architecture/SCALABILITY.md)
 - [Security & Multi-tenancy](docs/architecture/SECURITY.md)
@@ -45,6 +48,7 @@ Public Invoice ┘                 │
 - [Notification Automation](docs/operations/NOTIFICATION_AUTOMATION.md)
 - [Offline PWA](docs/operations/OFFLINE_PWA.md)
 - [Payment Reconciliation](docs/operations/PAYMENT_RECONCILIATION.md)
+- [Active Development Backlog](develop.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture Decision Records](docs/adr/)
 
