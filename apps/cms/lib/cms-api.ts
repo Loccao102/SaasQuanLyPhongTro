@@ -99,6 +99,7 @@ export type CmsOrganization = {
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
+  cancelAtPeriodEnd: boolean | null;
   planCode: string | null;
   latestInvoice: {
     id: string;
@@ -395,6 +396,33 @@ export const cmsApi = {
       "/organizations/" +
         encodeURIComponent(organizationId) +
         "/subscription",
+      {
+        method: "POST",
+        headers: { "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify(input)
+      }
+    ),
+
+  setSubscriptionCancellation: (
+    organizationId: string,
+    input: {
+      cancelAtPeriodEnd: boolean;
+      expectedVersion: number;
+      reason: string;
+    }
+  ) =>
+    request<{
+      organizationId: string;
+      subscriptionId: string;
+      status: CmsSubscriptionStatus;
+      version: number;
+      cancelAtPeriodEnd: boolean;
+      effectiveAt: string | null;
+      voidedInvoiceIds: string[];
+    }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/subscription/cancellation",
       {
         method: "POST",
         headers: { "idempotency-key": crypto.randomUUID() },
