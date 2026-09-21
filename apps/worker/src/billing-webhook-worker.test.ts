@@ -80,7 +80,7 @@ test("billing webhook worker completes review outcomes without payment", async (
       calls.push("unexpected-payment");
     },
     async completeBillingWebhookOutcome(eventId, input) {
-      calls.push(eventId + ":" + input.kind);
+      calls.push(eventId + ":" + input.outcome);
     }
   };
   const adapter: BillingWebhookAdapter = {
