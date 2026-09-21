@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Pool } from "pg";
+import {
+  CommercialPolicyService,
+  CommercialWriteRestrictedError
+} from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { AccessControlService } from "../../identity/access-control.service.js";
 import type { MembershipAccess } from "../../identity/domain/access-control.js";
@@ -62,6 +66,14 @@ async function cleanupFixture(pool: Pool): Promise<void> {
     [organizations]
   );
   await pool.query(
+    "DELETE FROM organization_entitlement_overrides WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
+    "DELETE FROM organization_subscriptions WHERE organization_id = ANY($1::uuid[])",
+    [organizations]
+  );
+  await pool.query(
     "DELETE FROM organizations WHERE id = ANY($1::uuid[])",
     [organizations]
   );
@@ -77,7 +89,8 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
   const database = new DatabaseService();
   const service = new LeaseLifecycleApplicationService(
     database,
-    new AccessControlService()
+    new AccessControlService(),
+    new CommercialPolicyService()
   );
 
   try {
@@ -95,6 +108,32 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
          ($1, 'leasing-test-a', 'Leasing Test A', 'INDIVIDUAL'),
          ($2, 'leasing-test-b', 'Leasing Test B', 'INDIVIDUAL')`,
       [organizationId, otherOrganizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status
+       )
+       SELECT $1, p.id, p.current_version_id, 'SUSPENDED'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [organizationId]
+    );
+
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id,
+         plan_id,
+         plan_version_id,
+         status
+       )
+       SELECT $1, p.id, p.current_version_id, 'ACTIVE'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [otherOrganizationId]
     );
 
     await fixturePool.query(
@@ -162,6 +201,24 @@ test("lease commands are transactional, authorized, idempotent and auditable", a
           idempotencyKey: "cross-tenant-activate"
         }),
       LeaseNotFoundError
+    );
+
+    await assert.rejects(
+      () =>
+        service.activate({
+          actor: actor(),
+          organizationId,
+          leaseId,
+          idempotencyKey: "suspended-activate"
+        }),
+      CommercialWriteRestrictedError
+    );
+
+    await fixturePool.query(
+      `UPDATE organization_subscriptions
+       SET status = 'ACTIVE', version = version + 1, updated_at = now()
+       WHERE organization_id = $1`,
+      [organizationId]
     );
 
     const firstActivation = await service.activate({
