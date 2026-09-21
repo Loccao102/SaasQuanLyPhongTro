@@ -14,7 +14,7 @@ VALUES
     'Brand',
     'Tên sản phẩm',
     'Tên thương hiệu hiển thị trên các surface của platform.',
-    '"PropOps"'::jsonb,
+    '"Habi"'::jsonb,
     'STRING'
   ),
   (
@@ -22,7 +22,7 @@ VALUES
     'Brand',
     'Mô tả sản phẩm',
     'Mô tả ngắn đi cùng wordmark.',
-    '"SaaS Quản lý Phòng Trọ"'::jsonb,
+    '"SaaS vận hành nhà cho thuê"'::jsonb,
     'STRING'
   ),
   (
@@ -30,15 +30,15 @@ VALUES
     'Brand',
     'Tagline',
     'Thông điệp thương hiệu ngắn dùng trên dashboard và landing surfaces.',
-    '"Vận hành hiệu quả · Kiến tạo giá trị bền vững"'::jsonb,
+    '"Nhà gọn. Việc trôi."'::jsonb,
     'STRING'
   ),
   (
     'brand_palette',
     'Brand',
     'Bảng màu thương hiệu',
-    'Design tokens mặc định cho PropOps.',
-    '{"navy":"#0F2D4A","teal":"#14B8A6","amber":"#F59E0B","background":"#F8FAFC","surface":"#FFFFFF"}'::jsonb,
+    'Design tokens mặc định cho Habi.',
+    '{"navy":"#25355C","teal":"#35C6A8","amber":"#FFB36B","background":"#F7FAF9","surface":"#FFFFFF"}'::jsonb,
     'JSON'
   ),
   (
