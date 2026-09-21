@@ -14,7 +14,9 @@ import { CmsService } from "./cms.service.js";
 import type {
   CmsRequest,
   PlatformPrincipal,
+  ProvisionSubscriptionInput,
   RevokeEntitlementOverrideInput,
+  TransitionSubscriptionInput,
   UpdateEntitlementOverrideInput,
   UpdatePlanInput,
   UpdateSettingInput
@@ -73,6 +75,36 @@ export class CmsController {
   @Get("organizations")
   listOrganizations(@Req() request: CmsRequest) {
     return this.cms.listOrganizations(this.principal(request));
+  }
+
+  @Post("organizations/:organizationId/subscription")
+  provisionSubscription(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Body() input: ProvisionSubscriptionInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.provisionSubscription(
+      this.principal(request),
+      organizationId,
+      input,
+      idempotencyKey
+    );
+  }
+
+  @Post("organizations/:organizationId/subscription/transition")
+  transitionSubscription(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Body() input: TransitionSubscriptionInput,
+    @Headers("idempotency-key") idempotencyKey?: string
+  ) {
+    return this.cms.transitionSubscription(
+      this.principal(request),
+      organizationId,
+      input,
+      idempotencyKey
+    );
   }
 
   @Get("entitlement-overrides")
