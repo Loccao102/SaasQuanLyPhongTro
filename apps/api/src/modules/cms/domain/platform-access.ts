@@ -57,3 +57,11 @@ export function platformRoleHasPermission(
 ): boolean {
   return rolePermissions[role].has(permission);
 }
+
+export function platformPermissionsForRole(
+  role: PlatformRole
+): PlatformPermission[] {
+  return platformPermissions.filter((permission) =>
+    rolePermissions[role].has(permission)
+  );
+}
