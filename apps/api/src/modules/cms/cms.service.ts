@@ -1254,6 +1254,66 @@ export class CmsService {
     });
   }
 
+  async searchProviderPayments(
+    principal: PlatformPrincipal,
+    input: {
+      query?: string;
+      provider?: string;
+      reconciliationStatus?: string;
+      limit?: number;
+      cursor?: string;
+    }
+  ) {
+    this.requirePermission(principal, "platform.billing.read");
+
+    const query = input.query?.trim() || undefined;
+    const provider = input.provider?.trim() || undefined;
+    const cursor = input.cursor?.trim() || undefined;
+    const limit = input.limit ?? 50;
+    const reconciliationStatus =
+      input.reconciliationStatus?.trim() || undefined;
+
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new BadRequestException(
+        "limit must be an integer between 1 and 100."
+      );
+    }
+    if (query && query.length > 200) {
+      throw new BadRequestException("query is too long.");
+    }
+    if (provider && provider.length > 100) {
+      throw new BadRequestException("provider is too long.");
+    }
+    if (cursor && cursor.length > 1000) {
+      throw new BadRequestException("cursor is too long.");
+    }
+    if (
+      reconciliationStatus !== undefined &&
+      reconciliationStatus !== "UNALLOCATED" &&
+      reconciliationStatus !== "ALLOCATED" &&
+      reconciliationStatus !== "REVIEW_REQUIRED"
+    ) {
+      throw new BadRequestException(
+        "Invalid reconciliationStatus."
+      );
+    }
+
+    try {
+      return await this.subscriptionBilling.searchProviderPayments({
+        query,
+        provider,
+        reconciliationStatus,
+        limit,
+        cursor
+      });
+    } catch (error) {
+      if (error instanceof SubscriptionBillingConflictError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   async getBillingReconciliation(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.billing.read");
 
