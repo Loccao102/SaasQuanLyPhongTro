@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Pool } from "pg";
+import { SubscriptionBillingService } from "../commercial/application/subscription-billing.service.js";
 import { SubscriptionManagementService } from "../commercial/application/subscription-management.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { NotificationOperationsService } from "../notifications/application/notification-operations.service.js";
@@ -33,8 +34,24 @@ async function cleanup(pool: Pool): Promise<void> {
     [organizationId]
   );
   await pool.query(
+    "DELETE FROM saas_subscription_payments WHERE organization_id = $1",
+    [organizationId]
+  );
+  await pool.query(
+    "DELETE FROM saas_subscription_invoices WHERE organization_id = $1",
+    [organizationId]
+  );
+  await pool.query(
     "DELETE FROM organization_subscriptions WHERE organization_id = $1",
     [organizationId]
+  );
+  await pool.query(
+    "DELETE FROM notification_worker_heartbeats WHERE provider = $1",
+    [testProvider]
+  );
+  await pool.query(
+    "DELETE FROM notification_provider_controls WHERE provider = $1",
+    [testProvider]
   );
   await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM system_settings WHERE key = $1", [
@@ -65,6 +82,7 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
   const service = new CmsService(
     database,
     new SubscriptionManagementService(),
+    new SubscriptionBillingService(database),
     new NotificationOperationsService(database)
   );
 
@@ -310,6 +328,139 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     );
     assert.equal(subscriptionAudits.rows[0]?.count, 3);
 
+    const billingInvoice = await fixturePool.query<{
+      id: string;
+      amount_vnd: string;
+    }>(
+      `INSERT INTO saas_subscription_invoices (
+         organization_id,
+         subscription_id,
+         plan_id,
+         plan_version_id,
+         billing_interval,
+         period_start,
+         period_end,
+         amount_vnd,
+         status,
+         due_at
+       )
+       SELECT
+         s.organization_id,
+         s.id,
+         s.plan_id,
+         s.plan_version_id,
+         s.billing_interval,
+         s.current_period_end,
+         s.current_period_end + interval '1 month',
+         pv.monthly_price_vnd,
+         'OPEN',
+         s.current_period_end
+       FROM organization_subscriptions s
+       JOIN saas_plan_versions pv
+         ON pv.id = s.plan_version_id
+        AND pv.plan_id = s.plan_id
+       WHERE s.organization_id = $1
+       RETURNING id::text, amount_vnd::text`,
+      [organizationId]
+    );
+    const billingInvoiceId = billingInvoice.rows[0]?.id;
+    assert.ok(billingInvoiceId);
+    assert.equal(Number(billingInvoice.rows[0]?.amount_vnd), 249_000);
+
+    const organizationsBeforePayment =
+      await service.listOrganizations(principal);
+    const billingBeforePayment = organizationsBeforePayment.find(
+      (organization) => organization.id === organizationId
+    );
+    assert.ok(billingBeforePayment);
+    assert.equal(billingBeforePayment.billingInterval, "MONTHLY");
+    assert.equal(billingBeforePayment.latestInvoice?.status, "OPEN");
+    assert.equal(billingBeforePayment.latestInvoice?.amountVnd, 249_000);
+
+    const firstManualPayment = await service.recordSubscriptionPayment(
+      principal,
+      organizationId,
+      {
+        invoiceId: billingInvoiceId,
+        reason: "Integration verified bank transfer"
+      },
+      "cms-manual-payment-001"
+    );
+    const replayedManualPayment = await service.recordSubscriptionPayment(
+      principal,
+      organizationId,
+      {
+        invoiceId: billingInvoiceId,
+        reason: "Integration verified bank transfer"
+      },
+      "cms-manual-payment-001"
+    );
+
+    assert.deepEqual(replayedManualPayment, firstManualPayment);
+    assert.equal(
+      (firstManualPayment as {
+        invoice: { status: string };
+        payment: { status: string };
+        subscription: { status: string; version: number };
+      }).invoice.status,
+      "PAID"
+    );
+    assert.equal(
+      (firstManualPayment as {
+        invoice: { status: string };
+        payment: { status: string };
+        subscription: { status: string; version: number };
+      }).payment.status,
+      "SUCCEEDED"
+    );
+    assert.equal(
+      (firstManualPayment as {
+        invoice: { status: string };
+        payment: { status: string };
+        subscription: { status: string; version: number };
+      }).subscription.status,
+      "ACTIVE"
+    );
+    assert.equal(
+      (firstManualPayment as {
+        invoice: { status: string };
+        payment: { status: string };
+        subscription: { status: string; version: number };
+      }).subscription.version,
+      4
+    );
+
+    const manualPaymentCount = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM saas_subscription_payments
+       WHERE organization_id = $1
+         AND invoice_id = $2`,
+      [organizationId, billingInvoiceId]
+    );
+    assert.equal(manualPaymentCount.rows[0]?.count, 1);
+
+    const manualPaymentAudit = await fixturePool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM platform_audit_events
+       WHERE actor_user_id = $1
+         AND organization_id = $2
+         AND action = 'SUBSCRIPTION_PAYMENT_RECORDED_MANUALLY'
+         AND target_key = $3`,
+      [userId, organizationId, billingInvoiceId]
+    );
+    assert.equal(manualPaymentAudit.rows[0]?.count, 1);
+
+    const organizationsAfterPayment =
+      await service.listOrganizations(principal);
+    const billingAfterPayment = organizationsAfterPayment.find(
+      (organization) => organization.id === organizationId
+    );
+    assert.ok(billingAfterPayment);
+    assert.equal(billingAfterPayment.subscriptionStatus, "ACTIVE");
+    assert.equal(billingAfterPayment.subscriptionVersion, 4);
+    assert.equal(billingAfterPayment.latestInvoice?.status, "PAID");
+    assert.ok(billingAfterPayment.latestInvoice?.paidAt);
+
     const firstProviderPause =
       await service.updateNotificationProviderControl(
         principal,
@@ -389,8 +540,8 @@ test("CMS configuration commands are transactional, idempotent and auditable", a
     assert.ok(inspected);
     assert.equal(inspected.roomLimit, 80);
     assert.equal(inspected.roomLimitSource, "OVERRIDE");
-    assert.equal(inspected.subscriptionStatus, "PAST_DUE");
-    assert.equal(inspected.subscriptionVersion, 3);
+    assert.equal(inspected.subscriptionStatus, "ACTIVE");
+    assert.equal(inspected.subscriptionVersion, 4);
     assert.equal(inspected.planCode, "GROWTH");
 
     await service.revokeEntitlementOverride(
