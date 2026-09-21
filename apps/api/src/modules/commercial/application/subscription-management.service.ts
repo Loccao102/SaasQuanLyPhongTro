@@ -40,6 +40,11 @@ export interface SubscriptionView {
   cancelAtPeriodEnd: boolean;
 }
 
+export interface SubscriptionTransitionView {
+  before: SubscriptionView;
+  after: SubscriptionView;
+}
+
 export class SubscriptionAlreadyExistsError extends Error {
   constructor() {
     super("Organization already has a SaaS subscription.");
@@ -186,7 +191,7 @@ export class SubscriptionManagementService {
       expectedVersion: number;
       reason: string;
     }
-  ): Promise<SubscriptionView> {
+  ): Promise<SubscriptionTransitionView> {
     const currentResult = await client.query<SubscriptionRow>(
       `SELECT
          s.id::text,
@@ -215,6 +220,8 @@ export class SubscriptionManagementService {
     if (current.version !== input.expectedVersion) {
       throw new ConcurrentSubscriptionUpdateError();
     }
+
+    const before = this.mapRow(current);
 
     const state: SubscriptionState = {
       id: current.id,
@@ -270,7 +277,10 @@ export class SubscriptionManagementService {
       ]
     );
 
-    return this.mapRow(updatedResult.rows[0]!);
+    return {
+      before,
+      after: this.mapRow(updatedResult.rows[0]!)
+    };
   }
 
   private async defaultFutureTimestamp(
