@@ -44,7 +44,7 @@ const allowedTransitions: Record<
   SubscriptionStatus,
   ReadonlySet<SubscriptionStatus>
 > = {
-  TRIALING: new Set(["ACTIVE", "CANCELLED"]),
+  TRIALING: new Set(["ACTIVE", "PAST_DUE", "CANCELLED"]),
   ACTIVE: new Set(["PAST_DUE", "CANCELLED"]),
   PAST_DUE: new Set(["ACTIVE", "GRACE_PERIOD", "CANCELLED"]),
   GRACE_PERIOD: new Set(["ACTIVE", "SUSPENDED", "CANCELLED"]),
