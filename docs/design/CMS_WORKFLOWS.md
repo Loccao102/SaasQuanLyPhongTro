@@ -66,6 +66,10 @@ Financial safeguards:
 
 Loaded states include empty review queue, no open invoices, exact reference suggestion, unmatched reference, partially allocated payment, overdue invoice, server validation error and successful reconciliation.
 
+Provider transaction search flow: enter payment UUID/provider transaction ID/payment reference -> optionally filter provider and reconciliation status -> inspect cursor-paginated results -> copy safe identifiers/reference -> open transaction detail -> inspect allocation history, linked webhook events and audit history when authorized. Search/detail responses intentionally omit raw provider metadata, idempotency keys, raw webhook bodies and headers.
+
+Transaction detail states include loading, not found/error, unassigned payment, no allocations, partial allocation, fully allocated payment, webhook linkage and audit-permission unavailable. Allocation history is append-only and shows target invoice, amount, actor id/system source, reason and timestamp.
+
 Webhook inbox shows operational state only: provider event id, signature state, processing state, attempts/stale flag, sanitized last error and linked payment id. Raw provider body and headers are not rendered.
 
 Webhook recovery flow: inspect FAILED/REVIEW_REQUIRED event -> confirm signature is VERIFIED -> fix the parser/provider cause -> Requeue with audit reason -> event returns to RECEIVED while attempt history remains. Backend rejects requeue for unverified signatures, linked payments or unsupported states.
