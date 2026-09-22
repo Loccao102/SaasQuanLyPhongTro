@@ -101,6 +101,7 @@ type ReceiptRow = QueryResultRow & {
 
 type OrganizationRow = QueryResultRow & {
   id: string;
+  created_at: Date;
   slug: string;
   name: string;
   status: string;
@@ -138,6 +139,25 @@ type OrganizationRow = QueryResultRow & {
   automation_quota_source: string | null;
   automation_reserved: number;
   automation_consumed: number;
+};
+
+type OrganizationPropertyRow = QueryResultRow & {
+  id: string;
+  code: string;
+  name: string;
+  property_type: string;
+  address_text: string | null;
+  is_active: boolean;
+  room_count: number;
+};
+
+type OrganizationMembershipRow = QueryResultRow & {
+  id: string;
+  user_id: string;
+  display_name: string;
+  email: string;
+  role: string;
+  status: string;
 };
 
 type AuditRow = QueryResultRow & {
@@ -1067,216 +1087,293 @@ export class CmsService {
   }
 
   async listOrganizations(principal: PlatformPrincipal) {
+    const page = await this.searchOrganizations(principal, {
+      limit: 100
+    });
+    return page.items;
+  }
+
+  async searchOrganizations(
+    principal: PlatformPrincipal,
+    input?: {
+      query?: string;
+      planCode?: string;
+      organizationStatus?: string;
+      subscriptionStatus?: string;
+      overLimit?: boolean;
+      delinquent?: boolean;
+      limit?: number;
+      cursor?: string;
+    }
+  ) {
     this.requirePermission(principal, "platform.organizations.inspect");
+
+    const query = input?.query?.trim() ?? "";
+    const planCode = input?.planCode?.trim() ?? "";
+    const organizationStatus =
+      input?.organizationStatus?.trim().toUpperCase() ?? "";
+    const subscriptionStatus =
+      input?.subscriptionStatus?.trim().toUpperCase() ?? "";
+    const rawLimit = input?.limit ?? 25;
+    const limit = Math.max(1, Math.min(100, Math.floor(rawLimit)));
+
+    if (query.length > 200) {
+      throw new BadRequestException(
+        "Organization search query is too long."
+      );
+    }
+    if (planCode.length > 100) {
+      throw new BadRequestException("Plan filter is too long.");
+    }
+    if (
+      organizationStatus &&
+      organizationStatus !== "ACTIVE" &&
+      organizationStatus !== "SUSPENDED"
+    ) {
+      throw new BadRequestException(
+        "organizationStatus must be ACTIVE or SUSPENDED."
+      );
+    }
+    if (
+      subscriptionStatus &&
+      ![
+        "UNASSIGNED",
+        "TRIALING",
+        "ACTIVE",
+        "PAST_DUE",
+        "GRACE_PERIOD",
+        "SUSPENDED",
+        "CANCELLED"
+      ].includes(subscriptionStatus)
+    ) {
+      throw new BadRequestException(
+        "Invalid subscriptionStatus filter."
+      );
+    }
+    if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 100) {
+      throw new BadRequestException(
+        "Organization search limit must be between 1 and 100."
+      );
+    }
+
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    const bind = (value: unknown) => {
+      params.push(value);
+      return "$" + String(params.length);
+    };
+
+    if (query) {
+      const placeholder = bind(query);
+      clauses.push(
+        "(" +
+          "position(lower(" + placeholder + ") in lower(o.id::text)) > 0 OR " +
+          "position(lower(" + placeholder + ") in lower(o.slug)) > 0 OR " +
+          "position(lower(" + placeholder + ") in lower(o.name)) > 0 OR " +
+          "position(lower(" + placeholder + ") in lower(COALESCE(owner.display_name, ''))) > 0" +
+          ")"
+      );
+    }
+
+    if (planCode) {
+      if (planCode.toUpperCase() === "UNASSIGNED") {
+        clauses.push("p.code IS NULL");
+      } else {
+        const placeholder = bind(planCode);
+        clauses.push(
+          "upper(COALESCE(p.code, '')) = upper(" +
+            placeholder +
+            ")"
+        );
+      }
+    }
+
+    if (organizationStatus) {
+      clauses.push("o.status = " + bind(organizationStatus));
+    }
+
+    if (subscriptionStatus) {
+      clauses.push(
+        "COALESCE(s.status, 'UNASSIGNED') = " +
+          bind(subscriptionStatus)
+      );
+    }
+
+    if (input?.overLimit === true) {
+      clauses.push(
+        "(" +
+          "(COALESCE(room_override.value, pv.room_limit) IS NOT NULL AND COALESCE(room_usage.room_count, 0) > COALESCE(room_override.value, pv.room_limit)) OR " +
+          "(COALESCE(staff_override.value, pv.staff_limit) IS NOT NULL AND COALESCE(staff_usage.staff_count, 0) > COALESCE(staff_override.value, pv.staff_limit)) OR " +
+          "(COALESCE(automation_override.value, pv.automation_quota) IS NOT NULL AND " +
+          "(COALESCE(automation_usage.reserved_actions, 0) + COALESCE(automation_usage.consumed_actions, 0)) > COALESCE(automation_override.value, pv.automation_quota))" +
+          ")"
+      );
+    }
+
+    if (input?.delinquent === true) {
+      clauses.push(
+        "(" +
+          "s.status IN ('PAST_DUE', 'GRACE_PERIOD', 'SUSPENDED') OR " +
+          "(COALESCE(billing_invoice.is_overdue, false) = true AND COALESCE(billing_invoice.remaining_amount_vnd, 0) > 0)" +
+          ")"
+      );
+    }
+
+    if (input?.cursor) {
+      const cursor = this.decodeOrganizationCursor(input.cursor);
+      const createdAtPlaceholder = bind(cursor.createdAt);
+      const idPlaceholder = bind(cursor.id);
+      clauses.push(
+        "(" +
+          "o.created_at < " + createdAtPlaceholder + "::timestamptz OR (" +
+          "o.created_at = " + createdAtPlaceholder + "::timestamptz AND " +
+          "o.id < " + idPlaceholder + "::uuid))"
+      );
+    }
+
+    const whereClause =
+      clauses.length > 0 ? "WHERE " + clauses.join(" AND ") : "";
+    const limitPlaceholder = bind(limit + 1);
     const result = await this.db.query<OrganizationRow>(
-      `SELECT
-         o.id::text,
-         o.slug,
-         o.name,
-         o.status,
-         owner.display_name AS owner_name,
-         COALESCE(room_usage.room_count, 0)::int AS room_count,
-         COALESCE(staff_usage.staff_count, 0)::int AS staff_count,
-         s.status AS subscription_status,
-         s.version AS subscription_version,
-         s.billing_interval,
-         s.current_period_start,
-         s.current_period_end,
-         s.trial_ends_at,
-         s.cancel_at_period_end AS subscription_cancel_at_period_end,
-         p.code AS plan_code,
-         billing_invoice.id::text AS latest_invoice_id,
-         billing_invoice.status AS latest_invoice_status,
-         billing_invoice.amount_vnd::text AS latest_invoice_amount_vnd,
-         billing_invoice.paid_amount_vnd::text AS latest_invoice_paid_amount_vnd,
-         billing_invoice.remaining_amount_vnd::text
-           AS latest_invoice_remaining_amount_vnd,
-         billing_invoice.is_overdue AS latest_invoice_is_overdue,
-         billing_invoice.due_at AS latest_invoice_due_at,
-         billing_invoice.paid_at AS latest_invoice_paid_at,
-         billing_invoice.period_start AS latest_invoice_period_start,
-         billing_invoice.period_end AS latest_invoice_period_end,
-         COALESCE(room_override.value, pv.room_limit) AS room_limit,
-         COALESCE(staff_override.value, pv.staff_limit) AS staff_limit,
-         COALESCE(automation_override.value, pv.automation_quota) AS automation_quota,
-         CASE
-           WHEN room_override.value IS NOT NULL THEN 'OVERRIDE'
-           WHEN pv.room_limit IS NOT NULL THEN 'PLAN'
-           ELSE NULL
-         END AS room_limit_source,
-         CASE
-           WHEN staff_override.value IS NOT NULL THEN 'OVERRIDE'
-           WHEN pv.staff_limit IS NOT NULL THEN 'PLAN'
-           ELSE NULL
-         END AS staff_limit_source,
-         CASE
-           WHEN automation_override.value IS NOT NULL THEN 'OVERRIDE'
-           WHEN pv.automation_quota IS NOT NULL THEN 'PLAN'
-           ELSE NULL
-         END AS automation_quota_source,
-         COALESCE(automation_usage.reserved_actions, 0)::int AS automation_reserved,
-         COALESCE(automation_usage.consumed_actions, 0)::int AS automation_consumed
-       FROM organizations o
-       LEFT JOIN LATERAL (
-         SELECT u.display_name
-         FROM organization_memberships om
-         JOIN users u ON u.id = om.user_id
-         WHERE om.organization_id = o.id
-           AND om.role = 'OWNER'
-           AND om.status = 'ACTIVE'
-         ORDER BY om.created_at
-         LIMIT 1
-       ) owner ON true
-       LEFT JOIN LATERAL (
-         SELECT count(*) AS room_count
-         FROM rooms r
-         WHERE r.organization_id = o.id AND r.is_active = true
-       ) room_usage ON true
-       LEFT JOIN LATERAL (
-         SELECT count(*) AS staff_count
-         FROM organization_memberships om
-         WHERE om.organization_id = o.id AND om.status = 'ACTIVE'
-       ) staff_usage ON true
-       LEFT JOIN organization_subscriptions s
-         ON s.organization_id = o.id
-       LEFT JOIN saas_plans p
-         ON p.id = s.plan_id
-       LEFT JOIN saas_plan_versions pv
-         ON pv.id = s.plan_version_id
-       LEFT JOIN LATERAL (
-         SELECT (eo.value #>> '{}')::int AS value
-         FROM organization_entitlement_overrides eo
-         WHERE eo.organization_id = o.id
-           AND eo.entitlement_key = 'room_limit'
-           AND eo.revoked_at IS NULL
-           AND (eo.expires_at IS NULL OR eo.expires_at > now())
-         ORDER BY eo.created_at DESC
-         LIMIT 1
-       ) room_override ON true
-       LEFT JOIN LATERAL (
-         SELECT (eo.value #>> '{}')::int AS value
-         FROM organization_entitlement_overrides eo
-         WHERE eo.organization_id = o.id
-           AND eo.entitlement_key = 'staff_limit'
-           AND eo.revoked_at IS NULL
-           AND (eo.expires_at IS NULL OR eo.expires_at > now())
-         ORDER BY eo.created_at DESC
-         LIMIT 1
-       ) staff_override ON true
-       LEFT JOIN LATERAL (
-         SELECT (eo.value #>> '{}')::int AS value
-         FROM organization_entitlement_overrides eo
-         WHERE eo.organization_id = o.id
-           AND eo.entitlement_key = 'automation_actions_monthly'
-           AND eo.revoked_at IS NULL
-           AND (eo.expires_at IS NULL OR eo.expires_at > now())
-         ORDER BY eo.created_at DESC
-         LIMIT 1
-       ) automation_override ON true
-       LEFT JOIN LATERAL (
-         SELECT
-           i.id,
-           i.status,
-           i.amount_vnd,
-           COALESCE(alloc.paid_amount_vnd, 0)::bigint AS paid_amount_vnd,
-           (
-             i.amount_vnd - COALESCE(alloc.paid_amount_vnd, 0)
-           )::bigint AS remaining_amount_vnd,
-           (
-             i.due_at <= now()
-             AND i.status IN ('OPEN', 'PARTIALLY_PAID')
-           ) AS is_overdue,
-           i.due_at,
-           i.paid_at,
-           i.period_start,
-           i.period_end
-         FROM saas_subscription_invoices i
-         LEFT JOIN LATERAL (
-           SELECT COALESCE(sum(a.amount_vnd), 0)::bigint AS paid_amount_vnd
-           FROM saas_subscription_payment_allocations a
-           JOIN saas_subscription_payments pay
-             ON pay.organization_id = a.organization_id
-            AND pay.id = a.payment_id
-           WHERE a.organization_id = i.organization_id
-             AND a.invoice_id = i.id
-             AND pay.status = 'SUCCEEDED'
-         ) alloc ON true
-         WHERE i.organization_id = o.id
-           AND i.status <> 'VOID'
-         ORDER BY i.period_start DESC, i.created_at DESC
-         LIMIT 1
-       ) billing_invoice ON true
-       LEFT JOIN LATERAL (
-         SELECT
-           aqp.reserved_actions,
-           aqp.consumed_actions
-         FROM automation_quota_periods aqp
-         JOIN LATERAL (
-           SELECT value #>> '{}' AS timezone
-           FROM system_settings
-           WHERE key = 'automation_quota_timezone'
-         ) quota_timezone ON true
-         WHERE aqp.organization_id = o.id
-           AND timezone(quota_timezone.timezone, now())::date >= aqp.period_start
-           AND timezone(quota_timezone.timezone, now())::date < aqp.period_end
-         ORDER BY aqp.period_start DESC
-         LIMIT 1
-       ) automation_usage ON true
-       ORDER BY o.created_at DESC, o.id DESC`
+      this.organizationSelectSql(
+        whereClause +
+          " ORDER BY o.created_at DESC, o.id DESC LIMIT " +
+          limitPlaceholder
+      ),
+      params
     );
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      name: row.name,
-      status: row.status,
-      ownerName: row.owner_name,
-      rooms: row.room_count,
-      staff: row.staff_count,
-      subscriptionStatus: row.subscription_status ?? "UNASSIGNED",
-      subscriptionVersion: row.subscription_version,
-      billingInterval: row.billing_interval,
-      currentPeriodStart:
-        row.current_period_start?.toISOString() ?? null,
-      currentPeriodEnd:
-        row.current_period_end?.toISOString() ?? null,
-      trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
-      cancelAtPeriodEnd:
-        row.subscription_cancel_at_period_end ?? null,
-      planCode: row.plan_code,
-      latestInvoice:
-        row.latest_invoice_id === null
-          ? null
-          : {
-              id: row.latest_invoice_id,
-              status: row.latest_invoice_status,
-              amountVnd: Number(row.latest_invoice_amount_vnd),
-              paidAmountVnd: Number(
-                row.latest_invoice_paid_amount_vnd
-              ),
-              remainingAmountVnd: Number(
-                row.latest_invoice_remaining_amount_vnd
-              ),
-              isOverdue: row.latest_invoice_is_overdue ?? false,
-              dueAt:
-                row.latest_invoice_due_at?.toISOString() ?? null,
-              paidAt:
-                row.latest_invoice_paid_at?.toISOString() ?? null,
-              periodStart:
-                row.latest_invoice_period_start?.toISOString() ?? null,
-              periodEnd:
-                row.latest_invoice_period_end?.toISOString() ?? null
-            },
-      roomLimit: row.room_limit,
-      staffLimit: row.staff_limit,
-      automationQuota: row.automation_quota,
-      roomLimitSource: row.room_limit_source,
-      staffLimitSource: row.staff_limit_source,
-      automationQuotaSource: row.automation_quota_source,
-      automationUsed: row.automation_consumed,
-      automationReserved: row.automation_reserved
-    }));
+    const hasMore = result.rows.length > limit;
+    const pageRows = result.rows.slice(0, limit);
+    const lastRow = pageRows.at(-1);
+
+    return {
+      items: pageRows.map((row) => this.mapOrganization(row)),
+      nextCursor:
+        hasMore && lastRow
+          ? this.encodeOrganizationCursor(lastRow)
+          : null
+    };
   }
+
+  async getOrganizationDetail(
+    principal: PlatformPrincipal,
+    organizationId: string
+  ) {
+    this.requirePermission(principal, "platform.organizations.inspect");
+    const normalizedId = organizationId.trim();
+    if (!this.isUuid(normalizedId)) {
+      throw new BadRequestException(
+        "Organization id must be a valid UUID."
+      );
+    }
+
+    const organizationResult = await this.db.query<OrganizationRow>(
+      this.organizationSelectSql("WHERE o.id = $1"),
+      [normalizedId]
+    );
+    const organizationRow = organizationResult.rows[0];
+    if (!organizationRow) {
+      throw new NotFoundException("Organization was not found.");
+    }
+
+    const [properties, memberships, overrides, invoices] =
+      await Promise.all([
+        this.db.query<OrganizationPropertyRow>(
+          `SELECT
+             p.id::text,
+             p.code,
+             p.name,
+             p.property_type,
+             p.address_text,
+             p.is_active,
+             count(r.id) FILTER (WHERE r.is_active = true)::int AS room_count
+           FROM properties p
+           LEFT JOIN rooms r
+             ON r.organization_id = p.organization_id
+            AND r.property_id = p.id
+           WHERE p.organization_id = $1
+           GROUP BY p.id
+           ORDER BY p.is_active DESC, p.name, p.id
+           LIMIT 200`,
+          [normalizedId]
+        ),
+        this.db.query<OrganizationMembershipRow>(
+          `SELECT
+             om.id::text,
+             om.user_id::text,
+             u.display_name,
+             u.email,
+             om.role,
+             om.status
+           FROM organization_memberships om
+           JOIN users u ON u.id = om.user_id
+           WHERE om.organization_id = $1
+           ORDER BY
+             CASE om.role
+               WHEN 'OWNER' THEN 0
+               WHEN 'ADMIN' THEN 1
+               WHEN 'MANAGER' THEN 2
+               WHEN 'ACCOUNTANT' THEN 3
+               WHEN 'STAFF' THEN 4
+               ELSE 5
+             END,
+             u.display_name,
+             om.id
+           LIMIT 200`,
+          [normalizedId]
+        ),
+        this.db.query<EntitlementOverrideRow>(
+          `SELECT
+             eo.id::text,
+             eo.organization_id::text,
+             o.name AS organization_name,
+             eo.entitlement_key,
+             eo.value,
+             eo.expires_at,
+             eo.reason,
+             eo.created_at,
+             u.display_name AS created_by_name,
+             eo.revoked_at
+           FROM organization_entitlement_overrides eo
+           JOIN organizations o ON o.id = eo.organization_id
+           LEFT JOIN users u ON u.id = eo.created_by_user_id
+           WHERE eo.organization_id = $1
+             AND eo.revoked_at IS NULL
+             AND (eo.expires_at IS NULL OR eo.expires_at > now())
+           ORDER BY eo.created_at DESC
+           LIMIT 100`,
+          [normalizedId]
+        ),
+        this.subscriptionBilling.listInvoices(normalizedId)
+      ]);
+
+    return {
+      organization: this.mapOrganization(organizationRow),
+      properties: properties.rows.map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        propertyType: row.property_type,
+        address: row.address_text,
+        isActive: row.is_active,
+        rooms: row.room_count
+      })),
+      memberships: memberships.rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        displayName: row.display_name,
+        email: row.email,
+        role: row.role,
+        status: row.status
+      })),
+      entitlementOverrides: overrides.rows.map((row) =>
+        this.mapEntitlementOverride(row)
+      ),
+      recentInvoices: invoices.slice(0, 20)
+    };
+  }
+
 
   async provisionSubscription(
     principal: PlatformPrincipal,
@@ -2662,6 +2759,267 @@ export class CmsService {
         "Observability/Loki integration has not been connected yet. CMS does not fabricate technical log entries.",
       entries: []
     };
+  }
+
+  private organizationSelectSql(suffix: string): string {
+    return `SELECT
+         o.id::text,
+         o.created_at,
+         o.slug,
+         o.name,
+         o.status,
+         owner.display_name AS owner_name,
+         COALESCE(room_usage.room_count, 0)::int AS room_count,
+         COALESCE(staff_usage.staff_count, 0)::int AS staff_count,
+         s.status AS subscription_status,
+         s.version AS subscription_version,
+         s.billing_interval,
+         s.current_period_start,
+         s.current_period_end,
+         s.trial_ends_at,
+         s.cancel_at_period_end AS subscription_cancel_at_period_end,
+         p.code AS plan_code,
+         billing_invoice.id::text AS latest_invoice_id,
+         billing_invoice.status AS latest_invoice_status,
+         billing_invoice.amount_vnd::text AS latest_invoice_amount_vnd,
+         billing_invoice.paid_amount_vnd::text AS latest_invoice_paid_amount_vnd,
+         billing_invoice.remaining_amount_vnd::text
+           AS latest_invoice_remaining_amount_vnd,
+         billing_invoice.is_overdue AS latest_invoice_is_overdue,
+         billing_invoice.due_at AS latest_invoice_due_at,
+         billing_invoice.paid_at AS latest_invoice_paid_at,
+         billing_invoice.period_start AS latest_invoice_period_start,
+         billing_invoice.period_end AS latest_invoice_period_end,
+         COALESCE(room_override.value, pv.room_limit) AS room_limit,
+         COALESCE(staff_override.value, pv.staff_limit) AS staff_limit,
+         COALESCE(automation_override.value, pv.automation_quota) AS automation_quota,
+         CASE
+           WHEN room_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.room_limit IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS room_limit_source,
+         CASE
+           WHEN staff_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.staff_limit IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS staff_limit_source,
+         CASE
+           WHEN automation_override.value IS NOT NULL THEN 'OVERRIDE'
+           WHEN pv.automation_quota IS NOT NULL THEN 'PLAN'
+           ELSE NULL
+         END AS automation_quota_source,
+         COALESCE(automation_usage.reserved_actions, 0)::int AS automation_reserved,
+         COALESCE(automation_usage.consumed_actions, 0)::int AS automation_consumed
+       FROM organizations o
+       LEFT JOIN LATERAL (
+         SELECT u.display_name
+         FROM organization_memberships om
+         JOIN users u ON u.id = om.user_id
+         WHERE om.organization_id = o.id
+           AND om.role = 'OWNER'
+           AND om.status = 'ACTIVE'
+         ORDER BY om.created_at
+         LIMIT 1
+       ) owner ON true
+       LEFT JOIN LATERAL (
+         SELECT count(*) AS room_count
+         FROM rooms r
+         WHERE r.organization_id = o.id AND r.is_active = true
+       ) room_usage ON true
+       LEFT JOIN LATERAL (
+         SELECT count(*) AS staff_count
+         FROM organization_memberships om
+         WHERE om.organization_id = o.id AND om.status = 'ACTIVE'
+       ) staff_usage ON true
+       LEFT JOIN organization_subscriptions s
+         ON s.organization_id = o.id
+       LEFT JOIN saas_plans p
+         ON p.id = s.plan_id
+       LEFT JOIN saas_plan_versions pv
+         ON pv.id = s.plan_version_id
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'room_limit'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) room_override ON true
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'staff_limit'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) staff_override ON true
+       LEFT JOIN LATERAL (
+         SELECT (eo.value #>> '{}')::int AS value
+         FROM organization_entitlement_overrides eo
+         WHERE eo.organization_id = o.id
+           AND eo.entitlement_key = 'automation_actions_monthly'
+           AND eo.revoked_at IS NULL
+           AND (eo.expires_at IS NULL OR eo.expires_at > now())
+         ORDER BY eo.created_at DESC
+         LIMIT 1
+       ) automation_override ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           i.id,
+           i.status,
+           i.amount_vnd,
+           COALESCE(alloc.paid_amount_vnd, 0)::bigint AS paid_amount_vnd,
+           (
+             i.amount_vnd - COALESCE(alloc.paid_amount_vnd, 0)
+           )::bigint AS remaining_amount_vnd,
+           (
+             i.due_at <= now()
+             AND i.status IN ('OPEN', 'PARTIALLY_PAID')
+           ) AS is_overdue,
+           i.due_at,
+           i.paid_at,
+           i.period_start,
+           i.period_end
+         FROM saas_subscription_invoices i
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(sum(a.amount_vnd), 0)::bigint AS paid_amount_vnd
+           FROM saas_subscription_payment_allocations a
+           JOIN saas_subscription_payments pay
+             ON pay.organization_id = a.organization_id
+            AND pay.id = a.payment_id
+           WHERE a.organization_id = i.organization_id
+             AND a.invoice_id = i.id
+             AND pay.status = 'SUCCEEDED'
+         ) alloc ON true
+         WHERE i.organization_id = o.id
+           AND i.status <> 'VOID'
+         ORDER BY i.period_start DESC, i.created_at DESC
+         LIMIT 1
+       ) billing_invoice ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           aqp.reserved_actions,
+           aqp.consumed_actions
+         FROM automation_quota_periods aqp
+         JOIN LATERAL (
+           SELECT value #>> '{}' AS timezone
+           FROM system_settings
+           WHERE key = 'automation_quota_timezone'
+         ) quota_timezone ON true
+         WHERE aqp.organization_id = o.id
+           AND timezone(quota_timezone.timezone, now())::date >= aqp.period_start
+           AND timezone(quota_timezone.timezone, now())::date < aqp.period_end
+         ORDER BY aqp.period_start DESC
+         LIMIT 1
+       ) automation_usage ON true
+       ${suffix}`;
+  }
+
+  private mapOrganization(row: OrganizationRow) {
+    return {
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      status: row.status,
+      ownerName: row.owner_name,
+      rooms: row.room_count,
+      staff: row.staff_count,
+      subscriptionStatus: row.subscription_status ?? "UNASSIGNED",
+      subscriptionVersion: row.subscription_version,
+      billingInterval: row.billing_interval,
+      currentPeriodStart:
+        row.current_period_start?.toISOString() ?? null,
+      currentPeriodEnd:
+        row.current_period_end?.toISOString() ?? null,
+      trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
+      cancelAtPeriodEnd:
+        row.subscription_cancel_at_period_end ?? null,
+      planCode: row.plan_code,
+      latestInvoice:
+        row.latest_invoice_id === null
+          ? null
+          : {
+              id: row.latest_invoice_id,
+              status: row.latest_invoice_status,
+              amountVnd: Number(row.latest_invoice_amount_vnd),
+              paidAmountVnd: Number(
+                row.latest_invoice_paid_amount_vnd
+              ),
+              remainingAmountVnd: Number(
+                row.latest_invoice_remaining_amount_vnd
+              ),
+              isOverdue: row.latest_invoice_is_overdue ?? false,
+              dueAt:
+                row.latest_invoice_due_at?.toISOString() ?? null,
+              paidAt:
+                row.latest_invoice_paid_at?.toISOString() ?? null,
+              periodStart:
+                row.latest_invoice_period_start?.toISOString() ?? null,
+              periodEnd:
+                row.latest_invoice_period_end?.toISOString() ?? null
+            },
+      roomLimit: row.room_limit,
+      staffLimit: row.staff_limit,
+      automationQuota: row.automation_quota,
+      roomLimitSource: row.room_limit_source,
+      staffLimitSource: row.staff_limit_source,
+      automationQuotaSource: row.automation_quota_source,
+      automationUsed: row.automation_consumed,
+      automationReserved: row.automation_reserved
+    };
+  }
+
+  private encodeOrganizationCursor(row: OrganizationRow): string {
+    return Buffer.from(
+      JSON.stringify({
+        createdAt: row.created_at.toISOString(),
+        id: row.id
+      }),
+      "utf8"
+    ).toString("base64url");
+  }
+
+  private decodeOrganizationCursor(value: string): {
+    createdAt: string;
+    id: string;
+  } {
+    if (value.length > 1000) {
+      throw new BadRequestException(
+        "Organization cursor is too long."
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(value, "base64url").toString("utf8")
+      ) as { createdAt?: unknown; id?: unknown };
+
+      if (
+        typeof parsed.createdAt !== "string" ||
+        Number.isNaN(new Date(parsed.createdAt).getTime()) ||
+        typeof parsed.id !== "string" ||
+        !this.isUuid(parsed.id)
+      ) {
+        throw new Error("invalid cursor");
+      }
+
+      return {
+        createdAt: new Date(parsed.createdAt).toISOString(),
+        id: parsed.id
+      };
+    } catch {
+      throw new BadRequestException("Invalid organization cursor.");
+    }
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    );
   }
 
   private rethrowSubscriptionError(error: unknown): never {
