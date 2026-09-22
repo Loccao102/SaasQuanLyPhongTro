@@ -73,7 +73,11 @@ export function OrganizationDirectoryClient({
 
   const load = useCallback(
     async (append = false, cursor?: string) => {
-      append ? setLoadingMore(true) : setLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       try {
