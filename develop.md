@@ -445,23 +445,24 @@ Later:
 
 ## 4.1 Provider transaction search UI
 
-Backend/client search foundation exists.
-
-Still required in CMS:
+Implemented:
 
 - search form;
-- payment UUID search;
-- provider transaction ID search;
-- paymentReference search;
+- payment UUID / provider transaction ID / paymentReference search;
 - provider filter;
-- reconciliation status filter;
-- transaction result table;
-- cursor-based Load more;
+- reconciliation-status filter;
+- cursor-based result pagination + Load more;
 - clear filters;
 - transaction detail drill-down;
-- show allocation history;
-- link to organization/invoice;
-- safe copy transaction/reference actions.
+- allocation-history view;
+- safe copy payment ID/reference actions;
+- safe API DTOs that omit payment metadata/idempotency key;
+- linked webhook history without raw payload/headers;
+- permission-aware audit history.
+
+Remaining follow-up:
+
+- direct organization/invoice deep links once CMS routing/detail routes exist.
 
 Do not expose sensitive raw provider payload by default.
 
@@ -469,22 +470,23 @@ Do not expose sensitive raw provider payload by default.
 
 ## 4.2 Billing transaction detail / reconciliation history
 
-Current reconciliation workflow is functional, but operators need a better history view.
+Implemented in the provider-payment detail drill-down:
 
-Required:
-
-- original PaymentTransaction;
-- current assigned organization;
-- amount;
-- allocated amount;
-- remaining/unallocated amount;
+- safe PaymentTransaction identity/status/provider fields;
+- current assigned organization id/name when organization inspection is available;
+- amount / allocated / remaining-unallocated amounts;
 - every PaymentAllocation;
-- target invoice;
-- allocation actor;
-- allocation reason;
-- timestamps;
-- relevant audit events;
-- webhook event link.
+- target invoice/reference/status/balance;
+- allocation actor id or system auto-match;
+- allocation reason and timestamps;
+- relevant audit events when `platform.audit.read` is present;
+- linked webhook events with safe operational fields.
+
+Still required:
+
+- direct organization detail route;
+- direct invoice detail route;
+- actor display-name resolution where permitted.
 
 ### Expansion
 
@@ -1189,24 +1191,12 @@ Unless measurements or requirements prove otherwise:
 
 # 24. Near-term next task
 
+Provider Transaction Search UI is implemented.
+
 Current most immediate unfinished task:
 
 ```text
-CMS -> SaaS Billing -> Provider Transaction Search UI
+CMS -> Organizations -> search / filters / cursor pagination / direct detail route
 ```
 
-Backend/client support already exists for:
-
-- transaction ID/payment ID/paymentReference search;
-- provider filter;
-- reconciliation-status filter;
-- cursor pagination.
-
-Frontend still needs:
-
-- filter form;
-- search state;
-- results table;
-- Load more;
-- transaction detail navigation;
-- allocation-history drill-down.
+Then finish deep-linking provider-payment detail to organization and invoice detail routes before moving to broader billing/reconciliation polish.
