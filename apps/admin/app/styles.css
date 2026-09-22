@@ -180,3 +180,32 @@ body { background: var(--color-bg); }
   .asset-card__stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .detail-grid>div:nth-child(odd) { padding-right:0; }
 }
+
+
+/* Asset create commands */
+.asset-action-row { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+.asset-create-form { display:grid; gap:16px; margin:0 0 18px; padding:18px; border:1px solid #cfe2df; border-radius:13px; background:#fbfefd; }
+.asset-create-form__heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.asset-create-form__heading h3 { margin:4px 0 0; font-size:16px; }
+.asset-create-form__heading small { max-width:420px; color:var(--color-text-muted); font-size:10px; line-height:1.5; text-align:right; }
+.asset-create-form__grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.asset-create-form label { display:grid; gap:6px; color:var(--color-text); font-size:11px; font-weight:700; }
+.asset-create-form input,.asset-create-form select { min-width:0; height:40px; padding:0 11px; border:1px solid var(--color-border); border-radius:9px; background:white; color:var(--color-text); font:inherit; font-weight:500; outline:none; }
+.asset-create-form input:focus,.asset-create-form select:focus { border-color:var(--color-primary); box-shadow:0 0 0 3px rgba(53,198,168,.12); }
+.asset-create-form__wide { grid-column:span 2; }
+.asset-form-actions { display:flex; justify-content:flex-end; gap:10px; }
+.asset-form-error { padding:10px 12px; border-radius:9px; background:#fff1f1; color:var(--color-danger); font-size:11px; line-height:1.5; }
+.asset-notice { padding:11px 13px; border:1px solid #bfe5d7; border-radius:10px; background:#f2fbf7; color:#216a55; font-size:11px; font-weight:700; }
+.floor-empty { padding:18px; border:1px dashed var(--color-border); border-radius:10px; color:var(--color-text-muted); font-size:11px; text-align:center; }
+@media (max-width:820px) {
+  .asset-create-form__heading { flex-direction:column; }
+  .asset-create-form__heading small { text-align:left; }
+  .asset-create-form__grid { grid-template-columns:1fr 1fr; }
+  .asset-create-form__wide { grid-column:1 / -1; }
+}
+@media (max-width:560px) {
+  .asset-action-row,.asset-form-actions { width:100%; }
+  .asset-action-row > *,.asset-form-actions > * { flex:1; }
+  .asset-create-form__grid { grid-template-columns:1fr; }
+  .asset-create-form__wide { grid-column:auto; }
+}

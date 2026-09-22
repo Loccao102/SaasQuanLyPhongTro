@@ -24,6 +24,13 @@ type PropertySummaryRow = QueryResultRow & {
 
 type PropertyDetailRow = PropertySummaryRow;
 
+type FloorRow = QueryResultRow & {
+  id: string;
+  code: string;
+  name: string;
+  sort_order: number;
+};
+
 type FloorRoomRow = QueryResultRow & {
   floor_id: string | null;
   floor_code: string | null;
@@ -123,7 +130,14 @@ export class AssetReadService {
         name: principal.organizationName
       },
       principal: {
-        role: principal.role
+        role: principal.role,
+        capabilities: {
+          canCreateProperty: this.accessControl.can(
+            principal.membership,
+            "property.manage",
+            { organizationId: principal.organizationId }
+          )
+        }
       },
       summary: {
         propertyCount: properties.length,
@@ -204,6 +218,16 @@ export class AssetReadService {
       throw new ForbiddenException("Property scope denied.");
     }
 
+    const floorResult = await this.db.query<FloorRow>(
+      `SELECT id::text, code, name, sort_order
+       FROM floors
+       WHERE organization_id = $1::uuid
+         AND property_id = $2::uuid
+         AND is_active = true
+       ORDER BY sort_order, name, id`,
+      [principal.organizationId, propertyId]
+    );
+
     const roomResult = await this.db.query<FloorRoomRow>(
       `SELECT
          f.id::text AS floor_id,
@@ -256,6 +280,16 @@ export class AssetReadService {
       }
     >();
 
+    for (const floor of floorResult.rows) {
+      floorMap.set(floor.id, {
+        id: floor.id,
+        code: floor.code,
+        name: floor.name,
+        sortOrder: floor.sort_order,
+        rooms: []
+      });
+    }
+
     for (const row of roomResult.rows) {
       const key = row.floor_id ?? "__NO_FLOOR__";
       if (!floorMap.has(key)) {
@@ -290,6 +324,17 @@ export class AssetReadService {
         name: principal.organizationName
       },
       property: this.mapProperty(property),
+      capabilities: {
+        canManageProperty: this.accessControl.can(
+          principal.membership,
+          "property.manage",
+          {
+            organizationId: principal.organizationId,
+            propertyId: property.id,
+            operationalGroupIds: property.operational_group_ids
+          }
+        )
+      },
       floors: [...floorMap.values()]
     };
   }

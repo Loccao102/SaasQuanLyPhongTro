@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent
+} from "react";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminAssetsApi,
-  type AdminAssetOverview
+  type AdminAssetOverview,
+  type AdminPropertyType
 } from "../../lib/admin-assets-api";
 
 function percent(occupied: number, total: number): string {
@@ -19,6 +25,10 @@ export function AssetOverviewClient() {
   const [data, setData] = useState<AdminAssetOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,6 +49,39 @@ export function AssetOverviewClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function createProperty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    setSaving(true);
+    setMutationError(null);
+    setMutationNotice(null);
+
+    try {
+      await adminAssetsApi.createProperty({
+        propertyId: crypto.randomUUID(),
+        code: String(values.get("code") ?? ""),
+        name: String(values.get("name") ?? ""),
+        propertyType: String(
+          values.get("propertyType") ?? "BOARDING_HOUSE"
+        ) as AdminPropertyType,
+        addressText: String(values.get("addressText") ?? "").trim() || null
+      });
+      form.reset();
+      setShowCreate(false);
+      setMutationNotice("Đã tạo cơ sở và ghi audit.");
+      await load();
+    } catch (createError) {
+      setMutationError(
+        createError instanceof Error
+          ? createError.message
+          : "Không thể tạo cơ sở."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <AdminShell
@@ -69,31 +112,15 @@ export function AssetOverviewClient() {
             <StatusBadge tone="success">POSTGRESQL LIVE</StatusBadge>
           </section>
 
+          {mutationNotice ? (
+            <div className="asset-notice" role="status">{mutationNotice}</div>
+          ) : null}
+
           <section className="metrics-grid" aria-label="Tổng quan tài sản">
-            <MetricCard
-              label="Cơ sở"
-              value={String(data.summary.propertyCount)}
-              detail={String(data.summary.floorCount) + " tầng"}
-              tone="info"
-            />
-            <MetricCard
-              label="Phòng"
-              value={String(data.summary.roomCount)}
-              detail={String(data.summary.vacantRoomCount) + " phòng trống"}
-              tone="info"
-            />
-            <MetricCard
-              label="Đang có hợp đồng"
-              value={String(data.summary.occupiedRoomCount)}
-              detail={percent(data.summary.occupiedRoomCount, data.summary.roomCount) + " lấp đầy"}
-              tone="success"
-            />
-            <MetricCard
-              label="Phòng trống"
-              value={String(data.summary.vacantRoomCount)}
-              detail="Sẵn sàng cho hợp đồng mới"
-              tone={data.summary.vacantRoomCount > 0 ? "warning" : "success"}
-            />
+            <MetricCard label="Cơ sở" value={String(data.summary.propertyCount)} detail={String(data.summary.floorCount) + " tầng"} tone="info" />
+            <MetricCard label="Phòng" value={String(data.summary.roomCount)} detail={String(data.summary.vacantRoomCount) + " phòng trống"} tone="info" />
+            <MetricCard label="Đang có hợp đồng" value={String(data.summary.occupiedRoomCount)} detail={percent(data.summary.occupiedRoomCount, data.summary.roomCount) + " lấp đầy"} tone="success" />
+            <MetricCard label="Phòng trống" value={String(data.summary.vacantRoomCount)} detail="Sẵn sàng cho hợp đồng mới" tone={data.summary.vacantRoomCount > 0 ? "warning" : "success"} />
           </section>
 
           <section className="panel">
@@ -102,31 +129,62 @@ export function AssetOverviewClient() {
                 <span className="eyebrow">PROPERTY DIRECTORY</span>
                 <h2>Cơ sở trong phạm vi của bạn</h2>
               </div>
-              <button className="secondary-button" type="button" onClick={() => void load()}>
-                Refresh
-              </button>
+              <div className="asset-action-row">
+                <button className="secondary-button" type="button" onClick={() => void load()}>Refresh</button>
+                {data.principal.capabilities.canCreateProperty ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => {
+                      setShowCreate((current) => !current);
+                      setMutationError(null);
+                    }}
+                  >
+                    {showCreate ? "Đóng form" : "Thêm cơ sở"}
+                  </button>
+                ) : null}
+              </div>
             </div>
+
+            {showCreate && data.principal.capabilities.canCreateProperty ? (
+              <form className="asset-create-form" onSubmit={createProperty}>
+                <div className="asset-create-form__heading">
+                  <div><span className="eyebrow">CREATE PROPERTY</span><h3>Thêm cơ sở mới</h3></div>
+                  <small>Chỉ membership scope toàn organization mới tạo được cơ sở.</small>
+                </div>
+                <div className="asset-create-form__grid">
+                  <label>Mã cơ sở<input name="code" maxLength={64} required placeholder="TX01" /></label>
+                  <label>Tên cơ sở<input name="name" maxLength={200} required placeholder="Nhà trọ Thanh Xuân" /></label>
+                  <label>
+                    Loại hình
+                    <select name="propertyType" defaultValue="BOARDING_HOUSE">
+                      <option value="BOARDING_HOUSE">Nhà trọ</option>
+                      <option value="MINI_APARTMENT">Chung cư mini</option>
+                      <option value="APARTMENT">Căn hộ</option>
+                      <option value="OTHER">Khác</option>
+                    </select>
+                  </label>
+                  <label className="asset-create-form__wide">Địa chỉ<input name="addressText" maxLength={500} placeholder="Số nhà, đường, phường/xã…" /></label>
+                </div>
+                {mutationError ? <div className="asset-form-error" role="alert">{mutationError}</div> : null}
+                <div className="asset-form-actions">
+                  <button className="secondary-button" type="button" disabled={saving} onClick={() => setShowCreate(false)}>Hủy</button>
+                  <button className="primary-button" type="submit" disabled={saving}>{saving ? "Đang tạo…" : "Tạo cơ sở"}</button>
+                </div>
+              </form>
+            ) : null}
 
             {data.properties.length === 0 ? (
               <div className="admin-state">
                 <strong>Chưa có cơ sở nào trong phạm vi hiện tại.</strong>
-                <span>
-                  Nếu tổ chức đã có tài sản, kiểm tra membership scope hoặc quyền property.read.
-                </span>
+                <span>Nếu tổ chức đã có tài sản, kiểm tra membership scope hoặc quyền property.read.</span>
               </div>
             ) : (
               <div className="asset-grid">
                 {data.properties.map((property) => (
-                  <a
-                    className="asset-card"
-                    href={"/assets/properties/" + property.id}
-                    key={property.id}
-                  >
+                  <a className="asset-card" href={"/assets/properties/" + property.id} key={property.id}>
                     <div className="asset-card__heading">
-                      <div>
-                        <span className="asset-card__code">{property.code}</span>
-                        <h3>{property.name}</h3>
-                      </div>
+                      <div><span className="asset-card__code">{property.code}</span><h3>{property.name}</h3></div>
                       <span aria-hidden="true">→</span>
                     </div>
                     <p>{property.address ?? property.administrativeArea ?? "Chưa cập nhật địa chỉ"}</p>
