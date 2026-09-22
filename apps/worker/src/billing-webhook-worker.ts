@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import type {
   BillingWebhookAdapter,
@@ -65,16 +66,63 @@ export async function runBillingWebhookWorker(): Promise<void> {
     1500,
     "BILLING_WEBHOOK_POLL_INTERVAL_MS"
   );
+  const heartbeatIntervalMs = positiveInteger(
+    process.env.WORKER_HEARTBEAT_INTERVAL_MS,
+    15000,
+    "WORKER_HEARTBEAT_INTERVAL_MS"
+  );
+  const workerId =
+    process.env.WORKER_ID?.trim() ||
+    hostname() + "-billing-webhook-" + String(process.pid);
+  const staleAfterSeconds = Math.min(
+    86400,
+    Math.max(30, Math.ceil(heartbeatIntervalMs / 1000) * 4)
+  );
 
   let stopping = false;
+  let lastHeartbeatAt = 0;
+  let processedSinceHeartbeat = 0;
   const stop = () => {
     stopping = true;
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
+  const reportHeartbeat = async (
+    status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING",
+    input?: {
+      lastErrorCode?: string | null;
+      metadata?: Readonly<Record<string, unknown>>;
+    }
+  ) => {
+    try {
+      await api.observabilityHeartbeat({
+        workerId,
+        role: "BILLING_WEBHOOK",
+        provider: adapter.provider,
+        status,
+        staleAfterSeconds,
+        lastErrorCode: input?.lastErrorCode ?? null,
+        metadata: input?.metadata
+      });
+      lastHeartbeatAt = Date.now();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown heartbeat error";
+      process.stderr.write(
+        "[billing-webhook-worker][observability] " + message + "\n"
+      );
+    }
+  };
+
+  await reportHeartbeat("STARTING", {
+    metadata: { pollIntervalMs, heartbeatIntervalMs }
+  });
+
   process.stdout.write(
-    "[billing-webhook-worker] provider=" +
+    "[billing-webhook-worker] id=" +
+      workerId +
+      " provider=" +
       adapter.provider +
       " intervalMs=" +
       String(pollIntervalMs) +
@@ -87,6 +135,21 @@ export async function runBillingWebhookWorker(): Promise<void> {
         api,
         adapter
       );
+      if (processed) {
+        processedSinceHeartbeat += 1;
+      }
+
+      const now = Date.now();
+      if (now - lastHeartbeatAt >= heartbeatIntervalMs) {
+        await reportHeartbeat("HEALTHY", {
+          metadata: {
+            pollIntervalMs,
+            processedSinceHeartbeat
+          }
+        });
+        processedSinceHeartbeat = 0;
+      }
+
       if (!processed && !stopping) {
         await sleep(pollIntervalMs);
       }
@@ -95,6 +158,14 @@ export async function runBillingWebhookWorker(): Promise<void> {
         error instanceof Error
           ? error.message
           : "Unknown billing webhook worker error";
+      await reportHeartbeat("DEGRADED", {
+        lastErrorCode: "BILLING_WEBHOOK_LOOP_ERROR",
+        metadata: {
+          pollIntervalMs,
+          processedSinceHeartbeat
+        }
+      });
+      processedSinceHeartbeat = 0;
       process.stderr.write(
         "[billing-webhook-worker] " + message + "\n"
       );
@@ -105,5 +176,6 @@ export async function runBillingWebhookWorker(): Promise<void> {
     }
   }
 
+  await reportHeartbeat("STOPPING");
   process.stdout.write("[billing-webhook-worker] stopping\n");
 }
