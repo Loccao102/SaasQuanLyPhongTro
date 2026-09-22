@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -133,6 +134,10 @@ export class CmsOrganizationDirectoryService {
 
   async getById(principal: PlatformPrincipal, organizationId: string) {
     this.requireInspectPermission(principal);
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(organizationId)) {
+      throw new BadRequestException("organizationId must be a valid UUID.");
+    }
 
     const result = await this.db.query<OrganizationDirectoryRow>(
       `${this.organizationViewSql()}
