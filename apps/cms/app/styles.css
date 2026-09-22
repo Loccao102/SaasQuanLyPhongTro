@@ -72,3 +72,32 @@ body { background: var(--color-bg); }
 .dashboard-health-grid>div { display:grid; gap:4px; min-height:76px; padding:12px; border:1px solid var(--color-border); border-radius:11px; background:#fbfdfe; }
 .dashboard-health-grid span { color:var(--color-text-muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
 .dashboard-health-grid strong { color:#25355c; font-size:22px; letter-spacing:-.04em; }
+
+
+/* Organization directory */
+.directory-shell { display:grid; gap:20px; width:min(1540px,100%); min-height:100vh; margin:0 auto; padding:30px 32px 56px; }
+.directory-header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; padding:22px 24px; border:1px solid var(--color-border); border-radius:16px; background:white; box-shadow:var(--shadow-sm); }
+.directory-header h1 { margin:5px 0 6px; font-size:28px; letter-spacing:-.04em; }
+.directory-header p { max-width:820px; margin:0; color:var(--color-text-muted); font-size:12px; line-height:1.6; }
+.directory-back { display:block; width:max-content; margin-bottom:14px; color:var(--color-primary); font-size:12px; font-weight:750; text-decoration:none; }
+.directory-link-button { display:inline-flex; align-items:center; text-decoration:none; white-space:nowrap; }
+.organization-search-form { display:grid; grid-template-columns:minmax(260px,1.45fr) repeat(5,minmax(140px,.65fr)); gap:12px; align-items:end; margin-bottom:18px; }
+.organization-search-form label { display:grid; gap:6px; color:var(--color-text); font-size:11px; font-weight:700; }
+.organization-search-form input,.organization-search-form select { width:100%; min-height:40px; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; background:white; color:var(--color-text); }
+.organization-search-form__actions { display:flex; gap:8px; grid-column:1/-1; justify-content:flex-end; }
+.organization-directory-table { min-width:1120px; }
+.organization-flags { display:flex; flex-wrap:wrap; gap:6px; }
+.organization-directory-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--color-border); }
+.organization-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.organization-detail-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:14px; }
+.organization-detail-heading h2 { margin:4px 0 0; font-size:17px; letter-spacing:-.02em; }
+.organization-detail-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:0; }
+.organization-detail-list>div { min-width:0; padding:12px 0; border-top:1px solid var(--color-border); }
+.organization-detail-list>div:nth-child(odd) { padding-right:18px; }
+.organization-detail-list dt { color:var(--color-text-muted); font-size:10px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; }
+.organization-detail-list dd { margin:5px 0 0; overflow-wrap:anywhere; font-size:12px; font-weight:650; }
+.organization-detail-list--wide { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.organization-detail-list--wide>div:nth-child(odd) { padding-right:0; }
+@media(max-width:1180px){.organization-search-form{grid-template-columns:repeat(3,minmax(0,1fr))}.organization-search-form__query{grid-column:1/-1}}
+@media(max-width:820px){.directory-shell{padding:20px 16px 36px}.directory-header{align-items:flex-start;flex-direction:column}.organization-search-form{grid-template-columns:repeat(2,minmax(0,1fr))}.organization-search-form__query{grid-column:1/-1}.organization-detail-grid{grid-template-columns:1fr}.organization-detail-list--wide{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.organization-search-form,.organization-detail-list,.organization-detail-list--wide{grid-template-columns:1fr}.organization-search-form__query{grid-column:auto}.organization-search-form__actions,.organization-directory-footer,.organization-detail-heading{align-items:stretch;flex-direction:column}.organization-search-form__actions{justify-content:stretch}.organization-search-form__actions button{width:100%}.organization-detail-list>div:nth-child(odd){padding-right:0}}
