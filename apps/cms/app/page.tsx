@@ -99,7 +99,7 @@ const navItems: Array<{
     permission: "platform.organizations.inspect"
   },
   { id: "jobs", label: "Jobs / Queue", permission: "platform.jobs.read" },
-  { id: "logs", label: "Technical logs", permission: "platform.logs.read" },
+  { id: "logs", label: "Observability", permission: "platform.logs.read" },
   { id: "audit", label: "Audit log", permission: "platform.audit.read" }
 ];
 
@@ -172,6 +172,16 @@ function subscriptionTargets(
 
 function money(value: number): string {
   return new Intl.NumberFormat("vi-VN").format(value) + "đ";
+}
+
+function durationLabel(seconds: number): string {
+  if (seconds < 60) {
+    return Math.round(seconds) + "s";
+  }
+  if (seconds < 3600) {
+    return (seconds / 60).toFixed(1) + "m";
+  }
+  return (seconds / 3600).toFixed(1) + "h";
 }
 
 function pretty(value: unknown): string {
@@ -3045,17 +3055,269 @@ export default function CmsPage() {
           )}
 
           {!loading && view === "logs" && (
-            <section className="cms-panel">
-              <SectionHeader title="Technical logs" />
-              <div className="cms-state">
-                <strong>
-                  {logsStatus?.connected
-                    ? "Observability connected"
-                    : "Observability chưa được nối"}
-                </strong>
-                <span>{logsStatus?.reason}</span>
-              </div>
-            </section>
+            <>
+              {logsStatus?.connected && logsStatus.snapshot ? (
+                <section
+                  className="cms-metrics cms-metrics--dense"
+                  aria-label="Operational health summary"
+                >
+                  <MetricCard
+                    label="API 5xx"
+                    value={String(logsStatus.snapshot.api.errorCount)}
+                    detail={
+                      logsStatus.snapshot.api.requestCount === 0
+                        ? "Chưa có request được quan sát"
+                        : (
+                            (logsStatus.snapshot.api.errorCount /
+                              logsStatus.snapshot.api.requestCount) *
+                            100
+                          ).toFixed(2) + "% error rate"
+                    }
+                    tone={
+                      logsStatus.snapshot.api.errorCount > 0
+                        ? "warning"
+                        : "success"
+                    }
+                  />
+                  <MetricCard
+                    label="DB pool waiting"
+                    value={String(logsStatus.snapshot.database.pool.waiting)}
+                    detail={
+                      String(logsStatus.snapshot.database.pool.total) +
+                      " total / " +
+                      String(logsStatus.snapshot.database.pool.max) +
+                      " max"
+                    }
+                    tone={
+                      logsStatus.snapshot.database.pool.waiting > 0
+                        ? "warning"
+                        : "success"
+                    }
+                  />
+                  <MetricCard
+                    label="Notification pending"
+                    value={String(logsStatus.snapshot.notifications.pending)}
+                    detail={
+                      "oldest " +
+                      durationLabel(
+                        logsStatus.snapshot.notifications
+                          .oldestPendingAgeSeconds
+                      )
+                    }
+                    tone={
+                      logsStatus.snapshot.notifications.manualReview > 0 ||
+                      logsStatus.snapshot.notifications.failed > 0
+                        ? "warning"
+                        : "info"
+                    }
+                  />
+                  <MetricCard
+                    label="Webhook backlog"
+                    value={String(
+                      logsStatus.snapshot.billingWebhooks.received +
+                        logsStatus.snapshot.billingWebhooks.processing +
+                        logsStatus.snapshot.billingWebhooks.reviewRequired +
+                        logsStatus.snapshot.billingWebhooks.failed
+                    )}
+                    detail={
+                      String(
+                        logsStatus.snapshot.billingWebhooks.staleProcessing
+                      ) + " stale processing"
+                    }
+                    tone={
+                      logsStatus.snapshot.billingWebhooks.staleProcessing > 0 ||
+                      logsStatus.snapshot.billingWebhooks.failed > 0
+                        ? "danger"
+                        : logsStatus.snapshot.billingWebhooks.reviewRequired > 0
+                          ? "warning"
+                          : "success"
+                    }
+                  />
+                </section>
+              ) : null}
+
+              <section className="cms-panel">
+                <SectionHeader
+                  title="Operational observability"
+                  action={
+                    logsStatus?.snapshot ? (
+                      <span className="cms-note">
+                        snapshot{" "}
+                        {new Date(
+                          logsStatus.snapshot.generatedAt
+                        ).toLocaleString("vi-VN")}
+                      </span>
+                    ) : undefined
+                  }
+                />
+
+                {!logsStatus?.connected || !logsStatus.snapshot ? (
+                  <div className="cms-state">
+                    <strong>Operational observability chưa khả dụng</strong>
+                    <span>
+                      {logsStatus?.reason ??
+                        "Không tải được operational snapshot."}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="cms-callout">
+                      {logsStatus.reason} Metrics scrape dùng endpoint
+                      authenticated /api/metrics; CMS không hiển thị raw
+                      provider payload hoặc secret.
+                    </p>
+
+                    <div className="provider-payment-detail__summary">
+                      <div>
+                        <span>API requests</span>
+                        <strong>
+                          {logsStatus.snapshot.api.requestCount.toLocaleString(
+                            "vi-VN"
+                          )}
+                        </strong>
+                        <small>
+                          max latency{" "}
+                          {Math.round(
+                            logsStatus.snapshot.api.durationMaxMs
+                          ).toLocaleString("vi-VN")}
+                          ms
+                        </small>
+                      </div>
+                      <div>
+                        <span>DB operations</span>
+                        <strong>
+                          {(
+                            logsStatus.snapshot.database.operations.queryCount +
+                            logsStatus.snapshot.database.operations
+                              .transactionCount
+                          ).toLocaleString("vi-VN")}
+                        </strong>
+                        <small>
+                          {
+                            logsStatus.snapshot.database.operations
+                              .slowOperationCount
+                          }{" "}
+                          slow ≥{" "}
+                          {
+                            logsStatus.snapshot.database.operations
+                              .slowThresholdMs
+                          }
+                          ms
+                        </small>
+                      </div>
+                      <div>
+                        <span>Notifications 24h</span>
+                        <strong>
+                          {logsStatus.snapshot.notifications.sent24h.toLocaleString(
+                            "vi-VN"
+                          )}{" "}
+                          sent
+                        </strong>
+                        <small>
+                          {logsStatus.snapshot.notifications.failed24h} failed ·{" "}
+                          {
+                            logsStatus.snapshot.notifications.manualReview24h
+                          }{" "}
+                          review
+                        </small>
+                      </div>
+                      <div>
+                        <span>Webhooks processed 24h</span>
+                        <strong>
+                          {logsStatus.snapshot.billingWebhooks.processed24h.toLocaleString(
+                            "vi-VN"
+                          )}
+                        </strong>
+                        <small>
+                          oldest backlog{" "}
+                          {durationLabel(
+                            logsStatus.snapshot.billingWebhooks
+                              .oldestBacklogAgeSeconds
+                          )}
+                        </small>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+
+              {logsStatus?.connected && logsStatus.snapshot ? (
+                <section className="cms-panel">
+                  <SectionHeader
+                    title="Worker runtime health"
+                    action={
+                      <span className="cms-note">
+                        NOTIFICATION · BILLING · BILLING_WEBHOOK
+                      </span>
+                    }
+                  />
+
+                  {logsStatus.snapshot.workers.length === 0 ? (
+                    <div className="empty-state">
+                      Chưa có worker nào report heartbeat vào runtime
+                      observability.
+                    </div>
+                  ) : (
+                    <div className="cms-table-wrap">
+                      <table className="cms-table">
+                        <thead>
+                          <tr>
+                            <th>Worker</th>
+                            <th>Role</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th>Last seen</th>
+                            <th>Stale threshold</th>
+                            <th>Error code</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {logsStatus.snapshot.workers.map((worker) => (
+                            <tr key={worker.workerId}>
+                              <td>
+                                <strong>{worker.workerId}</strong>
+                              </td>
+                              <td>{worker.role}</td>
+                              <td>{worker.provider ?? "—"}</td>
+                              <td>
+                                <StatusBadge
+                                  tone={
+                                    worker.stale
+                                      ? "danger"
+                                      : statusTone(worker.status)
+                                  }
+                                >
+                                  {worker.stale
+                                    ? "STALE"
+                                    : worker.status}
+                                </StatusBadge>
+                              </td>
+                              <td>
+                                <strong>
+                                  {new Date(
+                                    worker.lastSeenAt
+                                  ).toLocaleString("vi-VN")}
+                                </strong>
+                                <small>
+                                  {durationLabel(
+                                    worker.lastSeenAgeSeconds
+                                  )}{" "}
+                                  ago
+                                </small>
+                              </td>
+                              <td>
+                                {durationLabel(worker.staleAfterSeconds)}
+                              </td>
+                              <td>{worker.lastErrorCode ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              ) : null}
+            </>
           )}
 
           {!loading && view === "audit" && (
