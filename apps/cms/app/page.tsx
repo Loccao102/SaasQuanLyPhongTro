@@ -2004,10 +2004,20 @@ export default function CmsPage() {
                                 </td>
                                 <td>
                                   <strong>
-                                    {assignedOrganization?.name ??
-                                      (item.payment.organizationId
-                                        ? item.payment.organizationId
-                                        : "Unassigned")}
+                                    {item.payment.organizationId ? (
+                                      <a
+                                        className="detail-link"
+                                        href={
+                                          "/organizations/" +
+                                          item.payment.organizationId
+                                        }
+                                      >
+                                        {assignedOrganization?.name ??
+                                          item.payment.organizationId}
+                                      </a>
+                                    ) : (
+                                      "Unassigned"
+                                    )}
                                   </strong>
                                 </td>
                                 <td>
@@ -2185,14 +2195,22 @@ export default function CmsPage() {
                       <div>
                         <span>Organization</span>
                         <strong>
-                          {providerPaymentDetail.payment.organizationId
-                            ? organizationById.get(
-                                providerPaymentDetail.payment
-                                  .organizationId
+                          {providerPaymentDetail.payment.organizationId ? (
+                            <a
+                              className="detail-link"
+                              href={
+                                "/organizations/" +
+                                providerPaymentDetail.payment.organizationId
+                              }
+                            >
+                              {organizationById.get(
+                                providerPaymentDetail.payment.organizationId
                               )?.name ??
-                              providerPaymentDetail.payment
-                                .organizationId
-                            : "Unassigned"}
+                                providerPaymentDetail.payment.organizationId}
+                            </a>
+                          ) : (
+                            "Unassigned"
+                          )}
                         </strong>
                       </div>
                       <div>
@@ -2237,7 +2255,12 @@ export default function CmsPage() {
                                 <tr key={allocation.id}>
                                   <td>
                                     <strong>
-                                      {invoice.paymentReference}
+                                      <a
+                                        className="detail-link"
+                                        href={"/billing/invoices/" + invoice.id}
+                                      >
+                                        {invoice.paymentReference}
+                                      </a>
                                     </strong>
                                     <small>{invoice.id}</small>
                                     <StatusBadge
