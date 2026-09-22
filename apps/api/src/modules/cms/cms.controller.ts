@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -86,8 +87,38 @@ export class CmsController {
   }
 
   @Get("organizations")
-  listOrganizations(@Req() request: CmsRequest) {
-    return this.cms.listOrganizations(this.principal(request));
+  searchOrganizations(
+    @Req() request: CmsRequest,
+    @Query("q") query?: string,
+    @Query("plan") planCode?: string,
+    @Query("organizationStatus") organizationStatus?: string,
+    @Query("subscriptionStatus") subscriptionStatus?: string,
+    @Query("overLimit") overLimit?: string,
+    @Query("delinquent") delinquent?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string
+  ) {
+    return this.cms.searchOrganizations(this.principal(request), {
+      query,
+      planCode,
+      organizationStatus,
+      subscriptionStatus,
+      overLimit: this.optionalBoolean(overLimit, "overLimit"),
+      delinquent: this.optionalBoolean(delinquent, "delinquent"),
+      limit: limit === undefined ? undefined : Number(limit),
+      cursor
+    });
+  }
+
+  @Get("organizations/:organizationId")
+  getOrganizationDetail(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string
+  ) {
+    return this.cms.getOrganizationDetail(
+      this.principal(request),
+      organizationId
+    );
   }
 
   @Post("organizations/:organizationId/subscription")
@@ -311,6 +342,18 @@ export class CmsController {
   @Get("logs")
   listLogs(@Req() request: CmsRequest) {
     return this.cms.getLogsIntegrationStatus(this.principal(request));
+  }
+
+  private optionalBoolean(
+    value: string | undefined,
+    name: string
+  ): boolean | undefined {
+    if (value === undefined || value === "") return undefined;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    throw new BadRequestException(
+      name + " must be true or false."
+    );
   }
 
   private principal(request: CmsRequest): PlatformPrincipal {
