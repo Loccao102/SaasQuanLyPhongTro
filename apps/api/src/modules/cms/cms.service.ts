@@ -1787,6 +1787,110 @@ export class CmsService {
     }
   }
 
+  async getProviderPaymentDetail(
+    principal: PlatformPrincipal,
+    paymentId: string
+  ) {
+    this.requirePermission(principal, "platform.billing.read");
+
+    try {
+      const detail =
+        await this.subscriptionBilling.getProviderPaymentDetail(
+          paymentId
+        );
+      const canReadAudit = platformRoleHasPermission(
+        principal.role,
+        "platform.audit.read"
+      );
+
+      const [webhookEvents, auditEvents] = await Promise.all([
+        this.db.query<BillingWebhookRow>(
+          `SELECT
+             e.id::text,
+             e.provider,
+             e.provider_event_id,
+             e.signature_status,
+             e.processing_status,
+             e.processing_attempts,
+             e.received_at,
+             e.processing_started_at,
+             e.processed_at,
+             e.last_error_code,
+             e.last_error_message,
+             e.payment_id::text,
+             false AS is_stale
+           FROM saas_billing_webhook_events e
+           WHERE e.payment_id = $1
+           ORDER BY e.received_at DESC, e.id DESC
+           LIMIT 50`,
+          [paymentId]
+        ),
+        canReadAudit
+          ? this.db.query<AuditRow>(
+              `SELECT
+                 e.id::text,
+                 e.occurred_at,
+                 u.display_name AS actor_name,
+                 u.email AS actor_email,
+                 e.action,
+                 e.target_type,
+                 e.target_key,
+                 e.organization_id::text,
+                 '{}'::jsonb AS before_state,
+                 '{}'::jsonb AS after_state,
+                 e.reason
+               FROM platform_audit_events e
+               LEFT JOIN users u ON u.id = e.actor_user_id
+               WHERE e.target_key = $1
+                  OR e.before_state ->> 'paymentId' = $1
+                  OR e.after_state ->> 'paymentId' = $1
+               ORDER BY e.occurred_at DESC, e.id DESC
+               LIMIT 50`,
+              [paymentId]
+            )
+          : Promise.resolve({ rows: [] } as {
+              rows: AuditRow[];
+            })
+      ]);
+
+      return {
+        ...detail,
+        webhookEvents: webhookEvents.rows.map((row) => ({
+          id: row.id,
+          provider: row.provider,
+          providerEventId: row.provider_event_id,
+          signatureStatus: row.signature_status,
+          processingStatus: row.processing_status,
+          processingAttempts: row.processing_attempts,
+          receivedAt: row.received_at.toISOString(),
+          processedAt: row.processed_at?.toISOString() ?? null
+        })),
+        auditEvents: canReadAudit
+          ? auditEvents.rows.map((row) => ({
+              id: row.id,
+              at: row.occurred_at.toISOString(),
+              actor:
+                row.actor_name ??
+                row.actor_email ??
+                "SYSTEM",
+              action: row.action,
+              targetType: row.target_type,
+              target: row.target_key,
+              reason: row.reason
+            }))
+          : null
+      };
+    } catch (error) {
+      if (error instanceof SubscriptionBillingNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof SubscriptionBillingConflictError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   async getBillingReconciliation(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.billing.read");
 

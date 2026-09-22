@@ -131,9 +131,36 @@ export interface SubscriptionPaymentAllocationView {
   createdAt: string;
 }
 
+export interface ProviderPaymentView {
+  id: string;
+  organizationId: string | null;
+  subscriptionId: string | null;
+  amountVnd: number;
+  allocatedAmountVnd: number;
+  unallocatedAmountVnd: number;
+  status: "SUCCEEDED" | "FAILED" | "REFUNDED";
+  reconciliationStatus: "UNALLOCATED" | "ALLOCATED" | "REVIEW_REQUIRED";
+  source: "PROVIDER";
+  provider: string | null;
+  providerTransactionId: string | null;
+  occurredAt: string;
+  createdAt: string;
+}
+
 export interface ProviderPaymentReviewView {
-  payment: SubscriptionPaymentView;
+  payment: ProviderPaymentView;
   paymentReference: string | null;
+}
+
+export interface ProviderPaymentAllocationDetailView {
+  allocation: SubscriptionPaymentAllocationView;
+  invoice: SubscriptionInvoiceView;
+}
+
+export interface ProviderPaymentDetailView {
+  payment: ProviderPaymentView;
+  paymentReference: string | null;
+  allocations: ProviderPaymentAllocationDetailView[];
 }
 
 export type ProviderPaymentReconciliationStatus =
@@ -450,7 +477,7 @@ export class SubscriptionBillingService {
           : null;
 
       return {
-        payment: this.mapPayment(row),
+        payment: this.mapProviderPayment(row),
         paymentReference:
           typeof metadata?.paymentReference === "string"
             ? metadata.paymentReference
@@ -465,6 +492,77 @@ export class SubscriptionBillingService {
         hasMore && lastRow
           ? this.encodeProviderPaymentCursor(lastRow)
           : null
+    };
+  }
+
+  async getProviderPaymentDetail(
+    paymentId: string
+  ): Promise<ProviderPaymentDetailView> {
+    const normalizedPaymentId = paymentId.trim();
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        normalizedPaymentId
+      )
+    ) {
+      throw new SubscriptionBillingConflictError(
+        "Provider payment id must be a valid UUID."
+      );
+    }
+
+    const paymentResult = await this.database.query<PaymentRow>(
+      this.paymentSelectSql(
+        "WHERE p.id = $1 AND p.source = 'PROVIDER'"
+      ),
+      [normalizedPaymentId]
+    );
+    const payment = paymentResult.rows[0];
+    if (!payment) {
+      throw new SubscriptionBillingNotFoundError(
+        "Provider payment transaction was not found."
+      );
+    }
+
+    const allocationResult = await this.database.query<AllocationRow>(
+      this.allocationSelectSql(
+        "WHERE a.payment_id = $1 ORDER BY a.created_at, a.id"
+      ),
+      [normalizedPaymentId]
+    );
+
+    const invoiceIds = [
+      ...new Set(allocationResult.rows.map((row) => row.invoice_id))
+    ];
+    const invoices =
+      invoiceIds.length === 0
+        ? []
+        : (
+            await this.database.query<InvoiceRow>(
+              this.invoiceSelectSql(
+                "WHERE i.id = ANY($1::uuid[])"
+              ),
+              [invoiceIds]
+            )
+          ).rows;
+    const invoiceById = new Map(
+      invoices.map((invoice) => [invoice.id, invoice])
+    );
+
+    return {
+      payment: this.mapProviderPayment(payment),
+      paymentReference: this.paymentReferenceFromMetadata(
+        payment.metadata
+      ),
+      allocations: allocationResult.rows.flatMap((allocation) => {
+        const invoice = invoiceById.get(allocation.invoice_id);
+        return invoice
+          ? [
+              {
+                allocation: this.mapAllocation(allocation),
+                invoice: this.mapInvoice(invoice)
+              }
+            ]
+          : [];
+      })
     };
   }
 
@@ -491,7 +589,7 @@ export class SubscriptionBillingService {
           ? (row.metadata as Record<string, unknown>)
           : null;
       return {
-        payment: this.mapPayment(row),
+        payment: this.mapProviderPayment(row),
         paymentReference:
           typeof metadata?.paymentReference === "string"
             ? metadata.paymentReference
@@ -2377,6 +2475,43 @@ export class SubscriptionBillingService {
       paidAt: row.paid_at?.toISOString() ?? null,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString()
+    };
+  }
+
+  private paymentReferenceFromMetadata(
+    metadata: unknown
+  ): string | null {
+    if (
+      typeof metadata !== "object" ||
+      metadata === null ||
+      Array.isArray(metadata)
+    ) {
+      return null;
+    }
+
+    const paymentReference = (
+      metadata as Record<string, unknown>
+    ).paymentReference;
+    return typeof paymentReference === "string"
+      ? paymentReference
+      : null;
+  }
+
+  private mapProviderPayment(row: PaymentRow): ProviderPaymentView {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      subscriptionId: row.subscription_id,
+      amountVnd: Number(row.amount_vnd),
+      allocatedAmountVnd: Number(row.allocated_amount_vnd),
+      unallocatedAmountVnd: Number(row.unallocated_amount_vnd),
+      status: row.status,
+      reconciliationStatus: row.reconciliation_status,
+      source: "PROVIDER",
+      provider: row.provider,
+      providerTransactionId: row.provider_transaction_id,
+      occurredAt: row.occurred_at.toISOString(),
+      createdAt: row.created_at.toISOString()
     };
   }
 

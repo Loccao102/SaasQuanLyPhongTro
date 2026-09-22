@@ -183,6 +183,17 @@ export class CmsController {
     });
   }
 
+  @Get("billing/provider-payments/:paymentId")
+  getProviderPaymentDetail(
+    @Req() request: CmsRequest,
+    @Param("paymentId") paymentId: string
+  ) {
+    return this.cms.getProviderPaymentDetail(
+      this.principal(request),
+      paymentId
+    );
+  }
+
   @Get("billing/reconciliation")
   getBillingReconciliation(@Req() request: CmsRequest) {
     return this.cms.getBillingReconciliation(this.principal(request));

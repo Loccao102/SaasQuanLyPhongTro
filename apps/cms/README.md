@@ -46,6 +46,8 @@ Connected to PostgreSQL/API now:
 - subscription provision + lifecycle transitions + immediate plan changes;
 - SaaS subscription billing periods, invoices, balances and manual payments;
 - provider payment REVIEW_REQUIRED reconciliation queue;
+- provider transaction search with filters/cursor pagination;
+- provider transaction detail with allocation/webhook/audit history;
 - audited/idempotent append-only payment allocation;
 - durable notification Jobs/Queue inspection + audited manual retry;
 - automation quota reservation/consumption inspection;

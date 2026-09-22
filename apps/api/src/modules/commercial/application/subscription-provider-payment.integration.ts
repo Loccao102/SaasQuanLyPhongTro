@@ -260,6 +260,46 @@ test("provider payment auto-matches unique reference and routes unsafe cases to 
       transactionSearch.items[0]?.payment.id,
       overpay.payment.id
     );
+    assert.equal(
+      "metadata" in (transactionSearch.items[0]?.payment ?? {}),
+      false
+    );
+    assert.equal(
+      "idempotencyKey" in (transactionSearch.items[0]?.payment ?? {}),
+      false
+    );
+
+    const partialDetail = await billing.getProviderPaymentDetail(
+      partial.payment.id
+    );
+    assert.equal(partialDetail.payment.id, partial.payment.id);
+    assert.equal(partialDetail.paymentReference, invoice.paymentReference);
+    assert.equal(partialDetail.allocations.length, 1);
+    assert.equal(
+      partialDetail.allocations[0]?.allocation.id,
+      partial.allocation.id
+    );
+    assert.equal(
+      partialDetail.allocations[0]?.allocation.amountVnd,
+      40_000
+    );
+    assert.equal(
+      partialDetail.allocations[0]?.invoice.id,
+      invoice.id
+    );
+    assert.equal(
+      "metadata" in partialDetail.payment,
+      false
+    );
+
+    const unmatchedDetail = await billing.getProviderPaymentDetail(
+      unmatched.payment.id
+    );
+    assert.equal(unmatchedDetail.allocations.length, 0);
+    assert.equal(
+      unmatchedDetail.paymentReference,
+      "SAASUNKNOWNREFERENCE"
+    );
 
     const referenceSearch = await billing.searchProviderPayments({
       query: invoice.paymentReference.toLowerCase(),

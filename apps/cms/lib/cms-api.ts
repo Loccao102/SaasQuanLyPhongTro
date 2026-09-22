@@ -285,6 +285,65 @@ export type CmsProviderPaymentSearchResult = {
   nextCursor: string | null;
 };
 
+export type CmsProviderPaymentDetail = {
+  payment: CmsProviderPaymentReview["payment"];
+  paymentReference: string | null;
+  allocations: Array<{
+    allocation: {
+      id: string;
+      organizationId: string;
+      paymentId: string;
+      invoiceId: string;
+      amountVnd: number;
+      allocatedByUserId: string | null;
+      reason: string;
+      createdAt: string;
+    };
+    invoice: {
+      id: string;
+      organizationId: string;
+      subscriptionId: string;
+      billingInterval: "MONTHLY" | "YEARLY";
+      periodStart: string;
+      periodEnd: string;
+      amountVnd: number;
+      paymentReference: string;
+      paidAmountVnd: number;
+      remainingAmountVnd: number;
+      status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+      isOverdue: boolean;
+      issuedAt: string;
+      dueAt: string;
+      paidAt: string | null;
+    };
+  }>;
+  webhookEvents: Array<{
+    id: string;
+    provider: string;
+    providerEventId: string;
+    signatureStatus: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
+    processingStatus:
+      | "RECEIVED"
+      | "PROCESSING"
+      | "PROCESSED"
+      | "REVIEW_REQUIRED"
+      | "IGNORED"
+      | "FAILED";
+    processingAttempts: number;
+    receivedAt: string;
+    processedAt: string | null;
+  }>;
+  auditEvents: Array<{
+    id: string;
+    at: string;
+    actor: string;
+    action: string;
+    targetType: string;
+    target: string;
+    reason: string;
+  }> | null;
+};
+
 export type CmsReconciliationInvoice = {
   id: string;
   organizationId: string;
@@ -464,6 +523,10 @@ export const cmsApi = {
   jobs: () => request<CmsJobsStatus>("/jobs"),
   billingReconciliation: () =>
     request<CmsBillingReconciliation>("/billing/reconciliation"),
+  providerPaymentDetail: (paymentId: string) =>
+    request<CmsProviderPaymentDetail>(
+      "/billing/provider-payments/" + encodeURIComponent(paymentId)
+    ),
   providerPaymentsSearch: (input?: {
     query?: string;
     provider?: string;
