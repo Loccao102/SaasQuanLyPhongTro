@@ -1,3 +1,9 @@
+export type AdminPropertyType =
+  | "BOARDING_HOUSE"
+  | "MINI_APARTMENT"
+  | "APARTMENT"
+  | "OTHER";
+
 export type AdminAssetPropertySummary = {
   id: string;
   code: string;
@@ -13,7 +19,10 @@ export type AdminAssetPropertySummary = {
 
 export type AdminAssetOverview = {
   organization: { id: string; name: string };
-  principal: { role: string };
+  principal: {
+    role: string;
+    capabilities: { canCreateProperty: boolean };
+  };
   summary: {
     propertyCount: number;
     floorCount: number;
@@ -27,6 +36,7 @@ export type AdminAssetOverview = {
 export type AdminPropertyDetail = {
   organization: { id: string; name: string };
   property: AdminAssetPropertySummary;
+  capabilities: { canManageProperty: boolean };
   floors: Array<{
     id: string | null;
     code: string;
@@ -70,13 +80,29 @@ const apiBase =
 const configuredOrganizationId =
   process.env.NEXT_PUBLIC_ADMIN_ORGANIZATION_ID?.trim() ?? "";
 
-async function request<T>(path: string): Promise<T> {
-  const headers = new Headers();
+function responseMessage(text: string, fallback: string): string {
+  if (!text) return fallback;
+  try {
+    const parsed = JSON.parse(text) as { message?: unknown };
+    if (typeof parsed.message === "string") return parsed.message;
+    if (Array.isArray(parsed.message)) return parsed.message.join(" ");
+  } catch {
+    // Keep plain-text API errors readable.
+  }
+  return text;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
   if (configuredOrganizationId) {
     headers.set("x-organization-id", configuredOrganizationId);
   }
+  if (init?.body !== undefined) {
+    headers.set("content-type", "application/json");
+  }
 
   const response = await fetch(apiBase + "/admin/assets" + path, {
+    ...init,
     credentials: "include",
     headers
   });
@@ -84,7 +110,10 @@ async function request<T>(path: string): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
     throw new Error(
-      text || "Admin API request failed with status " + String(response.status)
+      responseMessage(
+        text,
+        "Admin API request failed with status " + String(response.status)
+      )
     );
   }
 
@@ -98,5 +127,43 @@ export const adminAssetsApi = {
       "/properties/" + encodeURIComponent(propertyId)
     ),
   room: (roomId: string) =>
-    request<AdminRoomDetail>("/rooms/" + encodeURIComponent(roomId))
+    request<AdminRoomDetail>("/rooms/" + encodeURIComponent(roomId)),
+  createProperty: (input: {
+    propertyId: string;
+    code: string;
+    name: string;
+    propertyType: AdminPropertyType;
+    addressText: string | null;
+  }) =>
+    request("/properties", {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+  createFloor: (
+    propertyId: string,
+    input: {
+      floorId: string;
+      code: string;
+      name: string;
+      sortOrder: number;
+    }
+  ) =>
+    request("/properties/" + encodeURIComponent(propertyId) + "/floors", {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+  createRoom: (
+    propertyId: string,
+    input: {
+      roomId: string;
+      floorId: string | null;
+      code: string;
+      name: string;
+      sortOrder: number;
+    }
+  ) =>
+    request("/properties/" + encodeURIComponent(propertyId) + "/rooms", {
+      method: "POST",
+      body: JSON.stringify(input)
+    })
 };

@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/admin-assets-read-model
+feature/admin-asset-create-commands
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -254,16 +254,22 @@ Implemented first live asset slice:
 - property detail and room detail routes;
 - current lease financial snapshot on room detail;
 - responsive loading / empty / error states;
-- Admin navigation now links to the live asset workflow.
+- Admin navigation now links to the live asset workflow;
+- idempotent create-property command for organization-scoped managers;
+- idempotent create-floor command with property scope enforcement;
+- idempotent create-room command wired to room-limit enforcement;
+- audit events for property/floor/room creation;
+- Admin create forms with permission-aware visibility and recoverable errors;
+- empty floors remain visible before rooms are added.
 
 Still required:
 
 - organization/workspace switcher and real session integration;
 - administrative areas;
-- operational groups;
-- property create/edit;
-- floor create/edit;
-- room create/edit/deactivate;
+- operational groups and property-to-group assignment;
+- property edit/deactivate;
+- floor edit/deactivate;
+- room edit/deactivate;
 - residents;
 - deeper leases/contracts;
 - deposits;
@@ -1249,7 +1255,7 @@ The compact Control Plane foundation is substantially complete and the Admin Web
 Current most immediate unfinished product task:
 
 ```text
-Admin Web -> property / floor / room management commands
+Admin Web -> property / floor / room editing + operational grouping
 ```
 
-Next add explicit property.manage workflows for creating/editing properties, floors and rooms with commercial-limit enforcement, validation, audit and optimistic/idempotent behavior where applicable. After that, deepen the lease/contract workflow and remove the remaining Admin demo surfaces.
+Create commands are now covered. Next add explicit property.manage edit/deactivate workflows with optimistic concurrency, administrative-area/operational-group assignment, impact review for deactivation, and tests that existing leases/history are never rewritten. After that, deepen the lease/contract workflow and remove the remaining Admin demo surfaces.
