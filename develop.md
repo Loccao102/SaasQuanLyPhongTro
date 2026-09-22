@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/cms-global-search
+feature/admin-assets-read-model
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -241,18 +241,31 @@ The Control Plane/Billing platform foundation is ahead of the daily rental-manag
 
 ## 3.1 Main SaaS Admin Web
 
-The landlord/staff-facing app needs full production workflows.
+The landlord/staff-facing app is now moving from prototype/demo data to live tenant data.
 
-Required surfaces:
+Implemented first live asset slice:
 
-- organization/workspace overview;
+- tenant principal guard backed by active organization membership + membership scopes;
+- fail-closed production behavior when authenticated tenant identity/workspace is absent;
+- property.read enforcement server-side;
+- scoped asset overview from PostgreSQL;
+- Property -> Floor -> Room hierarchy;
+- room occupancy derived from current ACTIVE / TERMINATION_SCHEDULED lease;
+- property detail and room detail routes;
+- current lease financial snapshot on room detail;
+- responsive loading / empty / error states;
+- Admin navigation now links to the live asset workflow.
+
+Still required:
+
+- organization/workspace switcher and real session integration;
 - administrative areas;
 - operational groups;
-- properties;
-- floors;
-- rooms;
+- property create/edit;
+- floor create/edit;
+- room create/edit/deactivate;
 - residents;
-- leases/contracts;
+- deeper leases/contracts;
 - deposits;
 - meter readings;
 - billing cycles;
@@ -1231,12 +1244,12 @@ Unless measurements or requirements prove otherwise:
 
 # 24. Near-term next task
 
-The compact Control Plane foundation is now substantially complete: provider transaction drill-down, scalable Organization Directory, SaaS invoice detail, operational observability v1 and global operational search are implemented.
+The compact Control Plane foundation is substantially complete and the Admin Web now has its first live tenant-scoped asset read workflow.
 
 Current most immediate unfinished product task:
 
 ```text
-Admin Web -> property / floor / room operational workflow
+Admin Web -> property / floor / room management commands
 ```
 
-The next development slice should move into the tenant-facing rental product: organization workspace context, property list/detail, floor/room hierarchy and room operational status. CMS should remain the platform control plane rather than becoming a substitute for daily landlord/staff workflows.
+Next add explicit property.manage workflows for creating/editing properties, floors and rooms with commercial-limit enforcement, validation, audit and optimistic/idempotent behavior where applicable. After that, deepen the lease/contract workflow and remove the remaining Admin demo surfaces.
