@@ -36,7 +36,11 @@ Show current/proposed values, affected dimension, effective-date/price-version p
 
 ## Organization inspection
 
-Show identity, subscription, plan, usage vs limits, operational alerts and audit/activity. Over-limit never deletes existing rooms.
+Primary flow: open Organizations -> search by name/slug/owner/UUID -> filter by plan, subscription status, tenant status, delinquency or over-limit -> inspect cursor-paginated results -> open a direct organization detail route.
+
+Filters are preserved in the URL so operators can refresh/share a working view without loading the full tenant population. Detail shows identity, subscription, plan, latest SaaS billing snapshot, usage vs limits and commercial flags. Over-limit never deletes existing rooms.
+
+Required states: loading, empty filtered result, API error + retry, loaded page, next-page loading, end-of-list and detail not-found/permission failure.
 
 ## Subscription cancellation
 
