@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -25,7 +26,7 @@ export class AssetReadController {
   @Get("properties/:propertyId")
   property(
     @Req() request: TenantRequest,
-    @Param("propertyId") propertyId: string
+    @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string
   ) {
     return this.assets.property(this.principal(request), propertyId);
   }
@@ -33,7 +34,7 @@ export class AssetReadController {
   @Get("rooms/:roomId")
   room(
     @Req() request: TenantRequest,
-    @Param("roomId") roomId: string
+    @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string
   ) {
     return this.assets.room(this.principal(request), roomId);
   }
