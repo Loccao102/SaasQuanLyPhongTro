@@ -1787,6 +1787,27 @@ export class CmsService {
     }
   }
 
+  async getProviderPaymentDetail(
+    principal: PlatformPrincipal,
+    paymentId: string
+  ) {
+    this.requirePermission(principal, "platform.billing.read");
+
+    try {
+      return await this.subscriptionBilling.getProviderPaymentDetail(
+        paymentId
+      );
+    } catch (error) {
+      if (error instanceof SubscriptionBillingNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof SubscriptionBillingConflictError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   async getBillingReconciliation(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.billing.read");
 
