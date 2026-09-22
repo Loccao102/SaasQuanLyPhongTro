@@ -886,9 +886,32 @@ export default function CmsPage() {
             </span>
             <h1>{visibleNavItems.find((item) => item.id === view)?.label}</h1>
           </div>
-          <button className="secondary-button" type="button" onClick={() => void load()}>
-            Refresh
-          </button>
+          <div className="cms-topbar__actions">
+            <form
+              className="cms-global-search-shortcut"
+              action="/search"
+              method="get"
+            >
+              <input
+                name="q"
+                minLength={2}
+                maxLength={200}
+                placeholder="Search ID / reference"
+                aria-label="Global CMS search"
+                required
+              />
+              <button className="secondary-button" type="submit">
+                Search
+              </button>
+            </form>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void load()}
+            >
+              Refresh
+            </button>
+          </div>
         </header>
 
         <div className="cms-content">

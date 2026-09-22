@@ -108,3 +108,18 @@ Platform operators with `platform.logs.read` use the Observability surface to in
 The surface shows API 5xx/error rate, max observed latency, DB pool pressure, slow DatabaseService operations, notification queue age/state, billing webhook backlog/staleness and unified worker heartbeats for notification, billing scheduler and billing webhook workers.
 
 The public monitoring integration is not an anonymous endpoint: Prometheus-compatible scraping uses `/api/metrics` with a dedicated bearer token. Central log aggregation remains a separate infrastructure concern.
+
+
+## Global operational search
+
+Platform operators can open `/search` from the CMS topbar and search operational identifiers without loading full datasets.
+
+Supported object types are organization, provider payment, SaaS invoice and notification job. Search prioritizes exact UUID/reference matches, then prefix matches, then contains matches. Each database scope is executed only when the current platform role has the corresponding read permission:
+
+- organization: `platform.organizations.inspect`;
+- provider payment / SaaS invoice: `platform.billing.read`;
+- notification job: `platform.jobs.read`.
+
+Having `platform.cms.read` only does not grant access to any restricted search scope. Result DTOs expose only safe operational identifiers and summary fields; provider payment metadata and secrets are not returned.
+
+Required UI states: initial guidance, loading, empty result, API error, permission-scope indicators, result table and copy feedback. Organization and SaaS invoice results deep-link to their existing detail routes.
