@@ -9,7 +9,7 @@
     "db:setup": "tsx scripts/db-setup.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "test:integration": "tsx --test \"src/**/*.integration.ts\""
+    "test:integration": "tsx --test --test-concurrency=1 \"src/**/*.integration.ts\""
   },
   "dependencies": {
     "@nestjs/common": "12.0.3",
