@@ -840,7 +840,11 @@ export default function CmsPage() {
               }
               type="button"
               key={item.id}
-              onClick={() => setView(item.id)}
+              onClick={() =>
+                item.id === "organizations"
+                  ? window.location.assign("/organizations")
+                  : setView(item.id)
+              }
               aria-current={view === item.id ? "page" : undefined}
             >
               <span className="cms-nav__dot" aria-hidden="true" />
