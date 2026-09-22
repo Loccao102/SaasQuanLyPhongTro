@@ -26,6 +26,7 @@ import {
   type CmsNotificationProvider,
   type CmsOrganization,
   type CmsPlatformPermission,
+  type CmsProviderPaymentDetail,
   type CmsProviderPaymentReview,
   type CmsPlan,
   type CmsSetting,
@@ -191,6 +192,30 @@ export default function CmsPage() {
   const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
   const [billingReconciliation, setBillingReconciliation] =
     useState<CmsBillingReconciliation | null>(null);
+  const [providerPaymentFilters, setProviderPaymentFilters] = useState({
+    query: "",
+    provider: "",
+    reconciliationStatus: ""
+  });
+  const [providerPayments, setProviderPayments] = useState<
+    CmsProviderPaymentReview[]
+  >([]);
+  const [providerPaymentsNextCursor, setProviderPaymentsNextCursor] =
+    useState<string | null>(null);
+  const [providerPaymentsLoading, setProviderPaymentsLoading] =
+    useState(false);
+  const [providerPaymentsInitialized, setProviderPaymentsInitialized] =
+    useState(false);
+  const [providerPaymentsError, setProviderPaymentsError] =
+    useState<string | null>(null);
+  const [providerPaymentDetail, setProviderPaymentDetail] =
+    useState<CmsProviderPaymentDetail | null>(null);
+  const [providerPaymentDetailLoading, setProviderPaymentDetailLoading] =
+    useState(false);
+  const [providerPaymentDetailError, setProviderPaymentDetailError] =
+    useState<string | null>(null);
+  const [providerPaymentCopyNotice, setProviderPaymentCopyNotice] =
+    useState<string | null>(null);
   const [logsStatus, setLogsStatus] = useState<IntegrationStatus | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [loading, setLoading] = useState(true);
@@ -310,6 +335,20 @@ export default function CmsPage() {
       ),
     [billingReconciliation]
   );
+  const providerPaymentProviderNames = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...providerPayments,
+            ...(billingReconciliation?.reviewPayments ?? [])
+          ]
+            .map((item) => item.payment.provider)
+            .filter((provider): provider is string => Boolean(provider))
+        )
+      ].sort((left, right) => left.localeCompare(right)),
+    [billingReconciliation, providerPayments]
+  );
 
   const overLimit = organizations.filter(
     (org) => org.roomLimit !== null && org.rooms > org.roomLimit
@@ -338,6 +377,131 @@ export default function CmsPage() {
     "--brand-background": paletteValue("background", "#F7FAF9"),
     "--brand-surface": paletteValue("surface", "#FFFFFF")
   } as CSSProperties;
+
+  async function loadProviderPayments(input?: {
+    append?: boolean;
+    cursor?: string | null;
+    filters?: typeof providerPaymentFilters;
+  }) {
+    const filters = input?.filters ?? providerPaymentFilters;
+    const append = input?.append ?? false;
+    const status =
+      filters.reconciliationStatus === "UNALLOCATED" ||
+      filters.reconciliationStatus === "ALLOCATED" ||
+      filters.reconciliationStatus === "REVIEW_REQUIRED"
+        ? filters.reconciliationStatus
+        : undefined;
+
+    setProviderPaymentsLoading(true);
+    setProviderPaymentsInitialized(true);
+    setProviderPaymentsError(null);
+    try {
+      const result = await cmsApi.providerPaymentsSearch({
+        query: filters.query.trim() || undefined,
+        provider: filters.provider.trim() || undefined,
+        reconciliationStatus: status,
+        limit: 25,
+        cursor: input?.cursor ?? undefined
+      });
+
+      setProviderPayments((current) => {
+        if (!append) return result.items;
+        const byId = new Map(
+          [...current, ...result.items].map((item) => [
+            item.payment.id,
+            item
+          ])
+        );
+        return [...byId.values()];
+      });
+      setProviderPaymentsNextCursor(result.nextCursor);
+
+      if (
+        providerPaymentDetail &&
+        ![...result.items, ...(append ? providerPayments : [])].some(
+          (item) => item.payment.id === providerPaymentDetail.payment.id
+        )
+      ) {
+        setProviderPaymentDetail(null);
+      }
+    } catch (searchError) {
+      setProviderPaymentsError(
+        searchError instanceof Error
+          ? searchError.message
+          : "Không thể tìm provider payment."
+      );
+    } finally {
+      setProviderPaymentsLoading(false);
+    }
+  }
+
+  async function loadProviderPaymentDetail(paymentId: string) {
+    setProviderPaymentDetailLoading(true);
+    setProviderPaymentDetailError(null);
+    try {
+      const detail = await cmsApi.providerPaymentDetail(paymentId);
+      setProviderPaymentDetail(detail);
+    } catch (detailError) {
+      setProviderPaymentDetailError(
+        detailError instanceof Error
+          ? detailError.message
+          : "Không thể tải chi tiết provider payment."
+      );
+    } finally {
+      setProviderPaymentDetailLoading(false);
+    }
+  }
+
+  function submitProviderPaymentSearch(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+    void loadProviderPayments({
+      filters: providerPaymentFilters
+    });
+  }
+
+  function clearProviderPaymentSearch() {
+    const cleared = {
+      query: "",
+      provider: "",
+      reconciliationStatus: ""
+    };
+    setProviderPaymentFilters(cleared);
+    setProviderPaymentDetail(null);
+    void loadProviderPayments({ filters: cleared });
+  }
+
+  async function copyProviderPaymentValue(
+    label: string,
+    value: string
+  ) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setProviderPaymentCopyNotice(label + " đã được copy.");
+      window.setTimeout(() => setProviderPaymentCopyNotice(null), 1800);
+    } catch {
+      setProviderPaymentCopyNotice(
+        "Không thể copy tự động. Hãy chọn và copy thủ công."
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (
+      view === "billing" &&
+      hasPermission("platform.billing.read") &&
+      !providerPaymentsInitialized &&
+      !providerPaymentsLoading
+    ) {
+      void loadProviderPayments();
+    }
+  }, [
+    view,
+    bootstrap,
+    providerPaymentsInitialized,
+    providerPaymentsLoading
+  ]);
 
   async function submitModal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -623,6 +787,21 @@ export default function CmsPage() {
       setOrganizations(nextOrganizations);
       setJobsStatus(nextJobs);
       setBillingReconciliation(nextBillingReconciliation);
+
+      if (modal.kind === "allocateProviderPayment") {
+        await loadProviderPayments({
+          filters: providerPaymentFilters
+        });
+        if (
+          providerPaymentDetail?.payment.id ===
+          modal.payment.payment.id
+        ) {
+          await loadProviderPaymentDetail(
+            modal.payment.payment.id
+          );
+        }
+      }
+
       setModal(null);
     } catch (saveError) {
       setError(
@@ -1628,6 +1807,486 @@ export default function CmsPage() {
                   tone="success"
                 />
               </section>
+
+              <article className="cms-panel">
+                <SectionHeader
+                  title="Tìm provider transaction"
+                  action={
+                    <span className="cms-note">
+                      Payment UUID · provider transaction ID · payment reference
+                    </span>
+                  }
+                />
+                <form
+                  className="billing-search-form"
+                  onSubmit={submitProviderPaymentSearch}
+                >
+                  <label className="billing-search-form__query">
+                    <span>Tìm kiếm</span>
+                    <input
+                      type="search"
+                      value={providerPaymentFilters.query}
+                      onChange={(event) =>
+                        setProviderPaymentFilters((current) => ({
+                          ...current,
+                          query: event.target.value
+                        }))
+                      }
+                      placeholder="UUID, transaction ID hoặc payment reference"
+                      maxLength={200}
+                    />
+                  </label>
+                  <label>
+                    <span>Provider</span>
+                    <input
+                      type="text"
+                      list="provider-payment-providers"
+                      value={providerPaymentFilters.provider}
+                      onChange={(event) =>
+                        setProviderPaymentFilters((current) => ({
+                          ...current,
+                          provider: event.target.value
+                        }))
+                      }
+                      placeholder="Tất cả provider"
+                      maxLength={100}
+                    />
+                    <datalist id="provider-payment-providers">
+                      {providerPaymentProviderNames.map((provider) => (
+                        <option value={provider} key={provider} />
+                      ))}
+                    </datalist>
+                  </label>
+                  <label>
+                    <span>Reconciliation</span>
+                    <select
+                      value={providerPaymentFilters.reconciliationStatus}
+                      onChange={(event) =>
+                        setProviderPaymentFilters((current) => ({
+                          ...current,
+                          reconciliationStatus: event.target.value
+                        }))
+                      }
+                    >
+                      <option value="">Tất cả trạng thái</option>
+                      <option value="REVIEW_REQUIRED">
+                        REVIEW_REQUIRED
+                      </option>
+                      <option value="UNALLOCATED">UNALLOCATED</option>
+                      <option value="ALLOCATED">ALLOCATED</option>
+                    </select>
+                  </label>
+                  <div className="billing-search-form__actions">
+                    <button
+                      className="primary-button"
+                      type="submit"
+                      disabled={providerPaymentsLoading}
+                    >
+                      {providerPaymentsLoading ? "Đang tìm…" : "Tìm transaction"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={providerPaymentsLoading}
+                      onClick={clearProviderPaymentSearch}
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  </div>
+                </form>
+
+                {providerPaymentsError ? (
+                  <div className="cms-state cms-state--error">
+                    <strong>Không thể tải provider transactions.</strong>
+                    <span>{providerPaymentsError}</span>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() =>
+                        void loadProviderPayments({
+                          filters: providerPaymentFilters
+                        })
+                      }
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                ) : providerPaymentsLoading &&
+                  providerPayments.length === 0 ? (
+                  <div className="cms-state">
+                    Đang tìm provider transactions…
+                  </div>
+                ) : providerPaymentsInitialized &&
+                  providerPayments.length === 0 ? (
+                  <div className="empty-state">
+                    Không có transaction phù hợp bộ lọc hiện tại.
+                  </div>
+                ) : providerPayments.length > 0 ? (
+                  <>
+                    <div className="cms-table-wrap">
+                      <table className="cms-table">
+                        <thead>
+                          <tr>
+                            <th>Provider transaction</th>
+                            <th>Reference</th>
+                            <th>Amount</th>
+                            <th>Reconciliation</th>
+                            <th>Assigned</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {providerPayments.map((item) => {
+                            const assignedOrganization =
+                              item.payment.organizationId === null
+                                ? null
+                                : organizationById.get(
+                                    item.payment.organizationId
+                                  ) ?? null;
+                            return (
+                              <tr key={item.payment.id}>
+                                <td>
+                                  <strong>
+                                    {item.payment.provider ??
+                                      "UNKNOWN_PROVIDER"}
+                                  </strong>
+                                  <small>
+                                    {item.payment.providerTransactionId ??
+                                      "No provider transaction ID"}
+                                  </small>
+                                  <small>
+                                    {new Date(
+                                      item.payment.occurredAt
+                                    ).toLocaleString("vi-VN")}
+                                  </small>
+                                </td>
+                                <td>
+                                  <strong>
+                                    {item.paymentReference ?? "—"}
+                                  </strong>
+                                  {item.paymentReference ? (
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      onClick={() =>
+                                        void copyProviderPaymentValue(
+                                          "Payment reference",
+                                          item.paymentReference ?? ""
+                                        )
+                                      }
+                                    >
+                                      Copy reference
+                                    </button>
+                                  ) : null}
+                                </td>
+                                <td>
+                                  <strong>{money(item.payment.amountVnd)}</strong>
+                                  <small>
+                                    {money(item.payment.allocatedAmountVnd)}
+                                    {" allocated · "}
+                                    {money(item.payment.unallocatedAmountVnd)}
+                                    {" unallocated"}
+                                  </small>
+                                </td>
+                                <td>
+                                  <StatusBadge
+                                    tone={statusTone(
+                                      item.payment.reconciliationStatus
+                                    )}
+                                  >
+                                    {item.payment.reconciliationStatus}
+                                  </StatusBadge>
+                                  <small>{item.payment.status}</small>
+                                </td>
+                                <td>
+                                  <strong>
+                                    {assignedOrganization?.name ??
+                                      (item.payment.organizationId
+                                        ? item.payment.organizationId
+                                        : "Unassigned")}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <div className="table-actions">
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      onClick={() =>
+                                        void loadProviderPaymentDetail(
+                                          item.payment.id
+                                        )
+                                      }
+                                    >
+                                      Chi tiết
+                                    </button>
+                                    <button
+                                      className="text-button"
+                                      type="button"
+                                      onClick={() =>
+                                        void copyProviderPaymentValue(
+                                          "Payment ID",
+                                          item.payment.id
+                                        )
+                                      }
+                                    >
+                                      Copy ID
+                                    </button>
+                                    {hasPermission(
+                                      "platform.billing.manage"
+                                    ) &&
+                                    item.payment.status === "SUCCEEDED" &&
+                                    item.payment.unallocatedAmountVnd > 0 ? (
+                                      <button
+                                        className="text-button"
+                                        type="button"
+                                        disabled={
+                                          (billingReconciliation?.invoices
+                                            .length ?? 0) === 0
+                                        }
+                                        onClick={() =>
+                                          setModal({
+                                            kind: "allocateProviderPayment",
+                                            payment: item
+                                          })
+                                        }
+                                      >
+                                        Allocate
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="billing-search-footer">
+                      <span className="cms-note">
+                        {providerPayments.length} transaction đã tải
+                      </span>
+                      {providerPaymentsNextCursor ? (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          disabled={providerPaymentsLoading}
+                          onClick={() =>
+                            void loadProviderPayments({
+                              append: true,
+                              cursor: providerPaymentsNextCursor,
+                              filters: providerPaymentFilters
+                            })
+                          }
+                        >
+                          {providerPaymentsLoading
+                            ? "Đang tải…"
+                            : "Load more"}
+                        </button>
+                      ) : (
+                        <span className="cms-note">
+                          Đã đến cuối kết quả.
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : null}
+
+                {providerPaymentCopyNotice ? (
+                  <p
+                    className="cms-note"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {providerPaymentCopyNotice}
+                  </p>
+                ) : null}
+
+                {providerPaymentDetailLoading ? (
+                  <div className="cms-state">
+                    Đang tải chi tiết transaction…
+                  </div>
+                ) : providerPaymentDetailError ? (
+                  <div className="cms-state cms-state--error">
+                    <strong>Không thể tải transaction detail.</strong>
+                    <span>{providerPaymentDetailError}</span>
+                  </div>
+                ) : providerPaymentDetail ? (
+                  <section
+                    className="provider-payment-detail"
+                    aria-label="Provider payment detail"
+                  >
+                    <div className="provider-payment-detail__header">
+                      <div>
+                        <span className="cms-eyebrow">
+                          TRANSACTION DETAIL
+                        </span>
+                        <h3>
+                          {providerPaymentDetail.payment.provider ??
+                            "UNKNOWN_PROVIDER"}
+                          {" · "}
+                          {providerPaymentDetail.payment
+                            .providerTransactionId ?? "No transaction ID"}
+                        </h3>
+                      </div>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setProviderPaymentDetail(null)}
+                      >
+                        Đóng chi tiết
+                      </button>
+                    </div>
+
+                    <div className="provider-payment-detail__summary">
+                      <div>
+                        <span>Payment ID</span>
+                        <strong>
+                          {providerPaymentDetail.payment.id}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Payment reference</span>
+                        <strong>
+                          {providerPaymentDetail.paymentReference ?? "—"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Amount</span>
+                        <strong>
+                          {money(providerPaymentDetail.payment.amountVnd)}
+                        </strong>
+                        <small>
+                          {money(
+                            providerPaymentDetail.payment
+                              .unallocatedAmountVnd
+                          )}{" "}
+                          chưa phân bổ
+                        </small>
+                      </div>
+                      <div>
+                        <span>Reconciliation</span>
+                        <StatusBadge
+                          tone={statusTone(
+                            providerPaymentDetail.payment
+                              .reconciliationStatus
+                          )}
+                        >
+                          {
+                            providerPaymentDetail.payment
+                              .reconciliationStatus
+                          }
+                        </StatusBadge>
+                      </div>
+                      <div>
+                        <span>Organization</span>
+                        <strong>
+                          {providerPaymentDetail.payment.organizationId
+                            ? organizationById.get(
+                                providerPaymentDetail.payment
+                                  .organizationId
+                              )?.name ??
+                              providerPaymentDetail.payment
+                                .organizationId
+                            : "Unassigned"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Occurred</span>
+                        <strong>
+                          {new Date(
+                            providerPaymentDetail.payment.occurredAt
+                          ).toLocaleString("vi-VN")}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="provider-payment-detail__title-row">
+                      <h4>Allocation history</h4>
+                      <span className="cms-note">
+                        {
+                          providerPaymentDetail.allocations.length
+                        }{" "}
+                        allocation
+                      </span>
+                    </div>
+                    {providerPaymentDetail.allocations.length === 0 ? (
+                      <div className="empty-state">
+                        Transaction này chưa có allocation. Financial
+                        history vẫn giữ nguyên; không có row nào bị sửa/xóa.
+                      </div>
+                    ) : (
+                      <div className="cms-table-wrap">
+                        <table className="cms-table">
+                          <thead>
+                            <tr>
+                              <th>Invoice</th>
+                              <th>Allocated</th>
+                              <th>Invoice balance</th>
+                              <th>Actor</th>
+                              <th>Reason / time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {providerPaymentDetail.allocations.map(
+                              ({ allocation, invoice }) => (
+                                <tr key={allocation.id}>
+                                  <td>
+                                    <strong>
+                                      {invoice.paymentReference}
+                                    </strong>
+                                    <small>{invoice.id}</small>
+                                    <StatusBadge
+                                      tone={
+                                        invoice.isOverdue
+                                          ? "danger"
+                                          : statusTone(invoice.status)
+                                      }
+                                    >
+                                      {invoice.isOverdue
+                                        ? "OVERDUE"
+                                        : invoice.status}
+                                    </StatusBadge>
+                                  </td>
+                                  <td>
+                                    <strong>
+                                      {money(allocation.amountVnd)}
+                                    </strong>
+                                    <small>{allocation.id}</small>
+                                  </td>
+                                  <td>
+                                    <strong>
+                                      {money(
+                                        invoice.remainingAmountVnd
+                                      )}
+                                    </strong>
+                                    <small>
+                                      {money(invoice.paidAmountVnd)} /{" "}
+                                      {money(invoice.amountVnd)} paid
+                                    </small>
+                                  </td>
+                                  <td>
+                                    {allocation.allocatedByUserId ??
+                                      "System / auto-match"}
+                                  </td>
+                                  <td>
+                                    <strong>{allocation.reason}</strong>
+                                    <small>
+                                      {new Date(
+                                        allocation.createdAt
+                                      ).toLocaleString("vi-VN")}
+                                    </small>
+                                  </td>
+                                </tr>
+                              )
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </section>
+                ) : null}
+              </article>
 
               <section className="cms-grid">
               <article className="cms-panel">
