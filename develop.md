@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/cms-organization-directory
+feature/cms-invoice-detail-links
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -482,11 +482,17 @@ Implemented in the provider-payment detail drill-down:
 - relevant audit events when `platform.audit.read` is present;
 - linked webhook events with safe operational fields.
 
-Still required:
+Implemented follow-up:
 
 - direct organization detail route;
-- direct invoice detail route;
-- actor display-name resolution where permitted.
+- direct SaaS invoice detail route;
+- provider-payment allocation deep links to organization + invoice;
+- allocation actor display-name resolution on invoice detail where permitted.
+
+Still required:
+
+- broader billing/reconciliation operational polish;
+- global ID/reference search across operational objects.
 
 ### Expansion
 
@@ -1201,7 +1207,7 @@ Provider Transaction Search UI and the scalable CMS Organization Directory are i
 Current most immediate unfinished task:
 
 ```text
-CMS Billing -> provider payment detail -> direct organization + invoice deep links
+CMS -> billing/reconciliation operational polish + production observability hooks
 ```
 
-Organization detail routing now exists. Next add the invoice detail route and link allocation/reconciliation history directly to both organization and invoice context before broader billing/reconciliation polish.
+Provider-payment detail now deep-links directly to organization and SaaS invoice context. The next Control Plane slice should tighten operational recovery/search and begin production observability integration before moving deeper into the rental-product workflow.
