@@ -74,6 +74,8 @@ Provider transaction search flow: enter payment UUID/provider transaction ID/pay
 
 Transaction detail states include loading, not found/error, unassigned payment, no allocations, partial allocation, fully allocated payment, webhook linkage and audit-permission unavailable. Allocation history is append-only and shows target invoice, amount, actor id/system source, reason and timestamp.
 
+Provider-payment search/detail links assigned organizations directly to `/organizations/:organizationId` and allocation targets directly to `/billing/invoices/:invoiceId`. SaaS invoice detail is read-only and shows the immutable invoice snapshot, derived paid/remaining balance, payment allocations, safe payment/provider identifiers, allocation actor display name when permitted, and permission-aware audit history. It never exposes payment metadata, idempotency keys, raw webhook bodies or headers.
+
 Webhook inbox shows operational state only: provider event id, signature state, processing state, attempts/stale flag, sanitized last error and linked payment id. Raw provider body and headers are not rendered.
 
 Webhook recovery flow: inspect FAILED/REVIEW_REQUIRED event -> confirm signature is VERIFIED -> fix the parser/provider cause -> Requeue with audit reason -> event returns to RECEIVED while attempt history remains. Backend rejects requeue for unverified signatures, linked payments or unsupported states.
