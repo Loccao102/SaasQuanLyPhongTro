@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 const navItems = [
   { label: "Tổng quan", href: "/" },
-  { label: "Tài sản", href: "#" },
+  { label: "Tài sản", href: "/assets" },
   { label: "Hợp đồng", href: "/leases" },
   { label: "Chốt số", href: "#" },
   { label: "Hóa đơn", href: "#" },
@@ -27,8 +27,8 @@ export function AdminShell({
     <div className="admin-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand__mark">P</span>
-          <div><strong>PropOps</strong><span>Rental operations</span></div>
+          <span className="brand__mark">H</span>
+          <div><strong>Habi</strong><span>Nhà gọn. Việc trôi.</span></div>
         </div>
 
         <nav className="sidebar__nav" aria-label="Điều hướng chính">
@@ -55,8 +55,8 @@ export function AdminShell({
           <a className="nav-item" href="#"><span className="nav-item__dot" aria-hidden="true" />Cài đặt</a>
           <div className="workspace-card">
             <span>Tổ chức hiện tại</span>
-            <strong>Chuỗi nhà trọ Demo</strong>
-            <small>OWNER · Toàn hệ thống</small>
+            <strong>Workspace hiện tại</strong>
+            <small>Scope theo membership</small>
           </div>
         </div>
       </aside>
