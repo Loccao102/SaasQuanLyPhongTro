@@ -317,6 +317,31 @@ export type CmsProviderPaymentDetail = {
       paidAt: string | null;
     };
   }>;
+  webhookEvents: Array<{
+    id: string;
+    provider: string;
+    providerEventId: string;
+    signatureStatus: "VERIFIED" | "INVALID" | "NOT_CONFIGURED";
+    processingStatus:
+      | "RECEIVED"
+      | "PROCESSING"
+      | "PROCESSED"
+      | "REVIEW_REQUIRED"
+      | "IGNORED"
+      | "FAILED";
+    processingAttempts: number;
+    receivedAt: string;
+    processedAt: string | null;
+  }>;
+  auditEvents: Array<{
+    id: string;
+    at: string;
+    actor: string;
+    action: string;
+    targetType: string;
+    target: string;
+    reason: string;
+  }> | null;
 };
 
 export type CmsReconciliationInvoice = {
