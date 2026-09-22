@@ -2284,6 +2284,121 @@ export default function CmsPage() {
                         </table>
                       </div>
                     )}
+
+                    <div className="provider-payment-detail__title-row">
+                      <h4>Webhook events</h4>
+                      <span className="cms-note">
+                        {providerPaymentDetail.webhookEvents.length} event
+                      </span>
+                    </div>
+                    {providerPaymentDetail.webhookEvents.length === 0 ? (
+                      <div className="empty-state">
+                        Không có webhook event nào đang link tới payment này.
+                      </div>
+                    ) : (
+                      <div className="cms-table-wrap">
+                        <table className="cms-table">
+                          <thead>
+                            <tr>
+                              <th>Provider event</th>
+                              <th>Processing</th>
+                              <th>Signature</th>
+                              <th>Attempts</th>
+                              <th>Received / processed</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {providerPaymentDetail.webhookEvents.map(
+                              (event) => (
+                                <tr key={event.id}>
+                                  <td>
+                                    <strong>{event.provider}</strong>
+                                    <small>{event.providerEventId}</small>
+                                  </td>
+                                  <td>
+                                    <StatusBadge
+                                      tone={statusTone(
+                                        event.processingStatus
+                                      )}
+                                    >
+                                      {event.processingStatus}
+                                    </StatusBadge>
+                                  </td>
+                                  <td>
+                                    <StatusBadge
+                                      tone={
+                                        event.signatureStatus ===
+                                        "VERIFIED"
+                                          ? "success"
+                                          : event.signatureStatus ===
+                                              "INVALID"
+                                            ? "danger"
+                                            : "warning"
+                                      }
+                                    >
+                                      {event.signatureStatus}
+                                    </StatusBadge>
+                                  </td>
+                                  <td>{event.processingAttempts}</td>
+                                  <td>
+                                    <strong>
+                                      {new Date(
+                                        event.receivedAt
+                                      ).toLocaleString("vi-VN")}
+                                    </strong>
+                                    <small>
+                                      {event.processedAt
+                                        ? "processed " +
+                                          new Date(
+                                            event.processedAt
+                                          ).toLocaleString("vi-VN")
+                                        : "not processed"}
+                                    </small>
+                                  </td>
+                                </tr>
+                              )
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <div className="provider-payment-detail__title-row">
+                      <h4>Audit trail</h4>
+                      <span className="cms-note">
+                        {providerPaymentDetail.auditEvents === null
+                          ? "Cần platform.audit.read"
+                          : providerPaymentDetail.auditEvents.length +
+                            " event"}
+                      </span>
+                    </div>
+                    {providerPaymentDetail.auditEvents === null ? (
+                      <div className="cms-state">
+                        Principal hiện tại không có quyền đọc platform audit.
+                      </div>
+                    ) : providerPaymentDetail.auditEvents.length === 0 ? (
+                      <div className="empty-state">
+                        Chưa có audit event trực tiếp liên quan payment này.
+                      </div>
+                    ) : (
+                      <div className="audit-list">
+                        {providerPaymentDetail.auditEvents.map((event) => (
+                          <article className="audit-item" key={event.id}>
+                            <div>
+                              <StatusBadge tone="info">
+                                {event.action}
+                              </StatusBadge>
+                              <strong>{event.actor}</strong>
+                            </div>
+                            <p>{event.reason}</p>
+                            <small>
+                              {event.targetType} · {event.target} ·{" "}
+                              {new Date(event.at).toLocaleString("vi-VN")}
+                            </small>
+                          </article>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 ) : null}
               </article>
