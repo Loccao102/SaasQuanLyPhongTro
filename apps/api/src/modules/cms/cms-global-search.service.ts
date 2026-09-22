@@ -128,7 +128,15 @@ export class CmsGlobalSearchService {
         billing: canBilling,
         jobs: canJobs
       },
-      items: items.map(({ rank: _rank, ...item }) => item)
+      items: items.map((item) => ({
+        kind: item.kind,
+        id: item.id,
+        title: item.title,
+        reference: item.reference,
+        status: item.status,
+        organization: item.organization,
+        metadata: item.metadata
+      }))
     };
   }
 
