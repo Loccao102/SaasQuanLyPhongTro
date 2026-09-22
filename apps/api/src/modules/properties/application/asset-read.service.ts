@@ -53,8 +53,8 @@ type RoomDetailRow = QueryResultRow & {
   lease_id: string | null;
   lease_code: string | null;
   lease_status: string | null;
-  lease_start_date: Date | null;
-  lease_planned_end_date: Date | null;
+  lease_start_date: Date | string | null;
+  lease_planned_end_date: Date | string | null;
   base_rent_vnd: string | null;
   deposit_required_vnd: string | null;
 };
@@ -436,7 +436,10 @@ export class AssetReadService {
     };
   }
 
-  private dateOnly(value: Date | null): string | null {
-    return value ? value.toISOString().slice(0, 10) : null;
+  private dateOnly(value: Date | string | null): string | null {
+    if (!value) return null;
+    return value instanceof Date
+      ? value.toISOString().slice(0, 10)
+      : value.slice(0, 10);
   }
 }
