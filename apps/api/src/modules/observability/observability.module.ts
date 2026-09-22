@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Global, Module } from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { DatabaseModule } from "../database/database.module.js";
 import { InternalServiceGuard } from "../internal/internal-service.guard.js";
@@ -8,6 +8,7 @@ import { ObservabilityMetricsController } from "./observability-metrics.controll
 import { ObservabilityMetricsGuard } from "./observability-metrics.guard.js";
 import { ObservabilityService } from "./observability.service.js";
 
+@Global()
 @Module({
   imports: [DatabaseModule],
   controllers: [
