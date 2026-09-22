@@ -22,6 +22,10 @@ export async function runNotificationWorker(): Promise<void> {
   const workerId =
     process.env.WORKER_ID?.trim() ||
     hostname() + "-" + String(process.pid);
+  const staleAfterSeconds = Math.min(
+    86400,
+    Math.max(30, Math.ceil(heartbeatIntervalMs / 1000) * 4)
+  );
 
   let stopping = false;
   let lastHeartbeatAt = 0;
@@ -32,11 +36,43 @@ export async function runNotificationWorker(): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
+  const reportOperationalHeartbeat = async (
+    status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING",
+    input?: {
+      lastErrorCode?: string | null;
+      metadata?: Readonly<Record<string, unknown>>;
+    }
+  ) => {
+    try {
+      await api.observabilityHeartbeat({
+        workerId,
+        role: "NOTIFICATION",
+        provider: provider.name,
+        status,
+        staleAfterSeconds,
+        lastErrorCode: input?.lastErrorCode ?? null,
+        metadata: input?.metadata
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown heartbeat error";
+      process.stderr.write(
+        "[notification-worker][observability] " + message + "\n"
+      );
+    }
+  };
+
   await api.heartbeat({
     workerId,
     provider: provider.name,
     status: "STARTING",
     metadata: { pid: process.pid, hostname: hostname() }
+  });
+  await reportOperationalHeartbeat("STARTING", {
+    metadata: {
+      pollIntervalMs,
+      heartbeatIntervalMs
+    }
   });
 
   process.stdout.write(
@@ -57,6 +93,12 @@ export async function runNotificationWorker(): Promise<void> {
           status: "HEALTHY",
           metadata: { pid: process.pid, hostname: hostname() }
         });
+        await reportOperationalHeartbeat("HEALTHY", {
+          metadata: {
+            pollIntervalMs,
+            heartbeatIntervalMs
+          }
+        });
         lastHeartbeatAt = now;
       }
 
@@ -71,17 +113,24 @@ export async function runNotificationWorker(): Promise<void> {
       const pauseProviderReason = fatalProviderPauseReason(result);
 
       if (pauseProviderReason) {
+        const errorCode =
+          "errorCode" in result ? result.errorCode ?? null : null;
         await api.heartbeat({
           workerId,
           provider: provider.name,
           status: "DEGRADED",
-          lastErrorCode:
-            "errorCode" in result ? result.errorCode ?? null : null,
+          lastErrorCode: errorCode,
           lastErrorMessage:
             "errorMessage" in result ? result.errorMessage ?? null : null,
           pauseProviderReason,
           metadata: {
             jobId: job.id,
+            attemptNumber: job.attemptNumber
+          }
+        });
+        await reportOperationalHeartbeat("DEGRADED", {
+          lastErrorCode: errorCode,
+          metadata: {
             attemptNumber: job.attemptNumber
           }
         });
@@ -113,6 +162,13 @@ export async function runNotificationWorker(): Promise<void> {
           lastErrorMessage: message,
           metadata: { pid: process.pid, hostname: hostname() }
         });
+        await reportOperationalHeartbeat("DEGRADED", {
+          lastErrorCode: "WORKER_LOOP_ERROR",
+          metadata: {
+            pollIntervalMs,
+            heartbeatIntervalMs
+          }
+        });
         lastHeartbeatAt = Date.now();
       } catch {
         // The API may itself be unavailable. Avoid masking the original error.
@@ -130,6 +186,7 @@ export async function runNotificationWorker(): Promise<void> {
       metadata: { pid: process.pid, hostname: hostname() }
     });
   } catch {
-    // Best-effort shutdown heartbeat.
+    // Best-effort provider-specific shutdown heartbeat.
   }
+  await reportOperationalHeartbeat("STOPPING");
 }
