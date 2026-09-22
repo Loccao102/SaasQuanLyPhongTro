@@ -99,3 +99,12 @@ CMS is API-backed. Remaining production gaps are real login/session middleware, 
 ## Responsive/accessibility
 
 Desktop/tablet uses sidebar + tables. Narrow screens use horizontally scrollable navigation and contained tables. Use persistent labels, visible focus, semantic controls, modal semantics and text status rather than color alone.
+
+
+## Operational observability
+
+Platform operators with `platform.logs.read` use the Observability surface to inspect current runtime health without exposing raw provider payloads or secrets.
+
+The surface shows API 5xx/error rate, max observed latency, DB pool pressure, slow DatabaseService operations, notification queue age/state, billing webhook backlog/staleness and unified worker heartbeats for notification, billing scheduler and billing webhook workers.
+
+The public monitoring integration is not an anonymous endpoint: Prometheus-compatible scraping uses `/api/metrics` with a dedicated bearer token. Central log aggregation remains a separate infrastructure concern.

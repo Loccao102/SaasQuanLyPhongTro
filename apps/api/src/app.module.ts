@@ -6,6 +6,7 @@ import { IdentityModule } from "./modules/identity/identity.module.js";
 import { IntegrationsModule } from "./modules/integrations/integrations.module.js";
 import { LeasingModule } from "./modules/leasing/leasing.module.js";
 import { NotificationsModule } from "./modules/notifications/notifications.module.js";
+import { ObservabilityModule } from "./modules/observability/observability.module.js";
 import { PropertiesModule } from "./modules/properties/properties.module.js";
 
 @Module({
@@ -17,6 +18,7 @@ import { PropertiesModule } from "./modules/properties/properties.module.js";
     CommercialModule,
     IntegrationsModule,
     NotificationsModule,
+    ObservabilityModule,
     CmsModule
   ]
 })

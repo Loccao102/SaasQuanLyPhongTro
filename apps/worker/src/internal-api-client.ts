@@ -91,6 +91,18 @@ export class InternalWorkerApiClient {
     return this.request("/internal/billing/sweep", { limit });
   }
 
+  observabilityHeartbeat(input: {
+    workerId: string;
+    role: "NOTIFICATION" | "BILLING" | "BILLING_WEBHOOK";
+    provider?: string | null;
+    status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
+    staleAfterSeconds: number;
+    lastErrorCode?: string | null;
+    metadata?: Readonly<Record<string, unknown>>;
+  }): Promise<{ ok: true }> {
+    return this.request("/internal/observability/heartbeat", input);
+  }
+
   heartbeat(input: {
     workerId: string;
     provider: string;

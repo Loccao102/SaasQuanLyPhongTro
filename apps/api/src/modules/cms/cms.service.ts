@@ -25,6 +25,7 @@ import {
 } from "../commercial/application/subscription-management.service.js";
 import { InvalidSubscriptionTransitionError } from "../commercial/domain/subscription-lifecycle.js";
 import { DatabaseService } from "../database/database.service.js";
+import { ObservabilityService } from "../observability/observability.service.js";
 import {
   BillingWebhookConflictError,
   SaasBillingWebhookInboxService,
@@ -205,7 +206,8 @@ export class CmsService {
     private readonly subscriptionManagement: SubscriptionManagementService,
     private readonly subscriptionBilling: SubscriptionBillingService,
     private readonly notificationOperations: NotificationOperationsService,
-    private readonly billingWebhookInbox: SaasBillingWebhookInboxService
+    private readonly billingWebhookInbox: SaasBillingWebhookInboxService,
+    private readonly observability?: ObservabilityService
   ) {}
 
   getBootstrap(principal: PlatformPrincipal) {
@@ -2654,13 +2656,25 @@ export class CmsService {
     });
   }
 
-  getLogsIntegrationStatus(principal: PlatformPrincipal) {
+  async getLogsIntegrationStatus(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.logs.read");
+
+    if (!this.observability) {
+      return {
+        connected: false,
+        reason:
+          "Operational observability service is not available in this runtime.",
+        entries: [],
+        snapshot: null
+      };
+    }
+
     return {
-      connected: false,
+      connected: true,
       reason:
-        "Observability/Loki integration has not been connected yet. CMS does not fabricate technical log entries.",
-      entries: []
+        "Runtime metrics, worker heartbeats and queue health are connected. Central log aggregation is still pending.",
+      entries: [],
+      snapshot: await this.observability.getOperationalSnapshot()
     };
   }
 

@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/cms-invoice-detail-links
+feature/operational-observability-v1
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -186,25 +186,35 @@ A backup that has never been restored successfully is not considered complete.
 
 ## 2.5 Production observability and alerting
 
-CMS exposes important operational state, but infrastructure observability still needs production implementation.
+Operational observability v1 is implemented in application code:
 
-Required metrics:
+- authenticated Prometheus-compatible `/api/metrics` endpoint;
+- API request count, 5xx count and latency histogram;
+- PostgreSQL pool total/idle/waiting/max metrics;
+- DatabaseService query/transaction timing and slow-operation counters;
+- unified runtime heartbeat for NOTIFICATION / BILLING / BILLING_WEBHOOK workers;
+- worker stale thresholds derived from each runtime cadence;
+- notification queue depth and oldest pending age;
+- notification sent/failed/manual-review 24h snapshot for CMS;
+- billing webhook backlog, stale PROCESSING and oldest backlog age;
+- billing worker sweep duration/processed/failed metadata;
+- CMS Observability surface backed by live DB/runtime data;
+- dedicated `OBSERVABILITY_METRICS_TOKEN`;
+- operations runbook in `docs/operations/OBSERVABILITY.md`.
 
-- API latency and error rate;
-- DB connection usage;
-- DB slow queries;
-- worker process health;
-- queue depth;
-- oldest queued job age;
-- notification success/failure/manual-review rate;
-- billing scheduler lag;
-- webhook lag;
-- webhook stale PROCESSING count;
-- provider error rate;
-- PWA sync failures;
-- invoice-generation duration.
+Still required before production:
 
-Required alerts:
+- deploy a Prometheus-compatible scraper/storage;
+- Grafana dashboards;
+- alert rules/routing;
+- PostgreSQL-native server/query metrics such as `pg_stat_statements`;
+- infrastructure/container/storage metrics;
+- provider-specific error-rate metrics where useful;
+- PWA sync failure telemetry once the PWA exists;
+- backup monitoring;
+- centralized structured logs/error tracking.
+
+Required alerts still need infrastructure wiring:
 
 - billing scheduler not running;
 - payment webhook backlog;
@@ -221,7 +231,6 @@ Later add:
 - OpenTelemetry;
 - distributed traces;
 - Sentry/error tracking;
-- Grafana dashboards;
 - alert routing to Telegram/Slack/email.
 
 ---
@@ -489,10 +498,16 @@ Implemented follow-up:
 - provider-payment allocation deep links to organization + invoice;
 - allocation actor display-name resolution on invoice detail where permitted.
 
+Implemented operational follow-up:
+
+- live runtime/API/DB/worker/queue/webhook observability in the CMS;
+- authenticated Prometheus-compatible metrics hook;
+- billing scheduler and webhook worker heartbeat visibility.
+
 Still required:
 
-- broader billing/reconciliation operational polish;
-- global ID/reference search across operational objects.
+- global ID/reference search across operational objects;
+- richer reconciliation bulk/filter workflows if real operations require them.
 
 ### Expansion
 
@@ -559,9 +574,13 @@ Implemented:
 
 Still required:
 
-- global ID/reference search across organization/payment/invoice/job;
+- global ID/reference search across organization/payment/invoice/job.
+
+Already completed by follow-up slices:
+
 - direct invoice detail route;
-- actor display-name resolution where permitted.
+- allocation actor display-name resolution where permitted;
+- operational observability surface.
 
 Avoid rendering thousands of organizations in one page.
 
@@ -1202,12 +1221,12 @@ Unless measurements or requirements prove otherwise:
 
 # 24. Near-term next task
 
-Provider Transaction Search UI and the scalable CMS Organization Directory are implemented.
+Provider transaction drill-down, scalable Organization Directory, SaaS invoice detail and operational observability v1 are implemented.
 
 Current most immediate unfinished task:
 
 ```text
-CMS -> billing/reconciliation operational polish + production observability hooks
+CMS -> global ID/reference search across organization / payment / invoice / job
 ```
 
-Provider-payment detail now deep-links directly to organization and SaaS invoice context. The next Control Plane slice should tighten operational recovery/search and begin production observability integration before moving deeper into the rental-product workflow.
+After that compact Control Plane search slice, development should move into the tenant-facing Admin Web property/room workflow instead of continuing to expand CMS into a substitute for the rental product.
