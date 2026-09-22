@@ -4,6 +4,8 @@ import { DatabaseModule } from "../database/database.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { NotificationsModule } from "../notifications/notifications.module.js";
 import { CmsController } from "./cms.controller.js";
+import { CmsBillingDetailController } from "./cms-billing-detail.controller.js";
+import { CmsBillingDetailService } from "./cms-billing-detail.service.js";
 import { CmsOrganizationDirectoryController } from "./cms-organization-directory.controller.js";
 import { CmsOrganizationDirectoryService } from "./cms-organization-directory.service.js";
 import { CmsPlatformGuard } from "./cms-platform.guard.js";
@@ -16,7 +18,7 @@ import { CmsService } from "./cms.service.js";
     NotificationsModule,
     IntegrationsModule
   ],
-  controllers: [CmsController, CmsOrganizationDirectoryController],
-  providers: [CmsPlatformGuard, CmsService, CmsOrganizationDirectoryService]
+  controllers: [CmsController, CmsOrganizationDirectoryController, CmsBillingDetailController],
+  providers: [CmsPlatformGuard, CmsService, CmsOrganizationDirectoryService, CmsBillingDetailService]
 })
 export class CmsModule {}
