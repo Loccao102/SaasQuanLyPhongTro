@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/cms-control-plane
+feature/cms-organization-directory
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -541,16 +541,21 @@ Upgrade must require explicit user confirmation.
 
 ## 4.5 CMS search and navigation at scale
 
-As organizations grow, CMS needs scalable navigation.
+Implemented:
 
-Required:
-
-- organization search;
-- filters by plan/status/over-limit/delinquency;
+- organization search by name / slug / owner / UUID;
+- filters by plan / subscription status / organization status / over-limit / delinquency;
 - cursor pagination;
-- direct organization detail route;
-- preserved filters in URL;
-- global ID/reference search.
+- direct `/organizations/:organizationId` detail route;
+- preserved list filters in URL;
+- organization detail commercial/billing/usage snapshot;
+- CMS navigation routes directly to the scalable directory.
+
+Still required:
+
+- global ID/reference search across organization/payment/invoice/job;
+- direct invoice detail route;
+- actor display-name resolution where permitted.
 
 Avoid rendering thousands of organizations in one page.
 
@@ -1191,12 +1196,12 @@ Unless measurements or requirements prove otherwise:
 
 # 24. Near-term next task
 
-Provider Transaction Search UI is implemented.
+Provider Transaction Search UI and the scalable CMS Organization Directory are implemented.
 
 Current most immediate unfinished task:
 
 ```text
-CMS -> Organizations -> search / filters / cursor pagination / direct detail route
+CMS Billing -> provider payment detail -> direct organization + invoice deep links
 ```
 
-Then finish deep-linking provider-payment detail to organization and invoice detail routes before moving to broader billing/reconciliation polish.
+Organization detail routing now exists. Next add the invoice detail route and link allocation/reconciliation history directly to both organization and invoice context before broader billing/reconciliation polish.
