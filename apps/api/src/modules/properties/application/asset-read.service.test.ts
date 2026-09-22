@@ -53,7 +53,7 @@ class OverviewDatabase {
           room_count: 8,
           occupied_room_count: 7
         }
-      ] as T[]
+      ] as unknown as T[]
     };
   }
 }
@@ -93,7 +93,7 @@ class PropertyDatabase {
           room_count: 2,
           occupied_room_count: 1
         }
-      ] as T[]
+      ] as unknown as T[]
     };
   }
 }
