@@ -3,7 +3,6 @@ import { CommercialModule } from "../commercial/commercial.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { NotificationsModule } from "../notifications/notifications.module.js";
-import { ObservabilityModule } from "../observability/observability.module.js";
 import { CmsController } from "./cms.controller.js";
 import { CmsBillingDetailController } from "./cms-billing-detail.controller.js";
 import { CmsBillingDetailService } from "./cms-billing-detail.service.js";
@@ -17,8 +16,7 @@ import { CmsService } from "./cms.service.js";
     DatabaseModule,
     CommercialModule,
     NotificationsModule,
-    IntegrationsModule,
-    ObservabilityModule
+    IntegrationsModule
   ],
   controllers: [CmsController, CmsOrganizationDirectoryController, CmsBillingDetailController],
   providers: [CmsPlatformGuard, CmsService, CmsOrganizationDirectoryService, CmsBillingDetailService]
