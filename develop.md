@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/operational-observability-v1
+feature/cms-global-search
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -504,10 +504,16 @@ Implemented operational follow-up:
 - authenticated Prometheus-compatible metrics hook;
 - billing scheduler and webhook worker heartbeat visibility.
 
+Implemented follow-up:
+
+- global ID/reference search across organization / provider payment / SaaS invoice / notification job;
+- permission-scoped search so a role cannot use global search to bypass organization, billing or jobs read permissions;
+- exact ID/reference ranking before prefix/contains matches;
+- direct organization and SaaS invoice deep-links plus safe copy-ID actions.
+
 Still required:
 
-- global ID/reference search across operational objects;
-- richer reconciliation bulk/filter workflows if real operations require them.
+- richer reconciliation bulk/filter workflows only if real operations require them.
 
 ### Expansion
 
@@ -572,9 +578,13 @@ Implemented:
 - organization detail commercial/billing/usage snapshot;
 - CMS navigation routes directly to the scalable directory.
 
-Still required:
+Implemented:
 
-- global ID/reference search across organization/payment/invoice/job.
+- global ID/reference search across organization/payment/invoice/job;
+- query length and per-scope result bounds;
+- permission-aware database scopes;
+- topbar shortcut and dedicated `/search` route;
+- direct organization/invoice navigation from results.
 
 Already completed by follow-up slices:
 
@@ -1221,12 +1231,12 @@ Unless measurements or requirements prove otherwise:
 
 # 24. Near-term next task
 
-Provider transaction drill-down, scalable Organization Directory, SaaS invoice detail and operational observability v1 are implemented.
+The compact Control Plane foundation is now substantially complete: provider transaction drill-down, scalable Organization Directory, SaaS invoice detail, operational observability v1 and global operational search are implemented.
 
-Current most immediate unfinished task:
+Current most immediate unfinished product task:
 
 ```text
-CMS -> global ID/reference search across organization / payment / invoice / job
+Admin Web -> property / floor / room operational workflow
 ```
 
-After that compact Control Plane search slice, development should move into the tenant-facing Admin Web property/room workflow instead of continuing to expand CMS into a substitute for the rental product.
+The next development slice should move into the tenant-facing rental product: organization workspace context, property list/detail, floor/room hierarchy and room operational status. CMS should remain the platform control plane rather than becoming a substitute for daily landlord/staff workflows.
