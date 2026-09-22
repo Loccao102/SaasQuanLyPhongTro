@@ -482,10 +482,70 @@ export type CmsJobsStatus = {
   workers: CmsNotificationWorker[];
 };
 
+export type CmsOperationalSnapshot = {
+  generatedAt: string;
+  api: {
+    requestCount: number;
+    errorCount: number;
+    durationSumMs: number;
+    durationMaxMs: number;
+    latencyBucketsMs: Array<{
+      le: number;
+      count: number;
+    }>;
+  };
+  database: {
+    pool: {
+      max: number;
+      total: number;
+      idle: number;
+      waiting: number;
+    };
+    operations: {
+      queryCount: number;
+      transactionCount: number;
+      slowOperationCount: number;
+      durationSumMs: number;
+      durationMaxMs: number;
+      slowThresholdMs: number;
+    };
+  };
+  workers: Array<{
+    workerId: string;
+    role: "NOTIFICATION" | "BILLING" | "BILLING_WEBHOOK";
+    provider: string | null;
+    status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
+    lastSeenAt: string;
+    lastSeenAgeSeconds: number;
+    staleAfterSeconds: number;
+    stale: boolean;
+    lastErrorCode: string | null;
+  }>;
+  notifications: {
+    pending: number;
+    failed: number;
+    manualReview: number;
+    sent24h: number;
+    failed24h: number;
+    manualReview24h: number;
+    oldestPendingAgeSeconds: number;
+  };
+  billingWebhooks: {
+    received: number;
+    processing: number;
+    reviewRequired: number;
+    failed: number;
+    staleProcessing: number;
+    processed24h: number;
+    oldestBacklogAgeSeconds: number;
+  };
+};
+
 export type IntegrationStatus = {
   connected: boolean;
   reason: string;
   entries: unknown[];
+  snapshot: CmsOperationalSnapshot | null;
 };
 
 const apiBase =
