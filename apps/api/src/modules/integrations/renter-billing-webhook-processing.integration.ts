@@ -229,25 +229,29 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
     };
 
     const first = await processing.processPayment(firstClaim.id, normalized);
-    assert.equal(first.domain, "RENTER");
+    if (first.domain !== "RENTER" || !first.ingestion) {
+      assert.fail("Expected RENTER webhook ingestion.");
+    }
     assert.equal(first.replayed, false);
     assert.equal(first.event.processingStatus, "PROCESSED");
     assert.equal(first.event.paymentId, null);
-    assert.equal(first.ingestion?.payment.reconciliationStatus, "ALLOCATED");
-    assert.equal(first.ingestion?.allocations.length, 1);
-    assert.equal(first.ingestion?.invoice?.paidVnd, 100000);
-    assert.equal(first.ingestion?.invoice?.remainingVnd, 100000);
+    assert.equal(first.ingestion.payment.reconciliationStatus, "ALLOCATED");
+    assert.equal(first.ingestion.allocations.length, 1);
+    assert.equal(first.ingestion.invoice?.paidVnd, 100000);
+    assert.equal(first.ingestion.invoice?.remainingVnd, 100000);
     assert.equal(
-      first.ingestion?.invoice?.collectionStatus,
+      first.ingestion.invoice?.collectionStatus,
       "PARTIALLY_PAID"
     );
 
     const replay = await processing.processPayment(firstClaim.id, normalized);
-    assert.equal(replay.domain, "RENTER");
+    if (replay.domain !== "RENTER" || !replay.ingestion) {
+      assert.fail("Expected replayed RENTER webhook ingestion.");
+    }
     assert.equal(replay.replayed, true);
     assert.equal(
-      replay.ingestion?.payment.id,
-      first.ingestion?.payment.id
+      replay.ingestion.payment.id,
+      first.ingestion.payment.id
     );
 
     const duplicateEvent = await inbox.persist({
@@ -268,10 +272,12 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
       duplicateClaim.id,
       normalized
     );
-    assert.equal(duplicate.domain, "RENTER");
+    if (duplicate.domain !== "RENTER" || !duplicate.ingestion) {
+      assert.fail("Expected duplicate RENTER webhook ingestion.");
+    }
     assert.equal(
-      duplicate.ingestion?.payment.id,
-      first.ingestion?.payment.id
+      duplicate.ingestion.payment.id,
+      first.ingestion.payment.id
     );
 
     const paymentCount = await fixturePool.query<{ count: number }>(
@@ -298,7 +304,7 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
        JOIN saas_billing_webhook_events e ON e.id = l.event_id
        WHERE e.provider = $1
          AND l.renter_payment_transaction_id = $2::uuid`,
-      [provider, first.ingestion!.payment.id]
+      [provider, first.ingestion.payment.id]
     );
     assert.equal(linkCount.rows[0]?.count, 2);
 
@@ -320,13 +326,15 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
         paymentReference: "RENT-NOT-FOUND"
       }
     );
-    assert.equal(unmatched.domain, "RENTER");
+    if (unmatched.domain !== "RENTER" || !unmatched.ingestion) {
+      assert.fail("Expected unmatched RENTER payment ingestion.");
+    }
     assert.equal(
-      unmatched.ingestion?.payment.reconciliationStatus,
+      unmatched.ingestion.payment.reconciliationStatus,
       "UNMATCHED"
     );
-    assert.equal(unmatched.ingestion?.payment.organizationId, null);
-    assert.equal(unmatched.ingestion?.allocations.length, 0);
+    assert.equal(unmatched.ingestion.payment.organizationId, null);
+    assert.equal(unmatched.ingestion.allocations.length, 0);
 
     const overpayEvent = await inbox.persist({
       provider,
@@ -343,13 +351,15 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
       occurredAt: "2026-11-04T03:00:00.000Z",
       paymentReference
     });
-    assert.equal(overpay.domain, "RENTER");
+    if (overpay.domain !== "RENTER" || !overpay.ingestion) {
+      assert.fail("Expected overpay RENTER payment ingestion.");
+    }
     assert.equal(
-      overpay.ingestion?.payment.reconciliationStatus,
+      overpay.ingestion.payment.reconciliationStatus,
       "REVIEW_REQUIRED"
     );
-    assert.equal(overpay.ingestion?.allocations.length, 0);
-    assert.equal(overpay.ingestion?.invoice, null);
+    assert.equal(overpay.ingestion.allocations.length, 0);
+    assert.equal(overpay.ingestion.invoice, null);
 
     const invoiceAfterReview = await fixturePool.query<{
       paid_vnd: string;
