@@ -217,3 +217,24 @@ body { background: var(--color-bg); }
 .termination-schedule-form > label > span { color:var(--color-text-muted); font-size:10px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; }
 .termination-schedule-form input,.termination-schedule-form textarea { width:100%; padding:10px 11px; border:1px solid var(--color-border); border-radius:9px; background:white; color:var(--color-text); font:inherit; }
 .termination-schedule-form input:focus,.termination-schedule-form textarea:focus { outline:2px solid color-mix(in srgb,var(--color-primary) 25%,transparent); border-color:var(--color-primary); }
+
+
+/* Lease draft resident reuse and party management */
+.lease-draft-edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.resident-search { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px; margin-bottom:12px; }
+.resident-search label { display:grid; gap:7px; min-width:0; }
+.resident-search label > span { color:var(--color-text-muted); font-size:10px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; }
+.resident-search input { min-height:40px; width:100%; padding:0 11px; border:1px solid var(--color-border); border-radius:9px; background:white; color:var(--color-text); font:inherit; }
+.resident-search-results { display:grid; gap:7px; max-height:220px; margin-bottom:14px; overflow:auto; }
+.resident-search-result { display:grid; gap:4px; width:100%; padding:10px 12px; border:1px solid var(--color-border); border-radius:9px; background:#fbfdfe; color:var(--color-text); cursor:pointer; text-align:left; }
+.resident-search-result:hover { border-color:#b8dcd8; background:white; }
+.resident-search-result span,.resident-selected span { color:var(--color-text-muted); font-size:10px; }
+.resident-selected { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid #cfe6ea; border-radius:10px; background:#f5fbfa; }
+.resident-selected > div { display:grid; gap:3px; min-width:0; flex:1; }
+@media (max-width:900px) {
+  .lease-draft-edit-grid { grid-template-columns:1fr; }
+}
+@media (max-width:560px) {
+  .resident-search { grid-template-columns:1fr; }
+  .resident-selected { align-items:flex-start; flex-direction:column; }
+}

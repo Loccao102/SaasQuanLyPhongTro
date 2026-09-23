@@ -7,7 +7,10 @@ import {
   adminAssetsApi,
   type AdminPropertyDetail
 } from "../../../lib/admin-assets-api";
-import { adminLeasesApi } from "../../../lib/admin-leases-api";
+import {
+  adminLeasesApi,
+  type ResidentSearchResult
+} from "../../../lib/admin-leases-api";
 
 type RoomOption = {
   id: string;
@@ -25,6 +28,12 @@ export function LeaseCreateClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [residentQuery, setResidentQuery] = useState("");
+  const [residentResults, setResidentResults] = useState<ResidentSearchResult[]>([]);
+  const [selectedResident, setSelectedResident] =
+    useState<ResidentSearchResult | null>(null);
+  const [residentSearching, setResidentSearching] = useState(false);
   const commandIdentity = useRef<{
     leaseId: string;
     residentId: string;
@@ -79,13 +88,42 @@ export function LeaseCreateClient() {
     [properties]
   );
 
+  const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
+
+  async function searchResidents() {
+    if (!selectedRoom) {
+      setMutationError("Chọn phòng trước khi tìm người thuê cũ.");
+      return;
+    }
+    if (residentQuery.trim().length < 2) {
+      setMutationError("Nhập ít nhất 2 ký tự để tìm người thuê.");
+      return;
+    }
+
+    setResidentSearching(true);
+    setMutationError(null);
+    try {
+      const result = await adminLeasesApi.searchResidents(
+        selectedRoom.propertyId,
+        residentQuery
+      );
+      setResidentResults(result.residents);
+    } catch (error) {
+      setMutationError(
+        error instanceof Error ? error.message : "Không thể tìm người thuê."
+      );
+    } finally {
+      setResidentSearching(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     if (!commandIdentity.current) {
       commandIdentity.current = {
         leaseId: crypto.randomUUID(),
-        residentId: crypto.randomUUID(),
+        residentId: selectedResident?.id ?? crypto.randomUUID(),
         idempotencyKey: crypto.randomUUID()
       };
     }
@@ -102,11 +140,13 @@ export function LeaseCreateClient() {
         baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
         depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
         billingDay: Number(form.get("billingDay") ?? 1),
-        primaryResident: {
-          fullName: String(form.get("fullName") ?? ""),
-          phone: String(form.get("phone") ?? "") || null,
-          email: String(form.get("email") ?? "") || null
-        }
+        primaryResident: selectedResident
+          ? null
+          : {
+              fullName: String(form.get("fullName") ?? ""),
+              phone: String(form.get("phone") ?? "") || null,
+              email: String(form.get("email") ?? "") || null
+            }
       });
       commandIdentity.current = null;
       window.location.assign("/leases/" + result.leaseId);
@@ -125,7 +165,7 @@ export function LeaseCreateClient() {
       <PageHeader
         eyebrow="LEASE.MANAGE · DRAFT"
         title="Tạo hợp đồng nháp"
-        description="Hợp đồng nháp chưa chiếm dụng phòng. Sau khi kiểm tra điều khoản và người thuê, kích hoạt là một domain transition riêng."
+        description="Hợp đồng nháp chưa chiếm dụng phòng. Có thể reuse người thuê cũ, thêm người ở và chỉnh điều khoản trước khi kích hoạt."
         action={
           <a className="secondary-link-button" href="/leases">
             ← Danh sách hợp đồng
@@ -159,7 +199,16 @@ export function LeaseCreateClient() {
             <div className="asset-form">
               <label className="asset-form__wide">
                 <span>Phòng</span>
-                <select name="roomId" required defaultValue="">
+                <select
+                  name="roomId"
+                  required
+                  value={selectedRoomId}
+                  onChange={(event) => {
+                    setSelectedRoomId(event.target.value);
+                    setSelectedResident(null);
+                    setResidentResults([]);
+                  }}
+                >
                   <option value="" disabled>Chọn phòng</option>
                   {rooms.map((room) => (
                     <option key={room.id} value={room.id}>
@@ -202,33 +251,91 @@ export function LeaseCreateClient() {
                 <span className="eyebrow">PRIMARY TENANT</span>
                 <h2>Người thuê chính</h2>
               </div>
+              {selectedResident ? (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setSelectedResident(null)}
+                >
+                  Dùng người mới
+                </button>
+              ) : null}
             </div>
-            <div className="asset-form">
+
+            <div className="resident-search">
               <label>
-                <span>Họ tên</span>
-                <input name="fullName" required />
+                <span>Tìm người thuê đã có</span>
+                <input
+                  value={residentQuery}
+                  onChange={(event) => setResidentQuery(event.target.value)}
+                  placeholder="Tên, số điện thoại hoặc email"
+                />
               </label>
-              <label>
-                <span>Số điện thoại</span>
-                <input name="phone" inputMode="tel" />
-              </label>
-              <label>
-                <span>Email</span>
-                <input name="email" type="email" />
-              </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={residentSearching || !selectedRoom}
+                onClick={() => void searchResidents()}
+              >
+                {residentSearching ? "Đang tìm…" : "Tìm resident"}
+              </button>
             </div>
+
+            {residentResults.length > 0 && !selectedResident ? (
+              <div className="resident-search-results">
+                {residentResults.map((resident) => (
+                  <button
+                    type="button"
+                    className="resident-search-result"
+                    key={resident.id}
+                    onClick={() => setSelectedResident(resident)}
+                  >
+                    <strong>{resident.fullName}</strong>
+                    <span>{resident.phone ?? resident.email ?? "Chưa có liên hệ"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {selectedResident ? (
+              <div className="resident-selected">
+                <StatusBadge tone="info">REUSE RESIDENT</StatusBadge>
+                <div>
+                  <strong>{selectedResident.fullName}</strong>
+                  <span>
+                    {selectedResident.phone ??
+                      selectedResident.email ??
+                      "Chưa có liên hệ"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="asset-form">
+                <label>
+                  <span>Họ tên</span>
+                  <input name="fullName" required />
+                </label>
+                <label>
+                  <span>Số điện thoại</span>
+                  <input name="phone" inputMode="tel" />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input name="email" type="email" />
+                </label>
+              </div>
+            )}
             <p className="inline-note">
-              Slice hiện tại tạo Resident mới cùng hợp đồng. Workflow tìm/chọn Resident
-              đã tồn tại sẽ được bổ sung khi hoàn thiện module cư dân.
+              Resident cũ chỉ được tìm/reuse trong phạm vi mà membership hiện tại được phép quản lý.
             </p>
           </section>
 
           {mutationError ? (
             <div className="admin-state admin-state--error">
-              <strong>Chưa tạo được hợp đồng.</strong>
+              <strong>Chưa hoàn tất thao tác.</strong>
               <span>{mutationError}</span>
               <small>
-                Dữ liệu trên form vẫn được giữ. Thử lại sẽ dùng cùng idempotency key.
+                Nếu create đã được gửi, thử lại sẽ tiếp tục dùng cùng idempotency key.
               </small>
             </div>
           ) : null}
@@ -241,9 +348,9 @@ export function LeaseCreateClient() {
               </div>
             </div>
             <ul className="consequence-list">
-              <li>Tạo Lease và người thuê chính trong cùng transaction.</li>
+              <li>Resident mới và Lease được tạo trong cùng transaction; Resident cũ được reuse theo ID.</li>
               <li>Bản nháp không làm phòng chuyển sang trạng thái đang thuê.</li>
-              <li>Kích hoạt sau đó sẽ kiểm tra quyền, trạng thái và ràng buộc một hợp đồng hiện hành mỗi phòng.</li>
+              <li>Sau khi tạo có thể sửa điều khoản và thêm CO_TENANT / OCCUPANT trước khi kích hoạt.</li>
             </ul>
             <div className="final-action">
               <div>

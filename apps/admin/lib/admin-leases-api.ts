@@ -76,6 +76,13 @@ export type LeaseDetailResponse = {
   }>;
 };
 
+export type ResidentSearchResult = {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+};
+
 export type CreateLeaseDraftInput = {
   leaseId: string;
   residentId: string;
@@ -87,11 +94,11 @@ export type CreateLeaseDraftInput = {
   baseRentVnd: number;
   depositRequiredVnd: number;
   billingDay: number;
-  primaryResident: {
+  primaryResident?: {
     fullName: string;
     phone?: string | null;
     email?: string | null;
-  };
+  } | null;
 };
 
 const apiBase =
@@ -174,6 +181,54 @@ export const adminLeasesApi = {
     command(
       "/" + encodeURIComponent(leaseId) + "/termination/finalize",
       idempotencyKey
+    ),
+  searchResidents: (propertyId: string, query: string) =>
+    request<{ residents: ResidentSearchResult[] }>(
+      "/residents/search?propertyId=" +
+        encodeURIComponent(propertyId) +
+        "&q=" +
+        encodeURIComponent(query)
+    ),
+  updateDraft: (
+    leaseId: string,
+    input: {
+      expectedVersion: number;
+      leaseCode: string;
+      startDate: string;
+      plannedEndDate?: string | null;
+      baseRentVnd: number;
+      depositRequiredVnd: number;
+      billingDay: number;
+    }
+  ) =>
+    request<{ leaseId: string; status: "DRAFT"; version: number }>(
+      "/" + encodeURIComponent(leaseId) + "/draft",
+      { method: "PATCH", body: input }
+    ),
+  addDraftParty: (
+    leaseId: string,
+    input: {
+      residentId: string;
+      partyRole: "CO_TENANT" | "OCCUPANT";
+      resident?: {
+        fullName: string;
+        phone?: string | null;
+        email?: string | null;
+      } | null;
+    }
+  ) =>
+    request(
+      "/" + encodeURIComponent(leaseId) + "/draft/parties",
+      { method: "POST", body: input }
+    ),
+  removeDraftParty: (leaseId: string, residentId: string) =>
+    request(
+      "/" +
+        encodeURIComponent(leaseId) +
+        "/draft/parties/" +
+        encodeURIComponent(residentId) +
+        "/remove",
+      { method: "POST" }
     ),
   setTerminationReadiness: (
     leaseId: string,
