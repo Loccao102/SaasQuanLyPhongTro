@@ -530,6 +530,139 @@ export class SaasBillingWebhookInboxService {
     return this.mapEvent(updated.rows[0]!);
   }
 
+  async getRenterPaymentLinkInTransaction(
+    client: PoolClient,
+    eventId: string
+  ): Promise<{
+    renterPaymentTransactionId: string;
+    normalizedPaymentFingerprint: string;
+  } | null> {
+    const result = await client.query<QueryResultRow & {
+      renter_payment_transaction_id: string;
+      normalized_payment_fingerprint: string;
+    }>(
+      `SELECT
+         renter_payment_transaction_id::text,
+         normalized_payment_fingerprint
+       FROM renter_billing_webhook_event_links
+       WHERE event_id = $1::uuid
+       LIMIT 1`,
+      [eventId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      renterPaymentTransactionId: row.renter_payment_transaction_id,
+      normalizedPaymentFingerprint: row.normalized_payment_fingerprint
+    };
+  }
+
+  async completeRenterPaymentInTransaction(
+    client: PoolClient,
+    input: {
+      eventId: string;
+      renterPaymentTransactionId: string;
+      normalizedPaymentFingerprint: string;
+    }
+  ): Promise<SaasBillingWebhookEventView> {
+    const eventResult = await client.query<WebhookEventRow>(
+      this.eventSelectSql("WHERE id = $1 FOR UPDATE"),
+      [input.eventId]
+    );
+    const event = eventResult.rows[0];
+    if (!event) {
+      throw new BillingWebhookConflictError(
+        "Billing webhook event was not found."
+      );
+    }
+
+    const existingLink = await this.getRenterPaymentLinkInTransaction(
+      client,
+      input.eventId
+    );
+
+    if (event.processing_status === "PROCESSED") {
+      if (
+        !existingLink ||
+        existingLink.renterPaymentTransactionId !==
+          input.renterPaymentTransactionId ||
+        existingLink.normalizedPaymentFingerprint !==
+          input.normalizedPaymentFingerprint
+      ) {
+        throw new BillingWebhookConflictError(
+          "Processed renter webhook event was replayed with different payment content."
+        );
+      }
+      return this.mapEvent(event);
+    }
+
+    if (
+      event.processing_status !== "PROCESSING" ||
+      event.signature_status !== "VERIFIED"
+    ) {
+      throw new BillingWebhookConflictError(
+        "Webhook event is not a verified PROCESSING event."
+      );
+    }
+
+    if (existingLink) {
+      if (
+        existingLink.renterPaymentTransactionId !==
+          input.renterPaymentTransactionId ||
+        existingLink.normalizedPaymentFingerprint !==
+          input.normalizedPaymentFingerprint
+      ) {
+        throw new BillingWebhookConflictError(
+          "Renter webhook event link conflicts with normalized payment content."
+        );
+      }
+    } else {
+      await client.query(
+        `INSERT INTO renter_billing_webhook_event_links (
+           event_id,
+           renter_payment_transaction_id,
+           normalized_payment_fingerprint
+         )
+         VALUES ($1, $2, $3)`,
+        [
+          input.eventId,
+          input.renterPaymentTransactionId,
+          input.normalizedPaymentFingerprint
+        ]
+      );
+    }
+
+    const updated = await client.query<WebhookEventRow>(
+      `UPDATE saas_billing_webhook_events
+       SET processing_status = 'PROCESSED',
+           processed_at = now(),
+           last_error_code = NULL,
+           last_error_message = NULL,
+           updated_at = now()
+       WHERE id = $1
+       RETURNING
+         id::text,
+         provider,
+         provider_event_id,
+         signature_status,
+         processing_status,
+         raw_body,
+         raw_body_sha256,
+         headers,
+         received_at,
+         processing_started_at,
+         processing_attempts,
+         processed_at,
+         last_error_code,
+         last_error_message,
+         payment_id::text,
+         normalized_payment_fingerprint`,
+      [input.eventId]
+    );
+
+    return this.mapEvent(updated.rows[0]!);
+  }
+
   private eventSelectSql(whereClause: string): string {
     return `SELECT
        id::text,
