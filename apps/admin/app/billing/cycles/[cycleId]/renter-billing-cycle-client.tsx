@@ -92,7 +92,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           {data.invoices.length === 0 ? (
             <div className="admin-state">
               <strong>Chưa có invoice draft.</strong>
-              <span>Quay lại danh sách và chạy “Sinh rent draft”.</span>
+              <span>Quay lại danh sách và chạy “Tính hóa đơn nháp”.</span>
             </div>
           ) : (
             <div className="renter-invoice-stack">
