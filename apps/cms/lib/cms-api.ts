@@ -16,6 +16,9 @@ export type CmsDashboard = {
   windows: {
     leaseExpiryDays: number;
     recentHours: number;
+    trendMonths: number;
+    topItemsLimit: number;
+    leaseExpiryBuckets: number[];
     workerStaleAfterSeconds: number;
     webhookStaleAfterSeconds: number;
   };
@@ -35,6 +38,12 @@ export type CmsDashboard = {
     activeLeases: number;
     terminationScheduledLeases: number;
     expiringLeases: number;
+    leaseExpiryBuckets: Array<{
+      key: string;
+      fromDayExclusive: number;
+      toDayInclusive: number | null;
+      count: number;
+    }>;
   };
   commercial: {
     trialingSubscriptions: number;
@@ -51,6 +60,11 @@ export type CmsDashboard = {
     overdueVnd: number | null;
     successfulPaymentCountRecent: number | null;
     successfulPaymentVndRecent: number | null;
+    paymentTrend: Array<{
+      month: string;
+      paymentCount: number;
+      amountVnd: number;
+    }>;
     activePlans: number;
   };
   automation: {
@@ -70,6 +84,15 @@ export type CmsDashboard = {
     webhookFailed: number;
     webhookStaleProcessing: number;
     webhookProcessedRecent: number;
+    notificationAttemptsRecent: {
+      total: number;
+      sent: number;
+      transientFailure: number;
+      permanentFailure: number;
+      manualReview: number;
+      unknown: number;
+      successRatePercent: number;
+    };
   };
   platform: {
     settingCount: number;
