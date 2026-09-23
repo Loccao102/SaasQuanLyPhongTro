@@ -110,6 +110,7 @@ export function PricingSetupClient() {
       return;
     }
     setLoadingPricing(true);
+    setPricing(null);
     setError(null);
     try {
       setPricing(await pricingApi.listForProperty(propertyId));
@@ -294,19 +295,21 @@ export function PricingSetupClient() {
             <span>Tạo cơ sở hoặc kiểm tra lại membership scope trước.</span>
           </div>
         ) : (
-          <label className="asset-form">
-            <span>Cơ sở áp dụng</span>
-            <select
-              value={selectedPropertyId}
-              onChange={(event) => void selectProperty(event.target.value)}
-            >
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.code} · {property.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="asset-form">
+            <label>
+              <span>Cơ sở áp dụng</span>
+              <select
+                value={selectedPropertyId}
+                onChange={(event) => void selectProperty(event.target.value)}
+              >
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.code} · {property.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
       </section>
 
@@ -332,8 +335,11 @@ export function PricingSetupClient() {
             </label>
             <label>
               <span>Hiệu lực đến</span>
-              <input name="effectiveTo" type="date" />
-              <small>Để trống nếu áp dụng không thời hạn.</small>
+              <input name="effectiveTo" type="date" required />
+              <small>
+                Admin baseline dùng khoảng hữu hạn để policy kế tiếp không bị
+                chồng lấn.
+              </small>
             </label>
             <label>
               <span>Điện · VND/kWh</span>
