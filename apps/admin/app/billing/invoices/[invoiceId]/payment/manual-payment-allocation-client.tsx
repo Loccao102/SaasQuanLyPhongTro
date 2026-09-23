@@ -142,7 +142,7 @@ export function ManualPaymentAllocationClient({
     <AdminShell
       title="Ghi nhận thanh toán"
       eyebrow="RENTER PAYMENT · MANUAL RECONCILIATION"
-      activeNav="Thu tiền"
+      activeNav="Hóa đơn"
     >
       <PageHeader
         eyebrow="PAYMENT.RECONCILE"
