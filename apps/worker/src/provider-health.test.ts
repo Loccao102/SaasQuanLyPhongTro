@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fatalProviderPauseReason } from "./provider-health.js";
 
-test("provider auth/captcha/ui failures request a global pause", () => {
+test("provider auth/session/captcha/ui failures request a global pause", () => {
   for (const code of [
     "AUTH_REQUIRED",
     "SESSION_EXPIRED",
+    "SESSION_STORAGE_ERROR",
     "CAPTCHA",
     "PROVIDER_UI_BROKEN"
   ]) {

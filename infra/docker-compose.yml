@@ -6,6 +6,13 @@ x-node-service: &node-service
     context: ..
     dockerfile: infra/Dockerfile.dev
 
+x-playwright-worker-service: &playwright-worker-service
+  image: habi-playwright-worker:local
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile.playwright-worker
+  ipc: host
+
 x-worker-environment: &worker-environment
   NODE_ENV: development
   INTERNAL_API_BASE_URL: http://api:4000/api
@@ -191,12 +198,26 @@ services:
         condition: service_healthy
 
   worker-notification:
-    <<: *node-service
+    <<: *playwright-worker-service
     environment:
       <<: *worker-environment
       WORKER_ROLE: NOTIFICATION
       WORKER_ID: docker-notification-worker
+      ZALO_BASE_URL: ${ZALO_BASE_URL:-https://chat.zalo.me/}
+      ZALO_HEADLESS: ${ZALO_HEADLESS:-true}
+      ZALO_SESSION_PATH: /home/pwuser/.habi/zalo/session.enc
+      ZALO_SESSION_KEY_BASE64: ${ZALO_SESSION_KEY_BASE64:-}
+      ZALO_NAVIGATION_TIMEOUT_MS: ${ZALO_NAVIGATION_TIMEOUT_MS:-30000}
+      ZALO_SELECTOR_TIMEOUT_MS: ${ZALO_SELECTOR_TIMEOUT_MS:-5000}
+      ZALO_VERIFICATION_TIMEOUT_MS: ${ZALO_VERIFICATION_TIMEOUT_MS:-10000}
+      ZALO_LOGIN_INDICATORS: ${ZALO_LOGIN_INDICATORS:-}
+      ZALO_CAPTCHA_INDICATORS: ${ZALO_CAPTCHA_INDICATORS:-}
+      ZALO_SEARCH_INPUT_SELECTORS: ${ZALO_SEARCH_INPUT_SELECTORS:-}
+      ZALO_MESSAGE_EDITOR_SELECTORS: ${ZALO_MESSAGE_EDITOR_SELECTORS:-}
+      ZALO_SEND_BUTTON_SELECTORS: ${ZALO_SEND_BUTTON_SELECTORS:-}
     command: ["pnpm", "--filter", "@propops/worker", "dev"]
+    volumes:
+      - habi_zalo_session:/home/pwuser/.habi/zalo
     depends_on:
       api:
         condition: service_healthy
@@ -226,3 +247,4 @@ services:
 volumes:
   propops_postgres:
   propops_redis:
+  habi_zalo_session:

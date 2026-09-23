@@ -1,0 +1,17 @@
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
+
+RUN corepack enable && corepack prepare pnpm@12.4.1 --activate \
+  && mkdir -p /workspace /home/pwuser/.habi/zalo \
+  && chown -R pwuser:pwuser /workspace /home/pwuser/.habi
+
+WORKDIR /workspace
+
+COPY --chown=pwuser:pwuser . .
+
+USER pwuser
+
+RUN pnpm install --no-frozen-lockfile
+
+ENV NODE_ENV=development
+
+CMD ["pnpm", "--filter", "@propops/worker", "dev"]
