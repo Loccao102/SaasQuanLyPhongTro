@@ -66,7 +66,10 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
           run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.sql
           run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.sql
+          run_psql /repo/apps/api/db/migrations/0011_dashboard_analytics_formats.sql
+          run_psql /repo/apps/api/db/migrations/0011_dashboard_analytics_formats.sql
 
+          run_psql /repo/apps/api/db/migrations/0011_dashboard_analytics_formats.down.sql
           run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.down.sql
           run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.down.sql
           run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.down.sql
@@ -88,6 +91,7 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
           run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.sql
           run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.sql
+          run_psql /repo/apps/api/db/migrations/0011_dashboard_analytics_formats.sql
 
       - name: Leasing integration tests
         env:
