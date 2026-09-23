@@ -370,7 +370,7 @@ test("renter billing webhook auto-allocates safe references and deduplicates pro
       collection_status: "PARTIALLY_PAID"
     });
 
-    const unknownDomainEvent = await inbox.persist({
+    await inbox.persist({
       provider,
       providerEventId: "renter-event-unknown-domain",
       signatureStatus: "VERIFIED",
