@@ -2,7 +2,7 @@
 
 > Status source for work that is **not finished yet**, production gaps, and expansion directions.
 >
-> Last reviewed: 2026-09-21
+> Last reviewed: 2026-09-23
 >
 > Architecture baseline: modular monolith + isolated workers + PostgreSQL source of truth.
 >
@@ -349,19 +349,26 @@ Later:
 
 ## 3.3 Metering and Staff PWA
 
-The offline-first design exists in docs but implementation still needs to be completed.
+The core metering backend foundation now implements:
 
-Required:
+- organization/room-scoped electricity and water meters;
+- one active meter per room/type;
+- append-only dated meter readings;
+- client UUID idempotency for meter creation/readings;
+- validation against both previous and later readings for safe backfill;
+- exact 3-decimal reading storage/usage calculation;
+- tenant/property permission enforcement;
+- audited meter and reading writes;
+- billing usage resolution with explicit missing-meter / missing-reading states.
 
-- billing cycle model;
+The Staff offline-first workflow is still required:
+
 - property/room checklist;
 - fast electricity input;
 - fast water input;
 - previous reading display;
-- validation current >= previous;
 - anomaly warning;
 - IndexedDB local persistence;
-- client UUID/idempotency;
 - sync queue;
 - offline status;
 - conflict resolution;
@@ -405,28 +412,32 @@ The renter billing foundation now implements:
 
 - property-scoped billing cycle create/list/detail;
 - OPEN -> FINALIZED cycle lifecycle;
-- idempotent rent-draft generation per cycle/lease;
+- retry-safe DRAFT generation/refresh per cycle/lease;
 - full-period base-rent snapshots from Lease;
+- effective-range property pricing policies;
+- electricity and water usage from meter-reading deltas;
+- fixed service-fee invoice lines;
+- exact 3-decimal quantity × integer-VND calculation;
+- pricing, meter, previous/current reading snapshots on generated invoice lines;
+- explicit READY / REVIEW_REQUIRED calculation state;
+- safe re-generation of system-owned DRAFT lines after missing data is supplied;
+- finalization blocking while pricing/meter data still requires review;
 - DRAFT -> ISSUED renter invoice transition;
 - immutable issued invoice/line snapshot direction;
 - integer VND totals;
 - billing.read / billing.manage scope enforcement;
-- audit for cycle creation, rent draft generation and finalization;
+- audit for cycle creation, pricing, metering, draft generation and finalization;
 - safe blocking of partial-period leases until proration/manual adjustment policy exists;
-- Admin billing cycle + invoice detail UI.
+- Admin billing cycle + invoice detail UI with calculation-readiness feedback.
 
 Still required for the full rental invoice domain:
 
-- electricity usage;
-- water usage;
-- water usage;
-- service fees;
-- configurable pricing policies;
-- line-item snapshots;
+- Admin pricing-policy management UX;
+- Staff offline meter-entry/sync UX;
+- WATER_PER_PERSON and other non-meter utility policy variants when demanded;
 - discounts;
 - adjustments;
-- previous debt;
-- invoice issue/finalize;
+- previous debt carry-forward policy;
 - tenant payment allocation;
 - receipt history;
 - void/correction policy.
@@ -1296,4 +1307,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing cycle + rent-only invoice snapshot foundation is now the active slice. Next connect Metering/service pricing into DRAFT invoice lines, then tenant payment allocation and payment provider integration. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Next complete the Admin pricing setup and Staff offline meter-entry workflow, then tenant payment allocation and the production payment provider integration. After that move to messaging/notification operations and user-group/member management.
