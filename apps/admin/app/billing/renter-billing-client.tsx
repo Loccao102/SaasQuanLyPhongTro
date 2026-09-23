@@ -88,14 +88,17 @@ export function RenterBillingClient() {
     setActionMessage(null);
     try {
       const result = await renterBillingApi.generateRentDrafts(cycleId);
+      const changed = result.created + result.refreshed;
       setActionMessage(
         result.requiresReview
-          ? "Đã sinh " +
-              result.created +
-              " rent draft; còn " +
+          ? "Đã tính lại " +
+              changed +
+              " hóa đơn; " +
+              result.reviewRequiredInvoiceCount +
+              " hóa đơn thiếu biểu giá/chỉ số và " +
               result.partialLeaseCount +
-              " lease giữa kỳ cần review."
-          : "Đã sinh " + result.created + " rent draft."
+              " hợp đồng giữa kỳ cần review."
+          : "Đã tính đủ dữ liệu cho " + changed + " hóa đơn nháp."
       );
       await load();
     } catch (actionError) {
@@ -265,7 +268,7 @@ export function RenterBillingClient() {
                         disabled={saving}
                         onClick={() => void generate(cycle.id)}
                       >
-                        Sinh rent draft
+                        Tính hóa đơn nháp
                       </button>
                       <button
                         className="primary-button"
@@ -285,8 +288,9 @@ export function RenterBillingClient() {
       </section>
 
       <p className="inline-note">
-        Foundation hiện chỉ tự sinh tiền phòng cho lease chiếm trọn kỳ. Lease vào/ra
-        giữa kỳ bị chặn finalize cho tới khi có proration hoặc adjustment policy rõ ràng.
+        Hóa đơn nháp snapshot tiền phòng, điện, nước và phí dịch vụ theo biểu giá
+        đang hiệu lực. Thiếu biểu giá/chỉ số hoặc có hợp đồng vào/ra giữa kỳ sẽ
+        được đánh dấu review và bị chặn phát hành.
       </p>
     </AdminShell>
   );
