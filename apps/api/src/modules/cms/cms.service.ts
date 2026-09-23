@@ -336,7 +336,10 @@ export class CmsService {
       webhookStats,
       platformStats,
       topOrganizations,
-      planDistribution
+      planDistribution,
+      leaseExpiryStats,
+      paymentTrend,
+      notificationAttemptStats
     ] = await Promise.all([
       this.db.query<
         QueryResultRow & {
@@ -626,7 +629,8 @@ export class CmsService {
          ORDER BY
            count(DISTINCT r.id) FILTER (WHERE r.is_active = true) DESC,
            o.name
-         LIMIT 5`
+         LIMIT $1`,
+        [topItemsLimit]
       ),
       this.db.query<
         QueryResultRow & {
