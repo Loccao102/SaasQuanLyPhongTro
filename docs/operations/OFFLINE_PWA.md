@@ -57,3 +57,20 @@ Không silently overwrite. UI phải cho:
 Service worker cache app shell/static assets.
 
 Không coi service-worker cache là persistence cho meter reading.
+
+
+## Implemented baseline
+
+The Staff PWA now uses:
+
+- IndexedDB for cached checklists and local meter readings;
+- client-generated UUIDs that remain stable across retries;
+- local states DRAFT / PENDING_SYNC / SYNCING / SYNCED / CONFLICT / FAILED;
+- save-local-first meter entry before any network request;
+- app-shell service-worker caching without treating cache as business persistence;
+- previous-reading validation and a historical-usage anomaly warning;
+- structured server conflict payloads with the existing server reading;
+- explicit keep-server conflict resolution; local-winning corrections remain an Admin/manual correction concern;
+- Admin property-level meter-progress monitoring.
+
+The current assignment baseline is the existing membership scope model. A separate StaffAssignment aggregate should only be introduced when operational scheduling/shift assignment must differ from authorization scope.
