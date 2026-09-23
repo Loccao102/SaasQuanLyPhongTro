@@ -59,6 +59,31 @@ type TransactionAllocationRow = QueryResultRow & {
   created_at: Date | string;
 };
 
+type ProviderTransactionRow = QueryResultRow & {
+  id: string;
+  organization_id: string | null;
+  provider: string;
+  provider_transaction_id: string;
+  amount_vnd: string;
+  occurred_at: Date | string;
+  payment_reference: string | null;
+  reconciliation_status: "UNMATCHED" | "ALLOCATED" | "REVIEW_REQUIRED";
+  raw_payload: unknown;
+};
+
+type ProviderInvoiceRow = QueryResultRow & {
+  id: string;
+  organization_id: string;
+  property_id: string;
+  invoice_number: string;
+  status: "DRAFT" | "ISSUED" | "VOID";
+  total_vnd: string;
+  paid_vnd: string;
+  remaining_vnd: string;
+  collection_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+  payment_reference: string;
+};
+
 export interface CreateManualAllocationInput {
   transactionId: string;
   allocationId: string;
@@ -225,9 +250,13 @@ export class RenterPaymentsService {
            payer_name,
            note,
            status,
+           reconciliation_status,
            created_by_user_id
          )
-         VALUES ($1, $2, 'MANUAL', $3, $4::timestamptz, $5, $6, 'POSTED', $7)`,
+         VALUES (
+           $1, $2, 'MANUAL', $3, $4::timestamptz, $5, $6,
+           'POSTED', 'ALLOCATED', $7
+         )`,
         [
           input.transactionId,
           principal.organizationId,
@@ -326,6 +355,502 @@ export class RenterPaymentsService {
         input.invoiceId
       );
     });
+  }
+
+  async ingestProviderPaymentInTransaction(
+    client: PoolClient,
+    input: {
+      provider: string;
+      providerTransactionId: string;
+      amountVnd: number;
+      occurredAt: string;
+      paymentReference?: string | null;
+      metadata?: unknown;
+    }
+  ) {
+    const provider = this.requiredText(input.provider, "provider");
+    const providerTransactionId = this.requiredText(
+      input.providerTransactionId,
+      "providerTransactionId"
+    );
+    const amountVnd = this.money(input.amountVnd, "amountVnd");
+    if (amountVnd <= 0) {
+      throw new ConflictException("amountVnd must be greater than zero.");
+    }
+    const occurredAt = this.isoTimestamp(input.occurredAt, "occurredAt");
+    const paymentReference =
+      input.paymentReference?.trim().toUpperCase() || null;
+    const rawPayload =
+      typeof input.metadata === "object" &&
+      input.metadata !== null &&
+      !Array.isArray(input.metadata)
+        ? input.metadata
+        : {};
+
+    const existing = await client.query<ProviderTransactionRow>(
+      `SELECT
+         id::text,
+         organization_id::text,
+         provider,
+         provider_transaction_id,
+         amount_vnd::text,
+         occurred_at,
+         payment_reference,
+         reconciliation_status,
+         raw_payload
+       FROM renter_payment_transactions
+       WHERE source = 'PROVIDER'
+         AND provider = $1
+         AND provider_transaction_id = $2
+       LIMIT 1
+       FOR UPDATE`,
+      [provider, providerTransactionId]
+    );
+    const existingRow = existing.rows[0];
+    if (existingRow) {
+      this.assertSameProviderTransaction(existingRow, {
+        amountVnd,
+        occurredAt,
+        paymentReference
+      });
+      return this.getProviderPaymentIngestionByIdInTransaction(
+        client,
+        existingRow.id
+      );
+    }
+
+    let invoice: ProviderInvoiceRow | null = null;
+    if (paymentReference) {
+      const invoiceResult = await client.query<ProviderInvoiceRow>(
+        `SELECT
+           id::text,
+           organization_id::text,
+           property_id::text,
+           invoice_number,
+           status,
+           total_vnd::text,
+           paid_vnd::text,
+           remaining_vnd::text,
+           collection_status,
+           payment_reference
+         FROM renter_invoices
+         WHERE payment_reference = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [paymentReference]
+      );
+      invoice = invoiceResult.rows[0] ?? null;
+    }
+
+    let reconciliationStatus:
+      | "UNMATCHED"
+      | "ALLOCATED"
+      | "REVIEW_REQUIRED" = "UNMATCHED";
+    let reviewReason: string | null = null;
+
+    if (invoice) {
+      if (invoice.status !== "ISSUED") {
+        reconciliationStatus = "REVIEW_REQUIRED";
+        reviewReason = "INVOICE_NOT_ISSUED";
+      } else if (
+        invoice.collection_status === "PAID" ||
+        Number(invoice.remaining_vnd) === 0
+      ) {
+        reconciliationStatus = "REVIEW_REQUIRED";
+        reviewReason = "INVOICE_ALREADY_PAID";
+      } else if (amountVnd > Number(invoice.remaining_vnd)) {
+        reconciliationStatus = "REVIEW_REQUIRED";
+        reviewReason = "OVERPAYMENT";
+      } else {
+        reconciliationStatus = "ALLOCATED";
+      }
+    } else if (paymentReference) {
+      reviewReason = "PAYMENT_REFERENCE_NOT_FOUND";
+    } else {
+      reviewReason = "PAYMENT_REFERENCE_MISSING";
+    }
+
+    const inserted = await client.query<ProviderTransactionRow>(
+      `INSERT INTO renter_payment_transactions (
+         id,
+         organization_id,
+         source,
+         provider,
+         provider_transaction_id,
+         amount_vnd,
+         occurred_at,
+         status,
+         raw_payload,
+         payment_reference,
+         reconciliation_status
+       )
+       VALUES (
+         gen_random_uuid(),
+         $1,
+         'PROVIDER',
+         $2,
+         $3,
+         $4,
+         $5::timestamptz,
+         'POSTED',
+         $6::jsonb,
+         $7,
+         $8
+       )
+       ON CONFLICT (provider, provider_transaction_id)
+         WHERE provider IS NOT NULL
+           AND provider_transaction_id IS NOT NULL
+       DO NOTHING
+       RETURNING
+         id::text,
+         organization_id::text,
+         provider,
+         provider_transaction_id,
+         amount_vnd::text,
+         occurred_at,
+         payment_reference,
+         reconciliation_status,
+         raw_payload`,
+      [
+        invoice?.organization_id ?? null,
+        provider,
+        providerTransactionId,
+        amountVnd,
+        occurredAt,
+        JSON.stringify({
+          ...rawPayload,
+          reviewReason
+        }),
+        paymentReference,
+        reconciliationStatus
+      ]
+    );
+
+    let transaction = inserted.rows[0];
+    if (!transaction) {
+      const raced = await client.query<ProviderTransactionRow>(
+        `SELECT
+           id::text,
+           organization_id::text,
+           provider,
+           provider_transaction_id,
+           amount_vnd::text,
+           occurred_at,
+           payment_reference,
+           reconciliation_status,
+           raw_payload
+         FROM renter_payment_transactions
+         WHERE source = 'PROVIDER'
+           AND provider = $1
+           AND provider_transaction_id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [provider, providerTransactionId]
+      );
+      transaction = raced.rows[0];
+      if (!transaction) {
+        throw new ConflictException(
+          "Provider transaction could not be read after duplicate insert."
+        );
+      }
+      this.assertSameProviderTransaction(transaction, {
+        amountVnd,
+        occurredAt,
+        paymentReference
+      });
+      return this.getProviderPaymentIngestionByIdInTransaction(
+        client,
+        transaction.id
+      );
+    }
+
+    if (invoice && reconciliationStatus === "ALLOCATED") {
+      await client.query(
+        `INSERT INTO renter_payment_allocations (
+           id,
+           organization_id,
+           payment_transaction_id,
+           invoice_id,
+           amount_vnd,
+           allocation_type
+         )
+         VALUES (
+           gen_random_uuid(),
+           $1,
+           $2,
+           $3,
+           $4,
+           'AUTO'
+         )`,
+        [
+          invoice.organization_id,
+          transaction.id,
+          invoice.id,
+          amountVnd
+        ]
+      );
+
+      const projection = await this.recalculateInvoiceInTransaction(
+        client,
+        invoice.organization_id,
+        invoice.id,
+        Number(invoice.total_vnd)
+      );
+
+      await this.auditProvider(
+        client,
+        invoice.organization_id,
+        "RENTER_PROVIDER_PAYMENT_ALLOCATED",
+        invoice.id,
+        {
+          paymentTransactionId: transaction.id,
+          provider,
+          providerTransactionId,
+          paymentReference,
+          amountVnd,
+          ...projection
+        }
+      );
+    } else if (invoice) {
+      await this.auditProvider(
+        client,
+        invoice.organization_id,
+        "RENTER_PROVIDER_PAYMENT_REVIEW_REQUIRED",
+        invoice.id,
+        {
+          paymentTransactionId: transaction.id,
+          provider,
+          providerTransactionId,
+          paymentReference,
+          amountVnd,
+          reviewReason
+        }
+      );
+    }
+
+    return this.getProviderPaymentIngestionByIdInTransaction(
+      client,
+      transaction.id
+    );
+  }
+
+  async getProviderPaymentIngestionByIdInTransaction(
+    client: PoolClient,
+    transactionId: string
+  ) {
+    const transactionResult = await client.query<ProviderTransactionRow>(
+      `SELECT
+         id::text,
+         organization_id::text,
+         provider,
+         provider_transaction_id,
+         amount_vnd::text,
+         occurred_at,
+         payment_reference,
+         reconciliation_status,
+         raw_payload
+       FROM renter_payment_transactions
+       WHERE id = $1::uuid
+         AND source = 'PROVIDER'
+       LIMIT 1`,
+      [transactionId]
+    );
+    const transaction = transactionResult.rows[0];
+    if (!transaction) {
+      throw new NotFoundException("Provider renter payment was not found.");
+    }
+
+    const allocationResult = await client.query<QueryResultRow & {
+      id: string;
+      invoice_id: string;
+      amount_vnd: string;
+      allocation_type: "AUTO" | "MANUAL";
+      created_at: Date | string;
+    }>(
+      `SELECT
+         id::text,
+         invoice_id::text,
+         amount_vnd::text,
+         allocation_type,
+         created_at
+       FROM renter_payment_allocations
+       WHERE payment_transaction_id = $1::uuid
+       ORDER BY created_at, id`,
+      [transactionId]
+    );
+
+    let invoice: {
+      id: string;
+      number: string;
+      totalVnd: number;
+      paidVnd: number;
+      remainingVnd: number;
+      collectionStatus: string;
+    } | null = null;
+
+    const firstAllocation = allocationResult.rows[0];
+    if (transaction.organization_id && firstAllocation) {
+      const invoiceResult = await client.query<QueryResultRow & {
+        id: string;
+        invoice_number: string;
+        total_vnd: string;
+        paid_vnd: string;
+        remaining_vnd: string;
+        collection_status: string;
+      }>(
+        `SELECT
+           id::text,
+           invoice_number,
+           total_vnd::text,
+           paid_vnd::text,
+           remaining_vnd::text,
+           collection_status
+         FROM renter_invoices
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         LIMIT 1`,
+        [transaction.organization_id, firstAllocation.invoice_id]
+      );
+      const invoiceRow = invoiceResult.rows[0];
+      if (invoiceRow) {
+        invoice = {
+          id: invoiceRow.id,
+          number: invoiceRow.invoice_number,
+          totalVnd: Number(invoiceRow.total_vnd),
+          paidVnd: Number(invoiceRow.paid_vnd),
+          remainingVnd: Number(invoiceRow.remaining_vnd),
+          collectionStatus: invoiceRow.collection_status
+        };
+      }
+    }
+
+    return {
+      payment: {
+        id: transaction.id,
+        organizationId: transaction.organization_id,
+        provider: transaction.provider,
+        providerTransactionId: transaction.provider_transaction_id,
+        amountVnd: Number(transaction.amount_vnd),
+        occurredAt: this.timestamp(transaction.occurred_at),
+        paymentReference: transaction.payment_reference,
+        reconciliationStatus: transaction.reconciliation_status
+      },
+      allocations: allocationResult.rows.map((row) => ({
+        id: row.id,
+        invoiceId: row.invoice_id,
+        amountVnd: Number(row.amount_vnd),
+        type: row.allocation_type,
+        createdAt: this.timestamp(row.created_at)
+      })),
+      invoice
+    };
+  }
+
+  private assertSameProviderTransaction(
+    row: ProviderTransactionRow,
+    input: {
+      amountVnd: number;
+      occurredAt: string;
+      paymentReference: string | null;
+    }
+  ) {
+    if (
+      Number(row.amount_vnd) !== input.amountVnd ||
+      this.timestamp(row.occurred_at) !== input.occurredAt ||
+      row.payment_reference !== input.paymentReference
+    ) {
+      throw new ConflictException(
+        "Provider transaction id was reused with different normalized payment data."
+      );
+    }
+  }
+
+  private async recalculateInvoiceInTransaction(
+    client: PoolClient,
+    organizationId: string,
+    invoiceId: string,
+    totalVnd: number
+  ) {
+    const paidResult = await client.query<QueryResultRow & { paid_vnd: string }>(
+      `SELECT COALESCE(sum(a.amount_vnd), 0)::text AS paid_vnd
+       FROM renter_payment_allocations a
+       JOIN renter_payment_transactions t
+         ON t.id = a.payment_transaction_id
+        AND t.status = 'POSTED'
+       WHERE a.organization_id = $1::uuid
+         AND a.invoice_id = $2::uuid`,
+      [organizationId, invoiceId]
+    );
+    const paidVnd = Number(paidResult.rows[0]?.paid_vnd ?? "0");
+    if (paidVnd > totalVnd) {
+      throw new ConflictException(
+        "Payment allocations exceed invoice total and require review."
+      );
+    }
+    const remainingVnd = totalVnd - paidVnd;
+    const collectionStatus =
+      remainingVnd === 0
+        ? "PAID"
+        : paidVnd === 0
+          ? "UNPAID"
+          : "PARTIALLY_PAID";
+
+    await client.query(
+      `UPDATE renter_invoices
+       SET paid_vnd = $3,
+           remaining_vnd = $4,
+           collection_status = $5,
+           updated_at = now()
+       WHERE organization_id = $1::uuid
+         AND id = $2::uuid`,
+      [
+        organizationId,
+        invoiceId,
+        paidVnd,
+        remainingVnd,
+        collectionStatus
+      ]
+    );
+
+    return {
+      paidVnd,
+      remainingVnd,
+      collectionStatus
+    };
+  }
+
+  private requiredText(value: string, field: string) {
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new ConflictException(field + " is required.");
+    }
+    return normalized;
+  }
+
+  private async auditProvider(
+    client: PoolClient,
+    organizationId: string,
+    action: string,
+    invoiceId: string,
+    metadata: Readonly<Record<string, unknown>>
+  ) {
+    await client.query(
+      `INSERT INTO audit_events (
+         organization_id,
+         actor_user_id,
+         action,
+         resource_type,
+         resource_id,
+         metadata
+       )
+       VALUES ($1, NULL, $2, 'RENTER_INVOICE', $3, $4::jsonb)`,
+      [
+        organizationId,
+        action,
+        invoiceId,
+        JSON.stringify(metadata)
+      ]
+    );
   }
 
   private async loadInvoice(

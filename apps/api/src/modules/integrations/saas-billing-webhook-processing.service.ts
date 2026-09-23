@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { SubscriptionBillingService } from "../commercial/application/subscription-billing.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { RenterPaymentsService } from "../renter-payments/renter-payments.service.js";
 import {
   BillingWebhookConflictError,
   SaasBillingWebhookInboxService
@@ -20,7 +21,8 @@ export class SaasBillingWebhookProcessingService {
   constructor(
     private readonly database: DatabaseService,
     private readonly inbox: SaasBillingWebhookInboxService,
-    private readonly billing: SubscriptionBillingService
+    private readonly billing: SubscriptionBillingService,
+    private readonly renterPayments: RenterPaymentsService
   ) {}
 
   claim(provider?: string) {
@@ -55,7 +57,34 @@ export class SaasBillingWebhookProcessingService {
         );
       }
 
+      const renterLink =
+        await this.inbox.getRenterPaymentLinkInTransaction(
+          client,
+          event.id
+        );
+
       if (event.processingStatus === "PROCESSED") {
+        if (renterLink) {
+          if (
+            renterLink.normalizedPaymentFingerprint !== fingerprint
+          ) {
+            throw new BillingWebhookConflictError(
+              "Processed renter webhook event was replayed with different normalized payment content."
+            );
+          }
+          const ingestion =
+            await this.renterPayments.getProviderPaymentIngestionByIdInTransaction(
+              client,
+              renterLink.renterPaymentTransactionId
+            );
+          return {
+            domain: "RENTER" as const,
+            event,
+            ingestion,
+            replayed: true
+          };
+        }
+
         if (
           event.normalizedPaymentFingerprint !== fingerprint ||
           !event.paymentId
@@ -71,9 +100,76 @@ export class SaasBillingWebhookProcessingService {
             event.paymentId
           );
         return {
+          domain: "SAAS" as const,
           event,
           ingestion,
           replayed: true
+        };
+      }
+
+      const domain = this.resolvePaymentDomain(
+        normalized.paymentReference
+      );
+      if (domain === null) {
+        const completed = await this.inbox.completeInTransaction(
+          client,
+          {
+            eventId: event.id,
+            outcome: "REVIEW_REQUIRED",
+            errorCode: "UNKNOWN_PAYMENT_REFERENCE_DOMAIN",
+            errorMessage:
+              "Payment reference must use a known SAAS or RENT namespace."
+          }
+        );
+        return {
+          domain: "REVIEW_REQUIRED" as const,
+          event: completed,
+          ingestion: null,
+          replayed: false
+        };
+      }
+
+      const metadata = {
+        ...(typeof input.metadata === "object" &&
+        input.metadata !== null &&
+        !Array.isArray(input.metadata)
+          ? input.metadata
+          : {}),
+        webhookEventId: event.id,
+        providerEventId: event.providerEventId,
+        rawBodySha256: event.rawBodySha256
+      };
+
+      if (domain === "RENTER") {
+        const ingestion =
+          await this.renterPayments.ingestProviderPaymentInTransaction(
+            client,
+            {
+              provider: event.provider,
+              providerTransactionId:
+                normalized.providerTransactionId,
+              amountVnd: normalized.amountVnd,
+              occurredAt: normalized.occurredAt,
+              paymentReference: normalized.paymentReference,
+              metadata
+            }
+          );
+
+        const completed =
+          await this.inbox.completeRenterPaymentInTransaction(
+            client,
+            {
+              eventId: event.id,
+              renterPaymentTransactionId: ingestion.payment.id,
+              normalizedPaymentFingerprint: fingerprint
+            }
+          );
+
+        return {
+          domain: "RENTER" as const,
+          event: completed,
+          ingestion,
+          replayed: false
         };
       }
 
@@ -84,16 +180,7 @@ export class SaasBillingWebhookProcessingService {
           amountVnd: normalized.amountVnd,
           occurredAt: normalized.occurredAt,
           paymentReference: normalized.paymentReference,
-          metadata: {
-            ...(typeof input.metadata === "object" &&
-            input.metadata !== null &&
-            !Array.isArray(input.metadata)
-              ? input.metadata
-              : {}),
-            webhookEventId: event.id,
-            providerEventId: event.providerEventId,
-            rawBodySha256: event.rawBodySha256
-          }
+          metadata
         });
 
       const completed =
@@ -104,6 +191,7 @@ export class SaasBillingWebhookProcessingService {
         });
 
       return {
+        domain: "SAAS" as const,
         event: completed,
         ingestion,
         replayed: false
@@ -118,6 +206,15 @@ export class SaasBillingWebhookProcessingService {
     errorMessage?: string | null;
   }) {
     return this.inbox.complete(input);
+  }
+
+  private resolvePaymentDomain(
+    paymentReference: string | null
+  ): "SAAS" | "RENTER" | null {
+    if (!paymentReference) return null;
+    if (paymentReference.startsWith("SAAS")) return "SAAS";
+    if (paymentReference.startsWith("RENT")) return "RENTER";
+    return null;
   }
 
   private normalizePayment(

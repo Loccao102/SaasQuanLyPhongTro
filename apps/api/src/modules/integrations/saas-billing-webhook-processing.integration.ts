@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Pool } from "pg";
+import { CommercialPolicyService } from "../commercial/application/commercial-policy.service.js";
 import { SubscriptionBillingService } from "../commercial/application/subscription-billing.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { AccessControlService } from "../identity/access-control.service.js";
+import { RenterPaymentsService } from "../renter-payments/renter-payments.service.js";
 import {
   BillingWebhookConflictError,
   SaasBillingWebhookInboxService
@@ -48,10 +51,16 @@ test("verified billing webhook processing commits one payment effect and replays
   const database = new DatabaseService();
   const billing = new SubscriptionBillingService(database);
   const inbox = new SaasBillingWebhookInboxService(database);
+  const renterPayments = new RenterPaymentsService(
+    database,
+    new AccessControlService(),
+    new CommercialPolicyService()
+  );
   const processing = new SaasBillingWebhookProcessingService(
     database,
     inbox,
-    billing
+    billing,
+    renterPayments
   );
 
   try {
@@ -127,6 +136,9 @@ test("verified billing webhook processing commits one payment effect and replays
       normalized
     );
 
+    if (first.domain !== "SAAS" || !first.ingestion) {
+      assert.fail("Expected SAAS webhook ingestion.");
+    }
     assert.equal(first.replayed, false);
     assert.equal(first.event.processingStatus, "PROCESSED");
     assert.equal(first.event.paymentId, first.ingestion.payment.id);
@@ -143,6 +155,9 @@ test("verified billing webhook processing commits one payment effect and replays
       normalized
     );
 
+    if (replayed.domain !== "SAAS" || !replayed.ingestion) {
+      assert.fail("Expected replayed SAAS webhook ingestion.");
+    }
     assert.equal(replayed.replayed, true);
     assert.equal(
       replayed.ingestion.payment.id,

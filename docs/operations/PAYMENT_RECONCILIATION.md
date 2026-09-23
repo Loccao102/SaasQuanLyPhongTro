@@ -82,3 +82,29 @@ Implemented baseline:
 - Admin financial review/confirmation before recording a manual payment.
 
 Provider/webhook ingestion must reuse these tables rather than attach provider transactions directly to invoices. Reversal/refund/correction is intentionally a separate explicit financial flow.
+
+
+## Renter provider webhook ingestion baseline
+
+The shared billing webhook inbox and worker now dispatch normalized payments by payment-reference namespace:
+
+```text
+SAAS... -> subscription billing
+RENT... -> renter payment matcher
+unknown / missing namespace -> REVIEW_REQUIRED
+```
+
+Renter provider handling:
+
+- raw provider bytes are still persisted in the existing webhook inbox before processing;
+- provider event replay remains idempotent;
+- `(provider, provider_transaction_id)` is globally unique for renter provider transactions;
+- multiple provider event IDs may link to the same provider transaction;
+- a unique renter invoice payment reference is used for deterministic matching;
+- safe matches allocate only when the invoice is ISSUED, has remaining balance, and the provider amount does not exceed remaining;
+- unknown renter references persist an UNMATCHED provider transaction;
+- overpayment, already-paid invoices, or non-issued invoices route to REVIEW_REQUIRED without allocation;
+- unknown payment-reference namespaces do not guess a domain and leave the webhook event REVIEW_REQUIRED;
+- provider allocations update the same paid/remaining projection as manual allocations.
+
+This is provider-ingestion/matching infrastructure, not a production bank adapter. A production adapter still needs provider-specific signature verification and payload normalization.

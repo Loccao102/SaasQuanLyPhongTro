@@ -449,7 +449,8 @@ Still required for the full rental invoice domain:
 - discounts;
 - adjustments;
 - previous debt carry-forward policy;
-- provider/webhook transaction ingestion and safe matching;
+- production bank/payment-provider adapter and signature configuration;
+- Admin reconciliation queue for unmatched/review-required provider renter payments;
 - payment reversal/refund/correction policy;
 - void/correction policy.
 
@@ -1318,4 +1319,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Next add provider/webhook ingestion + safe matching on the same PaymentTransaction/PaymentAllocation model, then public invoice payment status/VietQR. After that move to messaging/notification operations and user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync and renter payment allocation are implemented. The shared billing webhook inbox/worker now dispatches namespaced RENT references into renter PaymentTransaction/PaymentAllocation with safe matching, duplicate provider-transaction protection, UNMATCHED/REVIEW_REQUIRED routing and no silent overpayment. Next add the renter reconciliation queue plus a production bank/provider adapter, then public invoice payment status/VietQR. After that move to messaging/notification operations and user-group/member management.
