@@ -81,6 +81,7 @@ services:
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
       OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:-replace-with-a-separate-long-random-metrics-token}
       DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
+      SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
     command: ["pnpm", "--filter", "@propops/api", "dev"]
     ports:
       - "4000:4000"
@@ -239,6 +240,7 @@ services:
       <<: *worker-environment
       WORKER_ROLE: BILLING_WEBHOOK
       WORKER_ID: docker-billing-webhook-worker
+      SEPAY_ALLOWED_ACCOUNT_NUMBERS: ${SEPAY_ALLOWED_ACCOUNT_NUMBERS:-}
     command: ["pnpm", "--filter", "@propops/worker", "dev"]
     depends_on:
       api:

@@ -173,16 +173,66 @@ export class SaasBillingWebhookInboxService {
       );
     }
 
-    if (
-      existing.raw_body_sha256 !== rawBodySha256 ||
-      existing.signature_status !== input.signatureStatus
-    ) {
+    if (existing.raw_body_sha256 !== rawBodySha256) {
       throw new BillingWebhookConflictError(
         "Provider event id was reused with different webhook content."
       );
     }
 
-    return this.mapEvent(existing);
+    if (
+      existing.signature_status !== "VERIFIED" &&
+      input.signatureStatus === "VERIFIED"
+    ) {
+      const upgraded = await client.query<WebhookEventRow>(
+        `UPDATE saas_billing_webhook_events
+         SET signature_status = 'VERIFIED',
+             processing_status = CASE
+               WHEN payment_id IS NULL THEN 'RECEIVED'
+               ELSE processing_status
+             END,
+             headers = $3::jsonb,
+             last_error_code = NULL,
+             last_error_message = NULL,
+             updated_at = now()
+         WHERE provider = $1
+           AND provider_event_id = $2
+         RETURNING
+           id::text,
+           provider,
+           provider_event_id,
+           signature_status,
+           processing_status,
+           raw_body,
+           raw_body_sha256,
+           headers,
+           received_at,
+           processing_started_at,
+           processing_attempts,
+           processed_at,
+           last_error_code,
+           last_error_message,
+           payment_id::text,
+           normalized_payment_fingerprint`,
+        [
+          provider,
+          providerEventId,
+          JSON.stringify(input.headers ?? {})
+        ]
+      );
+
+      return this.mapEvent(upgraded.rows[0]!);
+    }
+
+    if (
+      existing.signature_status === "VERIFIED" ||
+      existing.signature_status === input.signatureStatus
+    ) {
+      return this.mapEvent(existing);
+    }
+
+    throw new BillingWebhookConflictError(
+      "Provider event id was replayed with an incompatible signature state."
+    );
   }
 
   async claimNext(
