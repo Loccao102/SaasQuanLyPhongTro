@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -19,6 +20,7 @@ import {
   type MeterReadingSource,
   type MeterType
 } from "./metering.service.js";
+import { StaffMeteringService } from "./staff-metering.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -62,7 +64,38 @@ function decimalInput(input: BodyInput, field: string): string | number {
 @Controller("admin/metering")
 @UseGuards(TenantPrincipalGuard)
 export class MeteringController {
-  constructor(private readonly metering: MeteringService) {}
+  constructor(
+    private readonly metering: MeteringService,
+    private readonly staffMetering: StaffMeteringService
+  ) {}
+
+  @Get("progress")
+  async progress(
+    @Req() request: TenantRequest,
+    @Query("readingDate") readingDate: string | undefined
+  ) {
+    if (!readingDate) {
+      throw new BadRequestException("readingDate is required.");
+    }
+    const checklist = await this.staffMetering.checklist(
+      this.principal(request),
+      readingDate
+    );
+    return {
+      organization: checklist.organization,
+      readingDate: checklist.readingDate,
+      summary: checklist.summary,
+      properties: checklist.properties.map((property) => ({
+        id: property.id,
+        code: property.code,
+        name: property.name,
+        roomCount: property.roomCount,
+        completedRoomCount: property.completedRoomCount,
+        pendingRoomCount: property.pendingRoomCount,
+        missingMeterRoomCount: property.missingMeterRoomCount
+      }))
+    };
+  }
 
   @Get("rooms/:roomId/meters")
   listRoomMeters(
