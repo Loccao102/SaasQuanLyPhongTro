@@ -233,6 +233,9 @@ export class CmsService {
       "display_format_presets",
       "dashboard_lease_expiry_days",
       "dashboard_recent_window_hours",
+      "dashboard_trend_months",
+      "dashboard_top_items_limit",
+      "dashboard_lease_expiry_buckets",
       "worker_stale_after_seconds",
       "billing_webhook_processing_timeout_seconds"
     ];
@@ -271,6 +274,22 @@ export class CmsService {
         ? (value as Record<string, unknown>)
         : fallback;
     };
+    const positiveIntegerArraySetting = (
+      key: string,
+      fallback: number[]
+    ) => {
+      const value = settingMap.get(key);
+      if (
+        !Array.isArray(value) ||
+        value.length === 0 ||
+        !value.every(
+          (item) => Number.isInteger(item) && Number(item) > 0
+        )
+      ) {
+        return fallback;
+      }
+      return [...new Set(value.map(Number))].sort((a, b) => a - b);
+    };
 
     const leaseExpiryDays = integerSetting(
       "dashboard_lease_expiry_days",
@@ -280,6 +299,25 @@ export class CmsService {
       "dashboard_recent_window_hours",
       24
     );
+    const trendMonths = Math.min(
+      integerSetting("dashboard_trend_months", 6),
+      24
+    );
+    const topItemsLimit = Math.min(
+      integerSetting("dashboard_top_items_limit", 5),
+      20
+    );
+    const leaseExpiryBuckets = positiveIntegerArraySetting(
+      "dashboard_lease_expiry_buckets",
+      [7, 30, 60]
+    ).slice(0, 3);
+    while (leaseExpiryBuckets.length < 3) {
+      leaseExpiryBuckets.push(
+        leaseExpiryBuckets.length === 0
+          ? 7
+          : leaseExpiryBuckets[leaseExpiryBuckets.length - 1]! + 30
+      );
+    }
     const workerStaleAfterSeconds = integerSetting(
       "worker_stale_after_seconds",
       60
