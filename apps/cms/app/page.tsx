@@ -1058,6 +1058,248 @@ export default function CmsPage() {
                 </article>
               </section>
 
+              <section className="cms-analytics-grid">
+                <article className="cms-panel">
+                  <SectionHeader
+                    title="Hợp đồng theo thời gian hết hạn"
+                    action={
+                      <span className="cms-note">
+                        Lease hiện hành · planned_end_date
+                      </span>
+                    }
+                  />
+                  <div className="dashboard-bars">
+                    {dashboard.assets.leaseExpiryBuckets.map((bucket) => {
+                      const maxCount = Math.max(
+                        1,
+                        ...dashboard.assets.leaseExpiryBuckets.map(
+                          (item) => item.count
+                        )
+                      );
+                      const from = bucket.fromDayExclusive + 1;
+                      const label =
+                        bucket.toDayInclusive === null
+                          ? ">" + bucket.fromDayExclusive + " ngày"
+                          : bucket.fromDayExclusive === 0
+                            ? "≤ " + bucket.toDayInclusive + " ngày"
+                            : from +
+                              "–" +
+                              bucket.toDayInclusive +
+                              " ngày";
+                      return (
+                        <div className="dashboard-bars__row" key={bucket.key}>
+                          <span>{label}</span>
+                          <div className="dashboard-bars__track">
+                            <span
+                              style={{
+                                width:
+                                  Math.round(
+                                    (bucket.count / maxCount) * 100
+                                  ) + "%"
+                              }}
+                            />
+                          </div>
+                          <strong>{dashboardNumber(bucket.count)}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+
+                <article className="cms-panel">
+                  <SectionHeader
+                    title="Phân bổ subscription theo plan"
+                    action={
+                      <span className="cms-note">
+                        Không tính subscription CANCELLED
+                      </span>
+                    }
+                  />
+                  {dashboard.planDistribution.length === 0 ? (
+                    <div className="empty-state">
+                      Chưa có subscription theo plan.
+                    </div>
+                  ) : (
+                    <div className="dashboard-bars">
+                      {dashboard.planDistribution.map((item) => {
+                        const maxCount = Math.max(
+                          1,
+                          ...dashboard.planDistribution.map(
+                            (plan) => plan.subscriptions
+                          )
+                        );
+                        return (
+                          <div
+                            className="dashboard-bars__row"
+                            key={item.planCode}
+                          >
+                            <span>
+                              {item.planName}
+                              <small>{item.planCode}</small>
+                            </span>
+                            <div className="dashboard-bars__track">
+                              <span
+                                style={{
+                                  width:
+                                    Math.round(
+                                      (item.subscriptions / maxCount) * 100
+                                    ) + "%"
+                                }}
+                              />
+                            </div>
+                            <strong>
+                              {dashboardNumber(item.subscriptions)}
+                            </strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </article>
+
+                <article className="cms-panel">
+                  <SectionHeader
+                    title={
+                      "Notification attempts · " +
+                      dashboard.windows.recentHours +
+                      "h"
+                    }
+                    action={
+                      <StatusBadge
+                        tone={
+                          dashboard.automation.notificationAttemptsRecent
+                            .successRatePercent >= 95
+                            ? "success"
+                            : dashboard.automation.notificationAttemptsRecent
+                                  .successRatePercent >= 80
+                              ? "warning"
+                              : "danger"
+                        }
+                      >
+                        {dashboardPercent(
+                          dashboard.automation.notificationAttemptsRecent
+                            .successRatePercent
+                        )}{" "}
+                        SENT
+                      </StatusBadge>
+                    }
+                  />
+                  <div className="dashboard-health-grid">
+                    <div>
+                      <span>Total attempts</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent.total
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Sent</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent.sent
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Transient failure</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent
+                            .transientFailure
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Permanent failure</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent
+                            .permanentFailure
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Manual review</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent
+                            .manualReview
+                        )}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Unknown</span>
+                      <strong>
+                        {dashboardNumber(
+                          dashboard.automation.notificationAttemptsRecent
+                            .unknown
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              {hasPermission("platform.billing.read") ? (
+                <article className="cms-panel">
+                  <SectionHeader
+                    title={
+                      "SaaS payment trend · " +
+                      dashboard.windows.trendMonths +
+                      " tháng"
+                    }
+                    action={
+                      <span className="cms-note">
+                        PaymentTransaction SUCCEEDED · Habi subscription billing
+                      </span>
+                    }
+                  />
+                  {dashboard.commercial.paymentTrend.length === 0 ? (
+                    <div className="empty-state">
+                      Chưa có dữ liệu payment theo tháng.
+                    </div>
+                  ) : (
+                    <div className="dashboard-payment-trend">
+                      {dashboard.commercial.paymentTrend.map((item) => {
+                        const maxAmount = Math.max(
+                          1,
+                          ...dashboard.commercial.paymentTrend.map(
+                            (point) => point.amountVnd
+                          )
+                        );
+                        return (
+                          <div
+                            className="dashboard-payment-trend__row"
+                            key={item.month}
+                          >
+                            <strong>
+                              {item.month.split("-").reverse().join("/")}
+                            </strong>
+                            <div className="dashboard-payment-trend__track">
+                              <span
+                                style={{
+                                  width:
+                                    Math.round(
+                                      (item.amountVnd / maxAmount) * 100
+                                    ) + "%"
+                                }}
+                              />
+                            </div>
+                            <span title={dashboardMoney(item.amountVnd)}>
+                              {dashboardCompactMoney(item.amountVnd)}
+                            </span>
+                            <small>
+                              {dashboardNumber(item.paymentCount)} payment
+                            </small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </article>
+              ) : null}
+
               <section className="cms-grid">
                 <article className="cms-panel">
                   <SectionHeader title="Organizations cần chú ý" />
