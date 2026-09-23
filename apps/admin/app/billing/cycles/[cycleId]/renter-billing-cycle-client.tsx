@@ -201,11 +201,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                   {invoice.status === "ISSUED" ? (
                     <div className="button-row">
                       <a
-                        className={
-                          invoice.remainingVnd > 0
-                            ? "primary-link-button"
-                            : "secondary-link-button"
-                        }
+                        className="secondary-link-button"
                         href={
                           "/billing/invoices/" +
                           invoice.id +
