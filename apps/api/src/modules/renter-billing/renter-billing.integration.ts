@@ -187,6 +187,20 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
       ]
     });
     assert.equal(policy.items.length, 3);
+
+    const ownerPricing = await pricing.listForProperty(principal(), propertyId);
+    assert.equal(ownerPricing.permissions.manage, true);
+    assert.equal(ownerPricing.policies.length, 1);
+
+    const viewer = principal();
+    viewer.role = "VIEWER";
+    viewer.membership = {
+      ...viewer.membership,
+      role: "VIEWER"
+    };
+    const viewerPricing = await pricing.listForProperty(viewer, propertyId);
+    assert.equal(viewerPricing.permissions.manage, false);
+    assert.equal(viewerPricing.policies.length, 1);
     assert.deepEqual(
       await pricing.createPolicy(principal(), {
         id: pricingPolicyId,

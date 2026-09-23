@@ -105,7 +105,7 @@ export function RenterBillingClient() {
       setError(
         actionError instanceof Error
           ? actionError.message
-          : "Không thể sinh rent draft."
+          : "Không thể tính hóa đơn nháp."
       );
     } finally {
       setSaving(false);
@@ -151,7 +151,12 @@ export function RenterBillingClient() {
             Billing thuê phòng tách biệt hoàn toàn với SaaS subscription billing.
           </p>
         </div>
-        <StatusBadge tone="info">INTEGER VND</StatusBadge>
+        <div className="button-row">
+          <a className="secondary-link-button" href="/billing/pricing">
+            Cấu hình biểu giá
+          </a>
+          <StatusBadge tone="info">INTEGER VND</StatusBadge>
+        </div>
       </section>
 
       {error ? (
