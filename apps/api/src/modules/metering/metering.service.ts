@@ -494,11 +494,10 @@ export class MeteringService {
        FROM meter_readings
        WHERE organization_id = $1::uuid
          AND meter_id = $2::uuid
-         AND reading_date > $3::date
-         AND reading_date <= $4::date
-       ORDER BY reading_date DESC, id DESC
+         AND reading_date = $3::date
+       ORDER BY id DESC
        LIMIT 1`,
-      [organizationId, meter.id, periodStart, periodEnd]
+      [organizationId, meter.id, periodEnd]
     );
     const currentRow = current.rows[0];
     if (!currentRow) {
