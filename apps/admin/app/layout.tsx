@@ -3,7 +3,7 @@ import "@propops/ui/styles.css";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "PropOps Admin",
+  title: "Habi Admin",
   description: "Vận hành tài sản, hợp đồng, hóa đơn và dòng tiền."
 };
 
