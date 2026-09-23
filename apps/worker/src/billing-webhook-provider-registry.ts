@@ -1,8 +1,13 @@
 import type { BillingWebhookAdapter } from "./billing-webhook-types.js";
 import { DevJsonBankBillingWebhookAdapter } from "./providers/dev-json-bank-billing-webhook.provider.js";
+import { SePayBillingWebhookAdapter } from "./providers/sepay-billing-webhook.provider.js";
 
 export function loadBillingWebhookAdapter(): BillingWebhookAdapter {
   const provider = process.env.BILLING_WEBHOOK_PROVIDER?.trim();
+
+  if (provider === "SEPAY") {
+    return SePayBillingWebhookAdapter.fromEnvironment();
+  }
 
   if (provider === "DEV_JSON_BANK") {
     if (process.env.NODE_ENV === "production") {
@@ -15,7 +20,7 @@ export function loadBillingWebhookAdapter(): BillingWebhookAdapter {
 
   throw new Error(
     "No billing webhook adapter is configured. " +
-      "Set BILLING_WEBHOOK_PROVIDER to an installed adapter. " +
+      "Set BILLING_WEBHOOK_PROVIDER to SEPAY or another installed adapter. " +
       "DEV_JSON_BANK is available only for local development."
   );
 }

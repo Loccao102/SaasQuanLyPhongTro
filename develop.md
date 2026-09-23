@@ -87,30 +87,32 @@ Later:
 
 ## 2.2 Production payment provider
 
-The provider-neutral payment architecture is implemented, but a real production provider adapter is still required.
+The provider-neutral payment architecture now includes a SePay webhook adapter baseline.
 
-Primary candidate:
+Implemented:
 
-```text
-SePay
-```
+- public `/api/integrations/billing-webhooks/sepay` endpoint;
+- HMAC-SHA256 validation over `timestamp.raw_body`;
+- 5-minute anti-replay timestamp window;
+- exact raw-body capture before async processing;
+- stable SePay transaction `id` as provider event / transaction identity;
+- safe signature-state replay upgrade for identical raw events;
+- worker-side inbound/outbound transaction classification;
+- explicit Vietnam UTC+7 transaction timestamp normalization;
+- integer VND amount validation;
+- configured destination-bank-account allowlist;
+- SaaS payment-reference extraction from SePay `code` or transfer content;
+- provider-neutral payment ingestion/allocation remains unchanged;
+- unit/integration coverage for HMAC, normalization and replay behavior.
 
-Required:
+Still required before production rollout:
 
-- public provider-specific webhook endpoint;
-- production signature/authentication verification;
-- exact raw-body capture;
-- provider event ID extraction;
-- deterministic transaction normalization;
-- provider transaction ID mapping;
-- transaction timestamp mapping;
-- amount mapping;
-- paymentReference extraction;
-- sandbox/test fixtures;
-- provider replay tests;
-- provider outage/degraded behavior;
-- operational documentation;
-- secret rotation.
+- configure a real SePay Test mode webhook with HMAC-SHA256;
+- validate against SePay delivery/replay logs and simulated transactions;
+- configure production bank-account allowlist;
+- secret rotation runbook and deployment secret management;
+- periodic reconciliation against SePay/bank data for missed webhooks;
+- production alerting for invalid signatures, webhook backlog and reconciliation drift.
 
 Rules:
 
@@ -1280,7 +1282,7 @@ The compact Control Plane foundation is substantially complete and the Admin Web
 Current most immediate unfinished product task:
 
 ```text
-Admin Web -> finish lease dependencies, then production notification/payment integrations
+Notification messaging operations + user/member groups
 ```
 
-Property/floor/room management and the first live Lease operational workflow are implemented. Next connect move-out readiness to Metering + renter Billing/Payment + deposit settlement, add Resident reuse/multiple parties and draft editing. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
+Property/floor/room management, live Lease operations, the Playwright Zalo provider baseline and the SePay webhook/payment adapter baseline are implemented. Remaining rental dependencies still include Metering + renter Billing/Payment + deposit settlement and richer Resident/Lease editing. The next planned product slice is messaging/notification operations, followed by user-group/member management.
