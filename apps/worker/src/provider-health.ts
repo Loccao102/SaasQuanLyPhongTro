@@ -3,6 +3,7 @@ import type { NotificationProviderResult } from "./notification-types.js";
 const fatalProviderCodes = new Set([
   "AUTH_REQUIRED",
   "SESSION_EXPIRED",
+  "SESSION_STORAGE_ERROR",
   "CAPTCHA",
   "PROVIDER_UI_BROKEN"
 ]);

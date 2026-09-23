@@ -635,24 +635,33 @@ Avoid rendering thousands of organizations in one page.
 
 ## 5.1 Production Playwright Zalo adapter
 
-The durable notification foundation exists; production Playwright Zalo is still pending.
+The durable notification foundation now has a concrete Playwright Zalo edge adapter baseline.
 
-Required:
+Implemented:
 
-- browser/session lifecycle;
-- encrypted session storage;
-- session rotation;
-- recipient verification;
-- conversation verification;
-- send action;
-- post-send evidence verification;
-- CAPTCHA handling;
-- logout/session-expired detection;
-- provider UI breakage detection;
-- safe UNKNOWN behavior;
-- screenshots/evidence without secrets;
-- concurrency limits;
-- restart recovery.
+- isolated worker-only ZALO_PLAYWRIGHT provider;
+- Playwright pinned to a matching dedicated browser image;
+- encrypted AES-256-GCM browser storage state;
+- exclusive session-file lock to avoid concurrent account use;
+- operator bootstrap command for interactive login/session refresh;
+- authenticated-session / CAPTCHA detection;
+- exact display-name recipient verification before send;
+- post-send message-bubble verification before SENT_CONFIRMED;
+- safe UNKNOWN / MANUAL_REVIEW outcomes;
+- provider auto-pause for auth/session/CAPTCHA/UI-breakage failures;
+- no cookies/session tokens returned to API logs/evidence;
+- selector overrides through deployment environment;
+- persistent Docker session volume for the notification worker.
+
+Still required before calling this production-stable:
+
+- validate/tune selectors against the actual deployed Zalo Web account/UI;
+- session rotation runbook and operational ownership;
+- evidence screenshot policy with explicit PII retention/redaction rules if screenshots are enabled;
+- provider UI regression smoke test against a non-production test account;
+- hard deployment limit of one active worker per Zalo account/session;
+- test real logout, CAPTCHA, network interruption and ambiguous post-send cases;
+- confirm Zalo platform policy/terms for the intended operational use.
 
 Never retry blindly after ambiguous post-send state.
 

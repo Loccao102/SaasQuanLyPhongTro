@@ -8,7 +8,11 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "zalo:bootstrap-session": "tsx src/zalo-session-bootstrap.ts"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
