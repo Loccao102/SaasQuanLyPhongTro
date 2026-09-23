@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -20,6 +20,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [data, setData] = useState<AdminRoomDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +43,42 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     void load();
   }, [load]);
 
+  async function updateRoom(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await adminAssetsApi.updateRoom(roomId, {
+        code: String(form.get("code") ?? ""),
+        name: String(form.get("name") ?? ""),
+        sortOrder: Number(form.get("sortOrder") ?? 0)
+      });
+      await load();
+    } catch (mutation) {
+      setMutationError(
+        mutation instanceof Error ? mutation.message : "Không thể cập nhật phòng."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deactivateRoom() {
+    if (!data) return;
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await adminAssetsApi.deactivateRoom(roomId);
+      window.location.assign("/assets/properties/" + data.property.id);
+    } catch (mutation) {
+      setMutationError(
+        mutation instanceof Error ? mutation.message : "Không thể ngưng phòng."
+      );
+      setSaving(false);
+    }
+  }
+
   return (
     <AdminShell
       title={data ? data.room.code + " · " + data.room.name : "Chi tiết phòng"}
@@ -48,10 +86,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       activeNav="Tài sản"
     >
       {data ? (
-        <a
-          className="back-link"
-          href={"/assets/properties/" + data.property.id}
-        >
+        <a className="back-link" href={"/assets/properties/" + data.property.id}>
           ← {data.property.name}
         </a>
       ) : (
@@ -87,33 +122,42 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
             </StatusBadge>
           </section>
 
+          {mutationError ? (
+            <div className="admin-state admin-state--error">
+              <strong>Không thể lưu thay đổi.</strong>
+              <span>{mutationError}</span>
+            </div>
+          ) : null}
+
+          <section className="panel">
+            <div className="asset-section-heading">
+              <div>
+                <span className="eyebrow">PROPERTY.MANAGE</span>
+                <h2>Thông tin phòng</h2>
+              </div>
+            </div>
+            <form className="asset-form" onSubmit={(event) => void updateRoom(event)}>
+              <label><span>Mã phòng</span><input name="code" defaultValue={data.room.code} required /></label>
+              <label><span>Tên phòng</span><input name="name" defaultValue={data.room.name} required /></label>
+              <label><span>Thứ tự</span><input name="sortOrder" type="number" defaultValue={data.room.sortOrder} /></label>
+              <div className="button-row asset-form__wide">
+                <button className="primary-button" type="submit" disabled={saving}>Lưu phòng</button>
+                {data.room.occupancy === "VACANT" ? (
+                  <button className="danger-button" type="button" disabled={saving} onClick={() => void deactivateRoom()}>
+                    Ngưng phòng
+                  </button>
+                ) : null}
+              </div>
+            </form>
+          </section>
+
           {data.currentLease ? (
             <>
               <section className="metrics-grid">
-                <MetricCard
-                  label="Tiền thuê"
-                  value={money(data.currentLease.baseRentVnd)}
-                  detail="Snapshot trên hợp đồng hiện tại"
-                  tone="info"
-                />
-                <MetricCard
-                  label="Tiền cọc yêu cầu"
-                  value={money(data.currentLease.depositRequiredVnd)}
-                  detail="Snapshot trên hợp đồng hiện tại"
-                  tone="info"
-                />
-                <MetricCard
-                  label="Bắt đầu"
-                  value={data.currentLease.startDate ?? "—"}
-                  detail={data.currentLease.code}
-                  tone="success"
-                />
-                <MetricCard
-                  label="Kết thúc dự kiến"
-                  value={data.currentLease.plannedEndDate ?? "Chưa đặt"}
-                  detail={data.currentLease.status}
-                  tone="warning"
-                />
+                <MetricCard label="Tiền thuê" value={money(data.currentLease.baseRentVnd)} detail="Snapshot trên hợp đồng hiện tại" tone="info" />
+                <MetricCard label="Tiền cọc yêu cầu" value={money(data.currentLease.depositRequiredVnd)} detail="Snapshot trên hợp đồng hiện tại" tone="info" />
+                <MetricCard label="Bắt đầu" value={data.currentLease.startDate ?? "—"} detail={data.currentLease.code} tone="success" />
+                <MetricCard label="Kết thúc dự kiến" value={data.currentLease.plannedEndDate ?? "Chưa đặt"} detail={data.currentLease.status} tone="warning" />
               </section>
 
               <section className="panel">
@@ -122,14 +166,10 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                     <span className="eyebrow">CURRENT LEASE</span>
                     <h2>{data.currentLease.code}</h2>
                   </div>
-                  <a
-                    className="secondary-button secondary-button--link"
-                    href={"/leases/" + data.currentLease.id}
-                  >
+                  <a className="secondary-button secondary-button--link" href={"/leases/" + data.currentLease.id}>
                     Mở hợp đồng
                   </a>
                 </div>
-
                 <div className="detail-grid">
                   <div><span>Lease ID</span><strong>{data.currentLease.id}</strong></div>
                   <div><span>Trạng thái</span><strong>{data.currentLease.status}</strong></div>
@@ -144,8 +184,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 <StatusBadge tone="warning">PHÒNG TRỐNG</StatusBadge>
                 <h2>Phòng chưa có hợp đồng hiện tại</h2>
                 <p>
-                  Room history không bị xoá. Bước tiếp theo sẽ nối workflow tạo
-                  hợp đồng mới với kiểm tra conflict trước khi activate.
+                  Phòng có thể được chỉnh sửa hoặc ngưng hoạt động. Lịch sử không bị xoá.
+                  Bước tiếp theo sẽ nối trực tiếp workflow tạo hợp đồng mới.
                 </p>
                 <a className="secondary-button secondary-button--link" href="/leases">
                   Xem danh sách hợp đồng
