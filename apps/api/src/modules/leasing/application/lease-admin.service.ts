@@ -90,11 +90,11 @@ export interface CreateLeaseDraftInput {
   baseRentVnd: number;
   depositRequiredVnd: number;
   billingDay: number;
-  primaryResident: {
+  primaryResident?: {
     fullName: string;
     phone?: string | null;
     email?: string | null;
-  };
+  } | null;
 }
 
 @Injectable()
@@ -406,10 +406,6 @@ export class LeaseAdminService {
     if (!Number.isInteger(input.billingDay) || input.billingDay < 1 || input.billingDay > 31) {
       throw new ConflictException("billingDay must be between 1 and 31.");
     }
-    const fullName = this.required(input.primaryResident.fullName, "primaryResident.fullName");
-    const phone = this.optionalText(input.primaryResident.phone);
-    const email = this.optionalText(input.primaryResident.email);
-
     return this.db.withTransaction(async (client) => {
       const room = await this.roomContext(
         client,
@@ -475,31 +471,82 @@ export class LeaseAdminService {
         throw new ConflictException("Lease code already exists.");
       }
 
-      const residentIdConflict = await client.query(
-        `SELECT id
+      const residentResult = await client.query<QueryResultRow & {
+        id: string;
+        is_active: boolean;
+      }>(
+        `SELECT id::text, is_active
          FROM residents
          WHERE organization_id = $1::uuid
            AND id = $2::uuid
          LIMIT 1`,
         [principal.organizationId, input.residentId]
       );
-      if ((residentIdConflict.rowCount ?? 0) > 0) {
-        throw new ConflictException("Resident id already exists.");
-      }
+      const existingResident = residentResult.rows[0];
+      let residentReused = false;
 
-      await client.query(
-        `INSERT INTO residents (
-           id, organization_id, full_name, phone, email
-         )
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          input.residentId,
-          principal.organizationId,
-          fullName,
-          phone,
-          email
-        ]
-      );
+      if (existingResident) {
+        if (!existingResident.is_active) {
+          throw new ConflictException("Resident is inactive.");
+        }
+        if (
+          !principal.membership.scopes.some(
+            (scope) => scope.type === "ORGANIZATION"
+          )
+        ) {
+          const residentHistory = await client.query(
+            `SELECT 1
+             FROM lease_residents lr
+             JOIN leases history_lease
+               ON history_lease.organization_id = lr.organization_id
+              AND history_lease.id = lr.lease_id
+             JOIN rooms history_room
+               ON history_room.organization_id = history_lease.organization_id
+              AND history_room.id = history_lease.room_id
+             WHERE lr.organization_id = $1::uuid
+               AND lr.resident_id = $2::uuid
+               AND history_room.property_id = $3::uuid
+             LIMIT 1`,
+            [
+              principal.organizationId,
+              input.residentId,
+              room.property_id
+            ]
+          );
+          if ((residentHistory.rowCount ?? 0) === 0) {
+            throw new ForbiddenException(
+              "Resident is outside the current property scope."
+            );
+          }
+        }
+        residentReused = true;
+      } else {
+        if (!input.primaryResident) {
+          throw new ConflictException(
+            "primaryResident is required when creating a new resident."
+          );
+        }
+        const fullName = this.required(
+          input.primaryResident.fullName,
+          "primaryResident.fullName"
+        );
+        const phone = this.optionalText(input.primaryResident.phone);
+        const email = this.optionalText(input.primaryResident.email);
+
+        await client.query(
+          `INSERT INTO residents (
+             id, organization_id, full_name, phone, email
+           )
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            input.residentId,
+            principal.organizationId,
+            fullName,
+            phone,
+            email
+          ]
+        );
+      }
 
       await client.query(
         `INSERT INTO leases (
@@ -565,6 +612,7 @@ export class LeaseAdminService {
           JSON.stringify({
             roomId: input.roomId,
             residentId: input.residentId,
+            residentReused,
             leaseCode,
             startDate,
             plannedEndDate,

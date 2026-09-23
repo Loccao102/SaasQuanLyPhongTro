@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminLeasesApi,
   type LeaseDetailResponse,
-  type LeaseStatus
+  type LeaseStatus,
+  type ResidentSearchResult
 } from "../../../lib/admin-leases-api";
 
 function statusMeta(status: LeaseStatus) {
@@ -38,6 +39,14 @@ function auditLabel(action: string): string {
       return "Hủy lịch chấm dứt";
     case "LEASE_TERMINATED":
       return "Hoàn tất chấm dứt";
+    case "LEASE_DRAFT_UPDATED":
+      return "Cập nhật bản nháp";
+    case "LEASE_PARTY_ADDED":
+      return "Thêm người vào hợp đồng";
+    case "LEASE_PARTY_REMOVED":
+      return "Xóa người khỏi hợp đồng";
+    case "LEASE_TERMINATION_READINESS_OVERRIDE":
+      return "Cập nhật readiness thủ công";
     default:
       return action;
   }
@@ -53,6 +62,11 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [activationConfirmed, setActivationConfirmed] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [cancelConfirmed, setCancelConfirmed] = useState(false);
+  const [residentQuery, setResidentQuery] = useState("");
+  const [residentResults, setResidentResults] = useState<ResidentSearchResult[]>([]);
+  const [selectedPartyResident, setSelectedPartyResident] =
+    useState<ResidentSearchResult | null>(null);
+  const [residentSearching, setResidentSearching] = useState(false);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -97,6 +111,105 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     } catch (action) {
       setActionError(
         action instanceof Error ? action.message : "Không thể kích hoạt hợp đồng."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.updateDraft(leaseId, {
+        expectedVersion: data.lease.version,
+        leaseCode: String(form.get("leaseCode") ?? ""),
+        startDate: String(form.get("startDate") ?? ""),
+        plannedEndDate: String(form.get("plannedEndDate") ?? "") || null,
+        baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
+        depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
+        billingDay: Number(form.get("billingDay") ?? 1)
+      });
+      setActionSuccess("Đã cập nhật điều khoản bản nháp.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể cập nhật bản nháp."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function searchResidents() {
+    if (!data || residentQuery.trim().length < 2) return;
+    setResidentSearching(true);
+    setActionError(null);
+    try {
+      const result = await adminLeasesApi.searchResidents(
+        data.lease.property.id,
+        residentQuery
+      );
+      setResidentResults(result.residents);
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể tìm resident."
+      );
+    } finally {
+      setResidentSearching(false);
+    }
+  }
+
+  async function addParty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.addDraftParty(leaseId, {
+        residentId: selectedPartyResident?.id ?? crypto.randomUUID(),
+        partyRole: String(form.get("partyRole") ?? "OCCUPANT") as
+          | "CO_TENANT"
+          | "OCCUPANT",
+        resident: selectedPartyResident
+          ? null
+          : {
+              fullName: String(form.get("fullName") ?? ""),
+              phone: String(form.get("phone") ?? "") || null,
+              email: String(form.get("email") ?? "") || null
+            }
+      });
+      setSelectedPartyResident(null);
+      setResidentResults([]);
+      setResidentQuery("");
+      event.currentTarget.reset();
+      setActionSuccess("Đã thêm người vào bản nháp hợp đồng.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể thêm người."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeParty(residentId: string) {
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.removeDraftParty(leaseId, residentId);
+      setActionSuccess("Đã xóa người khỏi bản nháp hợp đồng.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể xóa người."
       );
     } finally {
       setSaving(false);
@@ -212,6 +325,128 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       </section>
 
       {lease.status === "DRAFT" && data.permissions.manage ? (
+        <section className="lease-draft-edit-grid">
+          <article className="panel">
+            <SectionHeader title="Chỉnh điều khoản bản nháp" />
+            <form className="asset-form" onSubmit={(event) => void updateDraft(event)}>
+              <label>
+                <span>Mã hợp đồng</span>
+                <input name="leaseCode" defaultValue={lease.code} required />
+              </label>
+              <label>
+                <span>Ngày bắt đầu</span>
+                <input name="startDate" type="date" defaultValue={lease.startDate} required />
+              </label>
+              <label>
+                <span>Ngày kết thúc dự kiến</span>
+                <input name="plannedEndDate" type="date" defaultValue={lease.plannedEndDate ?? ""} />
+              </label>
+              <label>
+                <span>Tiền phòng / tháng</span>
+                <input name="baseRentVnd" type="number" min="0" step="1" defaultValue={lease.baseRentVnd} required />
+              </label>
+              <label>
+                <span>Tiền cọc yêu cầu</span>
+                <input name="depositRequiredVnd" type="number" min="0" step="1" defaultValue={lease.depositRequiredVnd} required />
+              </label>
+              <label>
+                <span>Ngày chốt</span>
+                <input name="billingDay" type="number" min="1" max="31" defaultValue={lease.billingDay} required />
+              </label>
+              <div className="button-row asset-form__wide">
+                <button className="primary-button" type="submit" disabled={saving}>
+                  Lưu bản nháp
+                </button>
+              </div>
+            </form>
+            <p className="inline-note">
+              Dùng version hiện tại để chống ghi đè khi hai người cùng sửa draft.
+            </p>
+          </article>
+
+          <article className="panel">
+            <SectionHeader title="Thêm người ở / đồng thuê" />
+            <div className="resident-search">
+              <label>
+                <span>Tìm resident cũ</span>
+                <input
+                  value={residentQuery}
+                  onChange={(event) => setResidentQuery(event.target.value)}
+                  placeholder="Tên, điện thoại hoặc email"
+                />
+              </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={residentSearching || residentQuery.trim().length < 2}
+                onClick={() => void searchResidents()}
+              >
+                {residentSearching ? "Đang tìm…" : "Tìm"}
+              </button>
+            </div>
+
+            {residentResults.length > 0 && !selectedPartyResident ? (
+              <div className="resident-search-results">
+                {residentResults.map((resident) => (
+                  <button
+                    className="resident-search-result"
+                    type="button"
+                    key={resident.id}
+                    onClick={() => setSelectedPartyResident(resident)}
+                  >
+                    <strong>{resident.fullName}</strong>
+                    <span>{resident.phone ?? resident.email ?? "Chưa có liên hệ"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <form className="asset-form" onSubmit={(event) => void addParty(event)}>
+              <label>
+                <span>Vai trò</span>
+                <select name="partyRole" defaultValue="OCCUPANT">
+                  <option value="CO_TENANT">Đồng thuê</option>
+                  <option value="OCCUPANT">Người ở</option>
+                </select>
+              </label>
+              {selectedPartyResident ? (
+                <div className="resident-selected asset-form__wide">
+                  <StatusBadge tone="info">REUSE RESIDENT</StatusBadge>
+                  <div>
+                    <strong>{selectedPartyResident.fullName}</strong>
+                    <span>{selectedPartyResident.phone ?? selectedPartyResident.email ?? "Chưa có liên hệ"}</span>
+                  </div>
+                  <button className="secondary-button" type="button" onClick={() => setSelectedPartyResident(null)}>
+                    Đổi người
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label>
+                    <span>Họ tên người mới</span>
+                    <input name="fullName" required />
+                  </label>
+                  <label>
+                    <span>Số điện thoại</span>
+                    <input name="phone" inputMode="tel" />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input name="email" type="email" />
+                  </label>
+                </>
+              )}
+              <div className="button-row asset-form__wide">
+                <button className="primary-button" type="submit" disabled={saving}>
+                  + Thêm vào hợp đồng
+                </button>
+              </div>
+            </form>
+          </article>
+        </section>
+      ) : null}
+
+      {lease.status === "DRAFT" && data.permissions.manage ? (
         <section className="panel review-panel">
           <SectionHeader title="Kích hoạt hợp đồng" />
           <ul className="consequence-list">
@@ -310,9 +545,23 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 <strong>{party.fullName}</strong>
                 <span>{party.phone ?? party.email ?? "Chưa có liên hệ"}</span>
               </div>
-              <StatusBadge tone={party.role === "PRIMARY_TENANT" ? "info" : "neutral"}>
-                {party.role}
-              </StatusBadge>
+              <div className="button-row">
+                <StatusBadge tone={party.role === "PRIMARY_TENANT" ? "info" : "neutral"}>
+                  {party.role}
+                </StatusBadge>
+                {lease.status === "DRAFT" &&
+                data.permissions.manage &&
+                party.role !== "PRIMARY_TENANT" ? (
+                  <button
+                    className="secondary-button secondary-button--compact"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void removeParty(party.residentId)}
+                  >
+                    Xóa
+                  </button>
+                ) : null}
+              </div>
             </div>
           ))
         )}

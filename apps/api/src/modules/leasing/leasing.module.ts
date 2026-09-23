@@ -5,13 +5,15 @@ import { IdentityModule } from "../identity/identity.module.js";
 import { LeaseAdminController } from "./application/lease-admin.controller.js";
 import { LeaseAdminService } from "./application/lease-admin.service.js";
 import { LeaseLifecycleApplicationService } from "./application/lease-lifecycle-application.service.js";
+import { LeaseDraftManagementController } from "./application/lease-draft-management.controller.js";
+import { LeaseDraftManagementService } from "./application/lease-draft-management.service.js";
 import { LeaseTerminationReadinessController } from "./application/lease-termination-readiness.controller.js";
 import { LeaseTerminationReadinessService } from "./application/lease-termination-readiness.service.js";
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
-  controllers: [LeaseAdminController, LeaseTerminationReadinessController],
-  providers: [LeaseLifecycleApplicationService, LeaseAdminService, LeaseTerminationReadinessService],
-  exports: [LeaseLifecycleApplicationService, LeaseAdminService, LeaseTerminationReadinessService]
+  controllers: [LeaseAdminController, LeaseTerminationReadinessController, LeaseDraftManagementController],
+  providers: [LeaseLifecycleApplicationService, LeaseAdminService, LeaseTerminationReadinessService, LeaseDraftManagementService],
+  exports: [LeaseLifecycleApplicationService, LeaseAdminService, LeaseTerminationReadinessService, LeaseDraftManagementService]
 })
 export class LeasingModule {}

@@ -101,15 +101,28 @@ export class LeaseAdminController {
 
   @Post()
   createDraft(@Req() request: TenantRequest, @Body() input: BodyInput) {
-    const primaryResidentRaw = input.primaryResident;
-    if (
-      typeof primaryResidentRaw !== "object" ||
-      primaryResidentRaw === null ||
-      Array.isArray(primaryResidentRaw)
-    ) {
-      throw new BadRequestException("primaryResident is required.");
+    let primaryResident:
+      | {
+          fullName: string;
+          phone?: string | null;
+          email?: string | null;
+        }
+      | null = null;
+
+    if (input.primaryResident !== undefined && input.primaryResident !== null) {
+      if (
+        typeof input.primaryResident !== "object" ||
+        Array.isArray(input.primaryResident)
+      ) {
+        throw new BadRequestException("primaryResident must be an object.");
+      }
+      const raw = input.primaryResident as BodyInput;
+      primaryResident = {
+        fullName: requiredString(raw, "fullName"),
+        phone: optionalString(raw, "phone"),
+        email: optionalString(raw, "email")
+      };
     }
-    const primaryResident = primaryResidentRaw as BodyInput;
 
     return this.admin.createDraft(this.principal(request), {
       leaseId: requiredUuid(input, "leaseId"),
@@ -122,11 +135,7 @@ export class LeaseAdminController {
       baseRentVnd: requiredInteger(input, "baseRentVnd"),
       depositRequiredVnd: requiredInteger(input, "depositRequiredVnd"),
       billingDay: requiredInteger(input, "billingDay"),
-      primaryResident: {
-        fullName: requiredString(primaryResident, "fullName"),
-        phone: optionalString(primaryResident, "phone"),
-        email: optionalString(primaryResident, "email")
-      }
+      primaryResident
     });
   }
 
