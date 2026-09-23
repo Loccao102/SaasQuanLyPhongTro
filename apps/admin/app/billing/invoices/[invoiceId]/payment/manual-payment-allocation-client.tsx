@@ -7,12 +7,12 @@ import {
   type FormEvent
 } from "react";
 import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
-import { AdminShell } from "../../../../components/admin-shell";
+import { AdminShell } from "../../../../../components/admin-shell";
 import {
   renterPaymentsApi,
   type RenterCollectionStatus,
   type RenterPaymentDetailResponse
-} from "../../../../lib/renter-payments-api";
+} from "../../../../../lib/renter-payments-api";
 
 type PendingPayment = {
   transactionId: string;
