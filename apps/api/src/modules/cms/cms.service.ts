@@ -650,6 +650,96 @@ export class CmsService {
          WHERE p.status = 'ACTIVE'
          GROUP BY p.code, p.name
          ORDER BY count(s.id) DESC, p.code`
+      ),
+      this.db.query<
+        QueryResultRow & {
+          within_first: string;
+          second_bucket: string;
+          third_bucket: string;
+          later: string;
+        }
+      >(
+        `SELECT
+           count(*) FILTER (
+             WHERE planned_end_date BETWEEN current_date
+               AND current_date + $1::int
+           )::text AS within_first,
+           count(*) FILTER (
+             WHERE planned_end_date > current_date + $1::int
+               AND planned_end_date <= current_date + $2::int
+           )::text AS second_bucket,
+           count(*) FILTER (
+             WHERE planned_end_date > current_date + $2::int
+               AND planned_end_date <= current_date + $3::int
+           )::text AS third_bucket,
+           count(*) FILTER (
+             WHERE planned_end_date > current_date + $3::int
+           )::text AS later
+         FROM leases
+         WHERE status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+           AND planned_end_date IS NOT NULL
+           AND planned_end_date >= current_date`,
+        [
+          leaseExpiryBuckets[0],
+          leaseExpiryBuckets[1],
+          leaseExpiryBuckets[2]
+        ]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          month_key: string;
+          payment_count: string;
+          amount_vnd: string;
+        }
+      >(
+        `WITH months AS (
+           SELECT generate_series(
+             date_trunc('month', now()) -
+               (($1::int - 1) * interval '1 month'),
+             date_trunc('month', now()),
+             interval '1 month'
+           ) AS month_start
+         )
+         SELECT
+           to_char(month_start, 'YYYY-MM') AS month_key,
+           count(p.id)::text AS payment_count,
+           COALESCE(sum(p.amount_vnd), 0)::text AS amount_vnd
+         FROM months
+         LEFT JOIN saas_subscription_payments p
+           ON p.status = 'SUCCEEDED'
+          AND p.occurred_at >= month_start
+          AND p.occurred_at < month_start + interval '1 month'
+         GROUP BY month_start
+         ORDER BY month_start`,
+        [trendMonths]
+      ),
+      this.db.query<
+        QueryResultRow & {
+          sent: string;
+          transient_failure: string;
+          permanent_failure: string;
+          manual_review: string;
+          unknown: string;
+        }
+      >(
+        `SELECT
+           count(*) FILTER (WHERE outcome = 'SENT')::text AS sent,
+           count(*) FILTER (
+             WHERE outcome = 'TRANSIENT_FAILURE'
+           )::text AS transient_failure,
+           count(*) FILTER (
+             WHERE outcome = 'PERMANENT_FAILURE'
+           )::text AS permanent_failure,
+           count(*) FILTER (
+             WHERE outcome = 'MANUAL_REVIEW'
+           )::text AS manual_review,
+           count(*) FILTER (WHERE outcome = 'UNKNOWN')::text AS unknown
+         FROM notification_attempts
+         WHERE status = 'FINISHED'
+           AND finished_at IS NOT NULL
+           AND finished_at >=
+             now() - ($1::int * interval '1 hour')`,
+        [recentHours]
       )
     ]);
 
