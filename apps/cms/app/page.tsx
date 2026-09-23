@@ -339,22 +339,22 @@ export default function CmsPage() {
       options.notation = candidate.notation;
     }
     if (
+      typeof candidate.minimumFractionDigits === "number" &&
       Number.isInteger(candidate.minimumFractionDigits) &&
-      Number(candidate.minimumFractionDigits) >= 0 &&
-      Number(candidate.minimumFractionDigits) <= 20
+      candidate.minimumFractionDigits >= 0 &&
+      candidate.minimumFractionDigits <= 20
     ) {
-      options.minimumFractionDigits = Number(
-        candidate.minimumFractionDigits
-      );
+      options.minimumFractionDigits =
+        candidate.minimumFractionDigits;
     }
     if (
+      typeof candidate.maximumFractionDigits === "number" &&
       Number.isInteger(candidate.maximumFractionDigits) &&
-      Number(candidate.maximumFractionDigits) >= 0 &&
-      Number(candidate.maximumFractionDigits) <= 20
+      candidate.maximumFractionDigits >= 0 &&
+      candidate.maximumFractionDigits <= 20
     ) {
-      options.maximumFractionDigits = Number(
-        candidate.maximumFractionDigits
-      );
+      options.maximumFractionDigits =
+        candidate.maximumFractionDigits;
     }
     if (typeof candidate.useGrouping === "boolean") {
       options.useGrouping = candidate.useGrouping;
