@@ -12,24 +12,44 @@ const navItems = [
   { label: "Báo cáo", href: "#" }
 ];
 
+function initials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "HA";
+}
+
 export function AdminShell({
   title,
-  eyebrow = "PROP-OPS ADMIN",
+  eyebrow = "HABI ADMIN",
   activeNav,
+  workspaceName = "Workspace hiện tại",
+  workspaceRole,
+  workspaceScope,
+  userName = "Habi User",
   children
 }: {
   title: string;
   eyebrow?: string;
   activeNav: string;
+  workspaceName?: string;
+  workspaceRole?: string;
+  workspaceScope?: string;
+  userName?: string;
   children: ReactNode;
 }) {
   return (
     <div className="admin-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand__mark">P</span>
-          <div><strong>PropOps</strong><span>Rental operations</span></div>
-        </div>
+        <Link className="brand" href="/" aria-label="Habi Admin">
+          <img
+            className="brand__logo"
+            src="/habi-logo.svg"
+            alt="Habi"
+          />
+        </Link>
 
         <nav className="sidebar__nav" aria-label="Điều hướng chính">
           {navItems.map((item) => {
@@ -55,8 +75,11 @@ export function AdminShell({
           <a className="nav-item" href="#"><span className="nav-item__dot" aria-hidden="true" />Cài đặt</a>
           <div className="workspace-card">
             <span>Tổ chức hiện tại</span>
-            <strong>Chuỗi nhà trọ Demo</strong>
-            <small>OWNER · Toàn hệ thống</small>
+            <strong>{workspaceName}</strong>
+            <small>
+              {workspaceRole ?? "—"}
+              {workspaceScope ? " · " + workspaceScope : ""}
+            </small>
           </div>
         </div>
       </aside>
@@ -66,7 +89,13 @@ export function AdminShell({
           <div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></div>
           <div className="topbar__actions">
             <button className="icon-button" aria-label="Thông báo">3</button>
-            <button className="avatar-button" aria-label="Tài khoản Nguyễn A">NA</button>
+            <button
+              className="avatar-button"
+              aria-label={"Tài khoản " + userName}
+              title={userName}
+            >
+              {initials(userName)}
+            </button>
           </div>
         </header>
 
