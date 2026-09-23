@@ -19,7 +19,7 @@ import {
 } from "../lib/staff-metering-api";
 import {
   cacheChecklist,
-  findAnyCachedChecklist,
+  getCachedChecklist,
   listLocalReadings,
   putLocalReading,
   recoverInterruptedSync,
@@ -204,6 +204,8 @@ export function StaffMeterEntryClient() {
   const [notice, setNotice] = useState<string | null>(null);
   const electricityRef = useRef<HTMLInputElement>(null);
   const waterRef = useRef<HTMLInputElement>(null);
+  const syncQueueRef = useRef<() => Promise<void>>(async () => {});
+  const autoSyncSignatureRef = useRef("");
 
   const refreshLocal = useCallback(
     async (organizationId: string, date = readingDate) => {
@@ -224,6 +226,7 @@ export function StaffMeterEntryClient() {
         try {
           loaded = await staffMeteringApi.checklist(date);
           await cacheChecklist(loaded);
+          localStorage.setItem("habi-staff-organization-id", loaded.organization.id);
         } catch (loadError) {
           if (
             loadError instanceof StaffMeteringApiError &&
@@ -235,7 +238,12 @@ export function StaffMeterEntryClient() {
       }
 
       if (!loaded) {
-        loaded = await findAnyCachedChecklist(date);
+        const cachedOrganizationId = localStorage.getItem(
+          "habi-staff-organization-id"
+        );
+        if (cachedOrganizationId) {
+          loaded = await getCachedChecklist(cachedOrganizationId, date);
+        }
       }
 
       if (!loaded) {
@@ -267,10 +275,13 @@ export function StaffMeterEntryClient() {
 
     const handleOnline = () => {
       setOnline(true);
-      setNotice("Đã có mạng. Có thể đồng bộ các bản ghi đang chờ.");
+      autoSyncSignatureRef.current = "";
+      setNotice("Đã có mạng. Hệ thống sẽ thử đồng bộ hàng chờ.");
+      queueMicrotask(() => void syncQueueRef.current());
     };
     const handleOffline = () => {
       setOnline(false);
+      autoSyncSignatureRef.current = "";
       setNotice("Đang offline. Số đã nhập vẫn được giữ trên máy.");
     };
     window.addEventListener("online", handleOnline);
@@ -415,14 +426,24 @@ export function StaffMeterEntryClient() {
   }, [checklist, readingDate, refreshLocal, syncing]);
 
   useEffect(() => {
-    if (!online) return;
-    const hasPending = localReadings.some(
-      (reading) => reading.status === "PENDING_SYNC"
-    );
-    if (hasPending) {
-      void syncQueue();
+    syncQueueRef.current = syncQueue;
+  }, [syncQueue]);
+
+  useEffect(() => {
+    if (!online || syncing) return;
+    const pendingIds = localReadings
+      .filter((reading) => reading.status === "PENDING_SYNC")
+      .map((reading) => reading.id)
+      .sort();
+    const signature = pendingIds.join("|");
+    if (!signature) {
+      autoSyncSignatureRef.current = "";
+      return;
     }
-  }, [online, localReadings, syncQueue]);
+    if (signature === autoSyncSignatureRef.current) return;
+    autoSyncSignatureRef.current = signature;
+    void syncQueue();
+  }, [online, localReadings, syncQueue, syncing]);
 
   async function saveRoom(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -530,6 +551,10 @@ export function StaffMeterEntryClient() {
       updatedAt: new Date().toISOString()
     });
     if (checklist) await refreshLocal(checklist.organization.id);
+    if (online) {
+      autoSyncSignatureRef.current = "";
+      queueMicrotask(() => void syncQueueRef.current());
+    }
   }
 
   async function keepServer(reading: LocalMeterReading) {
