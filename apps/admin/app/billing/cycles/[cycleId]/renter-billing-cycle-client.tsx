@@ -8,6 +8,22 @@ import {
   type RenterBillingDetailResponse
 } from "../../../../lib/renter-billing-api";
 
+function collectionTone(
+  status: "UNPAID" | "PARTIALLY_PAID" | "PAID"
+) {
+  if (status === "PAID") return "success" as const;
+  if (status === "PARTIALLY_PAID") return "warning" as const;
+  return "neutral" as const;
+}
+
+function collectionLabel(
+  status: "UNPAID" | "PARTIALLY_PAID" | "PAID"
+) {
+  if (status === "PAID") return "ĐÃ THANH TOÁN";
+  if (status === "PARTIALLY_PAID") return "THANH TOÁN MỘT PHẦN";
+  return "CHƯA THANH TOÁN";
+}
+
 function reviewReasonLabel(reason: Record<string, unknown>) {
   const code = typeof reason.code === "string" ? reason.code : "UNKNOWN";
   const meterType =
@@ -118,6 +134,11 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                       >
                         {invoice.calculationStatus}
                       </StatusBadge>
+                      {invoice.status === "ISSUED" ? (
+                        <StatusBadge tone={collectionTone(invoice.collectionStatus)}>
+                          {collectionLabel(invoice.collectionStatus)}
+                        </StatusBadge>
+                      ) : null}
                       <StatusBadge
                         tone={invoice.status === "ISSUED" ? "success" : "neutral"}
                       >
@@ -149,12 +170,16 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                       <strong><MoneyDisplay amountVnd={invoice.adjustmentVnd} /></strong>
                     </div>
                     <div>
-                      <span>Nợ trước</span>
-                      <strong><MoneyDisplay amountVnd={invoice.previousBalanceVnd} /></strong>
-                    </div>
-                    <div>
                       <span>Tổng</span>
                       <strong><MoneyDisplay amountVnd={invoice.totalVnd} /></strong>
+                    </div>
+                    <div>
+                      <span>Đã thu</span>
+                      <strong><MoneyDisplay amountVnd={invoice.paidVnd} /></strong>
+                    </div>
+                    <div>
+                      <span>Còn lại</span>
+                      <strong><MoneyDisplay amountVnd={invoice.remainingVnd} /></strong>
                     </div>
                   </div>
 
@@ -172,6 +197,27 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                       </div>
                     ))}
                   </div>
+
+                  {invoice.status === "ISSUED" ? (
+                    <div className="button-row">
+                      <a
+                        className={
+                          invoice.remainingVnd > 0
+                            ? "primary-link-button"
+                            : "secondary-link-button"
+                        }
+                        href={
+                          "/billing/invoices/" +
+                          invoice.id +
+                          "/payment"
+                        }
+                      >
+                        {invoice.remainingVnd > 0
+                          ? "Ghi nhận thanh toán"
+                          : "Xem lịch sử thu tiền"}
+                      </a>
+                    </div>
+                  ) : null}
 
                   {invoice.issuedAt ? (
                     <p className="inline-note">
