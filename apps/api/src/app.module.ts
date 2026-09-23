@@ -7,6 +7,7 @@ import { IntegrationsModule } from "./modules/integrations/integrations.module.j
 import { LeasingModule } from "./modules/leasing/leasing.module.js";
 import { NotificationsModule } from "./modules/notifications/notifications.module.js";
 import { PropertiesModule } from "./modules/properties/properties.module.js";
+import { ReportingModule } from "./modules/reporting/reporting.module.js";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PropertiesModule } from "./modules/properties/properties.module.js";
     CommercialModule,
     IntegrationsModule,
     NotificationsModule,
+    ReportingModule,
     CmsModule
   ]
 })
