@@ -7,6 +7,7 @@ import { AccessControlService } from "../identity/access-control.service.js";
 import type { TenantPrincipal } from "../identity/tenant-principal.js";
 import { MeteringService } from "../metering/metering.service.js";
 import { PricingService } from "../pricing/pricing.service.js";
+import { RenterPaymentsService } from "../renter-payments/renter-payments.service.js";
 import { RenterBillingService } from "./renter-billing.service.js";
 
 const organizationId = "12000000-0000-4000-8000-000000000001";
@@ -44,6 +45,8 @@ function principal(): TenantPrincipal {
 }
 
 async function cleanup(pool: Pool) {
+  await pool.query("DELETE FROM renter_payment_allocations WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM renter_payment_transactions WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM renter_invoice_lines WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM renter_invoices WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM renter_billing_cycles WHERE organization_id = $1", [organizationId]);
@@ -90,6 +93,11 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
     commercialPolicy,
     pricing,
     metering
+  );
+  const payments = new RenterPaymentsService(
+    database,
+    accessControl,
+    commercialPolicy
   );
 
   try {
@@ -370,8 +378,79 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
     );
 
     const detailAfterIssue = await service.detail(principal(), cycleId);
-    assert.equal(detailAfterIssue.invoices[0]?.status, "ISSUED");
-    assert.ok(detailAfterIssue.invoices[0]?.issuedAt);
+    const issuedInvoice = detailAfterIssue.invoices[0]!;
+    assert.equal(issuedInvoice.status, "ISSUED");
+    assert.ok(issuedInvoice.issuedAt);
+    assert.equal(issuedInvoice.paidVnd, 0);
+    assert.equal(issuedInvoice.remainingVnd, 4081750);
+    assert.equal(issuedInvoice.collectionStatus, "UNPAID");
+
+    const firstPaymentInput = {
+      transactionId: "95000000-0000-4000-8000-000000000001",
+      allocationId: "96000000-0000-4000-8000-000000000001",
+      invoiceId: issuedInvoice.id,
+      amountVnd: 1000000,
+      occurredAt: "2026-11-02T03:00:00.000Z",
+      payerName: "Tenant Full Period",
+      note: "Chuyển khoản đợt 1"
+    };
+    const firstPayment = await payments.createManualAllocation(
+      principal(),
+      firstPaymentInput
+    );
+    assert.equal(firstPayment.invoice.paidVnd, 1000000);
+    assert.equal(firstPayment.invoice.remainingVnd, 3081750);
+    assert.equal(firstPayment.invoice.collectionStatus, "PARTIALLY_PAID");
+    assert.equal(firstPayment.allocations.length, 1);
+    assert.deepEqual(
+      await payments.createManualAllocation(principal(), firstPaymentInput),
+      firstPayment
+    );
+
+    await assert.rejects(
+      () =>
+        payments.createManualAllocation(principal(), {
+          transactionId: "95000000-0000-4000-8000-000000000002",
+          allocationId: "96000000-0000-4000-8000-000000000002",
+          invoiceId: issuedInvoice.id,
+          amountVnd: 4000000,
+          occurredAt: "2026-11-03T03:00:00.000Z",
+          payerName: "Tenant Full Period",
+          note: "Overpay should fail"
+        }),
+      /exceeds invoice remaining amount/
+    );
+
+    const secondPayment = await payments.createManualAllocation(principal(), {
+      transactionId: "95000000-0000-4000-8000-000000000003",
+      allocationId: "96000000-0000-4000-8000-000000000003",
+      invoiceId: issuedInvoice.id,
+      amountVnd: 3081750,
+      occurredAt: "2026-11-04T03:00:00.000Z",
+      payerName: "Tenant Full Period",
+      note: "Thanh toán phần còn lại"
+    });
+    assert.equal(secondPayment.invoice.paidVnd, 4081750);
+    assert.equal(secondPayment.invoice.remainingVnd, 0);
+    assert.equal(secondPayment.invoice.collectionStatus, "PAID");
+    assert.equal(secondPayment.allocations.length, 2);
+
+    const paymentDetail = await payments.detail(principal(), issuedInvoice.id);
+    assert.equal(paymentDetail.permissions.reconcile, true);
+    assert.equal(paymentDetail.invoice.collectionStatus, "PAID");
+    assert.equal(paymentDetail.allocations.length, 2);
+
+    await assert.rejects(
+      () =>
+        payments.createManualAllocation(principal(), {
+          transactionId: "95000000-0000-4000-8000-000000000004",
+          allocationId: "96000000-0000-4000-8000-000000000004",
+          invoiceId: issuedInvoice.id,
+          amountVnd: 1,
+          occurredAt: "2026-11-05T03:00:00.000Z"
+        }),
+      /already fully paid/
+    );
 
     await metering.addReading(principal(), electricityMeterId, {
       id: "94000000-0000-4000-8000-000000000005",
@@ -439,7 +518,8 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
       "METER_READING_RECORDED",
       "RENTER_BILLING_CYCLE_CREATED",
       "RENTER_RENT_DRAFTS_GENERATED",
-      "RENTER_BILLING_CYCLE_FINALIZED"
+      "RENTER_BILLING_CYCLE_FINALIZED",
+      "RENTER_PAYMENT_MANUALLY_ALLOCATED"
     ]) {
       assert.ok(
         audits.rows.some((row) => row.action === action),
