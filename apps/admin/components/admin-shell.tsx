@@ -6,7 +6,7 @@ const navItems = [
   { label: "Tài sản", href: "/assets" },
   { label: "Hợp đồng", href: "/leases" },
   { label: "Chốt số", href: "#" },
-  { label: "Hóa đơn", href: "#" },
+  { label: "Hóa đơn", href: "/billing" },
   { label: "Thu tiền", href: "#" },
   { label: "Thông báo", href: "#" },
   { label: "Báo cáo", href: "#" }

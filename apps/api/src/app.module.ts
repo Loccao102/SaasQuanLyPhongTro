@@ -8,6 +8,7 @@ import { LeasingModule } from "./modules/leasing/leasing.module.js";
 import { NotificationsModule } from "./modules/notifications/notifications.module.js";
 import { ObservabilityModule } from "./modules/observability/observability.module.js";
 import { PropertiesModule } from "./modules/properties/properties.module.js";
+import { RenterBillingModule } from "./modules/renter-billing/renter-billing.module.js";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PropertiesModule } from "./modules/properties/properties.module.js";
     IdentityModule,
     PropertiesModule,
     LeasingModule,
+    RenterBillingModule,
     CommercialModule,
     IntegrationsModule,
     NotificationsModule,

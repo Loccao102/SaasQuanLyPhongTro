@@ -401,11 +401,24 @@ SaaS subscription invoice != renter/room invoice
 
 SaaS subscription billing is already implemented substantially.
 
-The actual rental invoice domain still needs full product implementation:
+The renter billing foundation now implements:
 
-- billing cycle close;
-- rent charge;
+- property-scoped billing cycle create/list/detail;
+- OPEN -> FINALIZED cycle lifecycle;
+- idempotent rent-draft generation per cycle/lease;
+- full-period base-rent snapshots from Lease;
+- DRAFT -> ISSUED renter invoice transition;
+- immutable issued invoice/line snapshot direction;
+- integer VND totals;
+- billing.read / billing.manage scope enforcement;
+- audit for cycle creation, rent draft generation and finalization;
+- safe blocking of partial-period leases until proration/manual adjustment policy exists;
+- Admin billing cycle + invoice detail UI.
+
+Still required for the full rental invoice domain:
+
 - electricity usage;
+- water usage;
 - water usage;
 - service fees;
 - configurable pricing policies;
@@ -1283,4 +1296,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are now implemented. Next replace manual readiness with module integrations and continue rental billing/payment work. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing cycle + rent-only invoice snapshot foundation is now the active slice. Next connect Metering/service pricing into DRAFT invoice lines, then tenant payment allocation and payment provider integration. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
