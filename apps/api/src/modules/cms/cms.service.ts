@@ -750,6 +750,8 @@ export class CmsService {
     const workers = workerStats.rows[0]!;
     const webhooks = webhookStats.rows[0]!;
     const platform = platformStats.rows[0]!;
+    const leaseExpiries = leaseExpiryStats.rows[0]!;
+    const notificationAttempts = notificationAttemptStats.rows[0]!;
 
     const activeRooms = Number(assets.active_rooms ?? 0);
     const occupiedRooms = Number(assets.occupied_rooms ?? 0);
@@ -766,6 +768,20 @@ export class CmsService {
       Number(commercial.past_due ?? 0) +
       Number(commercial.grace_period ?? 0) +
       Number(commercial.suspended ?? 0);
+    const notificationAttemptTotalRecent =
+      Number(notificationAttempts.sent ?? 0) +
+      Number(notificationAttempts.transient_failure ?? 0) +
+      Number(notificationAttempts.permanent_failure ?? 0) +
+      Number(notificationAttempts.manual_review ?? 0) +
+      Number(notificationAttempts.unknown ?? 0);
+    const notificationAttemptSuccessRatePercentRecent =
+      notificationAttemptTotalRecent === 0
+        ? 0
+        : Math.round(
+            (Number(notificationAttempts.sent ?? 0) /
+              notificationAttemptTotalRecent) *
+              1000
+          ) / 10;
 
     const branding = {
       productName: stringSetting("brand_product_name", "Habi"),
@@ -812,6 +828,9 @@ export class CmsService {
       windows: {
         leaseExpiryDays,
         recentHours,
+        trendMonths,
+        topItemsLimit,
+        leaseExpiryBuckets,
         workerStaleAfterSeconds,
         webhookStaleAfterSeconds
       },
@@ -832,7 +851,33 @@ export class CmsService {
         terminationScheduledLeases: Number(
           assets.termination_scheduled_leases ?? 0
         ),
-        expiringLeases: Number(assets.expiring_leases ?? 0)
+        expiringLeases: Number(assets.expiring_leases ?? 0),
+        leaseExpiryBuckets: [
+          {
+            key: "within_first",
+            fromDayExclusive: 0,
+            toDayInclusive: leaseExpiryBuckets[0],
+            count: Number(leaseExpiries.within_first ?? 0)
+          },
+          {
+            key: "second_bucket",
+            fromDayExclusive: leaseExpiryBuckets[0],
+            toDayInclusive: leaseExpiryBuckets[1],
+            count: Number(leaseExpiries.second_bucket ?? 0)
+          },
+          {
+            key: "third_bucket",
+            fromDayExclusive: leaseExpiryBuckets[1],
+            toDayInclusive: leaseExpiryBuckets[2],
+            count: Number(leaseExpiries.third_bucket ?? 0)
+          },
+          {
+            key: "later",
+            fromDayExclusive: leaseExpiryBuckets[2],
+            toDayInclusive: null,
+            count: Number(leaseExpiries.later ?? 0)
+          }
+        ]
       },
       commercial: {
         trialingSubscriptions: Number(commercial.trialing ?? 0),
@@ -871,6 +916,13 @@ export class CmsService {
         successfulPaymentVndRecent: billingReadable
           ? Number(commercial.successful_payment_vnd ?? 0)
           : null,
+        paymentTrend: billingReadable
+          ? paymentTrend.rows.map((row) => ({
+              month: row.month_key,
+              paymentCount: Number(row.payment_count ?? 0),
+              amountVnd: Number(row.amount_vnd ?? 0)
+            }))
+          : [],
         activePlans: Number(commercial.active_plans ?? 0)
       },
       automation: {
@@ -897,7 +949,23 @@ export class CmsService {
         ),
         webhookProcessedRecent: Number(
           webhooks.processed_recent ?? 0
-        )
+        ),
+        notificationAttemptsRecent: {
+          total: notificationAttemptTotalRecent,
+          sent: Number(notificationAttempts.sent ?? 0),
+          transientFailure: Number(
+            notificationAttempts.transient_failure ?? 0
+          ),
+          permanentFailure: Number(
+            notificationAttempts.permanent_failure ?? 0
+          ),
+          manualReview: Number(
+            notificationAttempts.manual_review ?? 0
+          ),
+          unknown: Number(notificationAttempts.unknown ?? 0),
+          successRatePercent:
+            notificationAttemptSuccessRatePercentRecent
+        }
       },
       platform: {
         settingCount: Number(platform.settings ?? 0),
