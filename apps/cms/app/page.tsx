@@ -315,19 +315,92 @@ export default function CmsPage() {
     (org) => org.roomLimit !== null && org.rooms > org.roomLimit
   ).length;
 
+  const dashboardNumberPreset = (
+    name: string,
+    fallback: Intl.NumberFormatOptions
+  ): Intl.NumberFormatOptions => {
+    const raw = dashboard?.display.presets[name];
+    if (
+      typeof raw !== "object" ||
+      raw === null ||
+      Array.isArray(raw)
+    ) {
+      return fallback;
+    }
+
+    const candidate = raw as Record<string, unknown>;
+    const options: Intl.NumberFormatOptions = { ...fallback };
+    if (
+      candidate.notation === "standard" ||
+      candidate.notation === "scientific" ||
+      candidate.notation === "engineering" ||
+      candidate.notation === "compact"
+    ) {
+      options.notation = candidate.notation;
+    }
+    if (
+      Number.isInteger(candidate.minimumFractionDigits) &&
+      Number(candidate.minimumFractionDigits) >= 0 &&
+      Number(candidate.minimumFractionDigits) <= 20
+    ) {
+      options.minimumFractionDigits = Number(
+        candidate.minimumFractionDigits
+      );
+    }
+    if (
+      Number.isInteger(candidate.maximumFractionDigits) &&
+      Number(candidate.maximumFractionDigits) >= 0 &&
+      Number(candidate.maximumFractionDigits) <= 20
+    ) {
+      options.maximumFractionDigits = Number(
+        candidate.maximumFractionDigits
+      );
+    }
+    if (typeof candidate.useGrouping === "boolean") {
+      options.useGrouping = candidate.useGrouping;
+    }
+    return options;
+  };
   const dashboardNumber = (value: number) =>
-    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN").format(value);
+    new Intl.NumberFormat(
+      dashboard?.display.locale ?? "vi-VN",
+      dashboardNumberPreset("integer", {
+        maximumFractionDigits: 0
+      })
+    ).format(value);
+  const dashboardCompactNumber = (value: number) =>
+    new Intl.NumberFormat(
+      dashboard?.display.locale ?? "vi-VN",
+      dashboardNumberPreset("compactInteger", {
+        notation: "compact",
+        maximumFractionDigits: 1
+      })
+    ).format(value);
   const dashboardMoney = (value: number) =>
     new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN", {
+      ...dashboardNumberPreset("money", {
+        maximumFractionDigits: 0
+      }),
       style: "currency",
-      currency: dashboard?.display.currencyCode ?? "VND",
-      maximumFractionDigits: 0
+      currency: dashboard?.display.currencyCode ?? "VND"
+    }).format(value);
+  const dashboardCompactMoney = (value: number) =>
+    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN", {
+      ...dashboardNumberPreset("moneyCompact", {
+        notation: "compact",
+        maximumFractionDigits: 1
+      }),
+      style: "currency",
+      currency: dashboard?.display.currencyCode ?? "VND"
     }).format(value);
   const dashboardPercent = (value: number) =>
-    new Intl.NumberFormat(dashboard?.display.locale ?? "vi-VN", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 1
-    }).format(value) + "%";
+    new Intl.NumberFormat(
+      dashboard?.display.locale ?? "vi-VN",
+      dashboardNumberPreset("percent", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1
+      })
+    ).format(value) + "%";
   const palette = dashboard?.branding.palette ?? {};
   const paletteValue = (key: string, fallback: string) =>
     typeof palette[key] === "string" ? (palette[key] as string) : fallback;
