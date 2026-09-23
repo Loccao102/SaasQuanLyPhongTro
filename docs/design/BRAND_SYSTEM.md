@@ -79,6 +79,32 @@ display_datetime_format dd/MM/yyyy HH:mm
 display_format_presets  JSON
 ```
 
+Default reusable presets include:
+
+```text
+money
+moneyCompact
+integer
+compactInteger
+decimal
+percent
+date
+dateTime
+monthYear
+isoDate
+isoDateTime
+```
+
+Dashboard behavior also has database-backed defaults:
+
+```text
+dashboard_lease_expiry_days
+dashboard_recent_window_hours
+dashboard_trend_months
+dashboard_top_items_limit
+dashboard_lease_expiry_buckets
+```
+
 Dashboards, reports and future customer-facing surfaces should consume these settings instead of inventing separate formatting conventions.
 
 ## Surface naming
