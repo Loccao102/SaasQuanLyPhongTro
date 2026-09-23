@@ -40,6 +40,10 @@ function itemUnit(itemType: PricingItemType) {
       return "/ kWh";
     case "WATER_PER_M3":
       return "/ m³";
+    case "INTERNET":
+    case "PARKING":
+    case "TRASH":
+      return "/ tháng";
     default:
       return "/ đơn vị";
   }
