@@ -1102,6 +1102,21 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
        SET value = '14'::jsonb
        WHERE key = 'dashboard_lease_expiry_days'`
     );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '4'::jsonb
+       WHERE key = 'dashboard_trend_months'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '3'::jsonb
+       WHERE key = 'dashboard_top_items_limit'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '[5,15,45]'::jsonb
+       WHERE key = 'dashboard_lease_expiry_buckets'`
+    );
 
     const dashboard = await service.getDashboard(principal);
 
@@ -1111,6 +1126,31 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
     assert.equal(dashboard.display.currencyCode, "VND");
     assert.equal(dashboard.windows.leaseExpiryDays, 14);
     assert.equal(dashboard.windows.recentHours, 24);
+    assert.equal(dashboard.windows.trendMonths, 4);
+    assert.equal(dashboard.windows.topItemsLimit, 3);
+    assert.deepEqual(dashboard.windows.leaseExpiryBuckets, [5, 15, 45]);
+    assert.equal(dashboard.assets.leaseExpiryBuckets.length, 4);
+    assert.equal(dashboard.commercial.paymentTrend.length, 4);
+    assert.ok(
+      dashboard.commercial.paymentTrend.every(
+        (item) =>
+          /^\d{4}-\d{2}$/.test(item.month) &&
+          item.paymentCount >= 0 &&
+          item.amountVnd >= 0
+      )
+    );
+    assert.ok(
+      dashboard.automation.notificationAttemptsRecent.total >= 0
+    );
+    assert.ok(
+      dashboard.automation.notificationAttemptsRecent.successRatePercent >= 0
+    );
+    assert.ok(
+      dashboard.display.presets.compactInteger !== undefined
+    );
+    assert.ok(
+      dashboard.display.presets.moneyCompact !== undefined
+    );
     assert.ok(dashboard.organizations.total >= 0);
     assert.ok(dashboard.assets.activeRooms >= 0);
     assert.ok(dashboard.assets.occupiedRooms >= 0);
@@ -1130,6 +1170,21 @@ test("CMS dashboard reads branding and display formats from DB settings", async 
       `UPDATE system_settings
        SET value = '30'::jsonb
        WHERE key = 'dashboard_lease_expiry_days'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '6'::jsonb
+       WHERE key = 'dashboard_trend_months'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '5'::jsonb
+       WHERE key = 'dashboard_top_items_limit'`
+    );
+    await fixturePool.query(
+      `UPDATE system_settings
+       SET value = '[7,30,60]'::jsonb
+       WHERE key = 'dashboard_lease_expiry_buckets'`
     );
     await database.onModuleDestroy();
     await fixturePool.end();
