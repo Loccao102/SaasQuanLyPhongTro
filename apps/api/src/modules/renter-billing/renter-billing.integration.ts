@@ -5,6 +5,8 @@ import { CommercialPolicyService } from "../commercial/application/commercial-po
 import { DatabaseService } from "../database/database.service.js";
 import { AccessControlService } from "../identity/access-control.service.js";
 import type { TenantPrincipal } from "../identity/tenant-principal.js";
+import { MeteringService } from "../metering/metering.service.js";
+import { PricingService } from "../pricing/pricing.service.js";
 import { RenterBillingService } from "./renter-billing.service.js";
 
 const organizationId = "12000000-0000-4000-8000-000000000001";
@@ -18,6 +20,12 @@ const residentId = "62000000-0000-4000-8000-000000000001";
 const residentId2 = "62000000-0000-4000-8000-000000000002";
 const cycleId = "72000000-0000-4000-8000-000000000001";
 const cycleId2 = "72000000-0000-4000-8000-000000000002";
+const pricingPolicyId = "91000000-0000-4000-8000-000000000001";
+const electricityItemId = "92000000-0000-4000-8000-000000000001";
+const waterItemId = "92000000-0000-4000-8000-000000000002";
+const internetItemId = "92000000-0000-4000-8000-000000000003";
+const electricityMeterId = "93000000-0000-4000-8000-000000000001";
+const waterMeterId = "93000000-0000-4000-8000-000000000002";
 
 function principal(): TenantPrincipal {
   return {
@@ -39,6 +47,10 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM renter_invoice_lines WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM renter_invoices WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM renter_billing_cycles WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM meter_readings WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM meters WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM pricing_policy_items WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM pricing_policies WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_command_receipts WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_terminations WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_residents WHERE organization_id = $1", [organizationId]);
@@ -54,16 +66,30 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
 }
 
-test("renter billing snapshots full-period rent and blocks partial-period finalization", async () => {
+test("renter billing snapshots rent, utilities and services and blocks incomplete or partial-period invoices", async () => {
   const connectionString = process.env.DATABASE_URL;
   assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
 
   const fixturePool = new Pool({ connectionString });
   const database = new DatabaseService();
+  const accessControl = new AccessControlService();
+  const commercialPolicy = new CommercialPolicyService();
+  const pricing = new PricingService(
+    database,
+    accessControl,
+    commercialPolicy
+  );
+  const metering = new MeteringService(
+    database,
+    accessControl,
+    commercialPolicy
+  );
   const service = new RenterBillingService(
     database,
-    new AccessControlService(),
-    new CommercialPolicyService()
+    accessControl,
+    commercialPolicy,
+    pricing,
+    metering
   );
 
   try {
@@ -129,6 +155,86 @@ test("renter billing snapshots full-period rent and blocks partial-period finali
       [organizationId, leaseId, residentId]
     );
 
+    const policy = await pricing.createPolicy(principal(), {
+      id: pricingPolicyId,
+      propertyId,
+      name: "Biểu giá cuối 2026",
+      effectiveFrom: "2026-10-01",
+      effectiveTo: "2026-11-30",
+      items: [
+        {
+          id: electricityItemId,
+          itemType: "ELECTRICITY_PER_KWH",
+          description: "Tiền điện",
+          unitPriceVnd: 3500,
+          sortOrder: 20
+        },
+        {
+          id: waterItemId,
+          itemType: "WATER_PER_M3",
+          description: "Tiền nước",
+          unitPriceVnd: 15000,
+          sortOrder: 30
+        },
+        {
+          id: internetItemId,
+          itemType: "INTERNET",
+          description: "Internet",
+          unitPriceVnd: 100000,
+          fixedQuantity: 1,
+          sortOrder: 40
+        }
+      ]
+    });
+    assert.equal(policy.items.length, 3);
+    assert.deepEqual(
+      await pricing.createPolicy(principal(), {
+        id: pricingPolicyId,
+        propertyId,
+        name: "Biểu giá cuối 2026",
+        effectiveFrom: "2026-10-01",
+        effectiveTo: "2026-11-30",
+        items: [
+          {
+            id: electricityItemId,
+            itemType: "ELECTRICITY_PER_KWH",
+            description: "Tiền điện",
+            unitPriceVnd: 3500,
+            sortOrder: 20
+          },
+          {
+            id: waterItemId,
+            itemType: "WATER_PER_M3",
+            description: "Tiền nước",
+            unitPriceVnd: 15000,
+            sortOrder: 30
+          },
+          {
+            id: internetItemId,
+            itemType: "INTERNET",
+            description: "Internet",
+            unitPriceVnd: 100000,
+            fixedQuantity: 1,
+            sortOrder: 40
+          }
+        ]
+      }),
+      policy
+    );
+
+    await metering.createMeter(principal(), {
+      id: electricityMeterId,
+      roomId,
+      meterType: "ELECTRICITY",
+      label: "Điện phòng 101"
+    });
+    await metering.createMeter(principal(), {
+      id: waterMeterId,
+      roomId,
+      meterType: "WATER",
+      label: "Nước phòng 101"
+    });
+
     const created = await service.createCycle(principal(), {
       id: cycleId,
       propertyId,
@@ -147,33 +253,102 @@ test("renter billing snapshots full-period rent and blocks partial-period finali
     });
     assert.deepEqual(retry, created);
 
+    const incomplete = await service.generateRentDrafts(principal(), cycleId);
+    assert.deepEqual(incomplete, {
+      cycleId,
+      created: 1,
+      refreshed: 0,
+      eligibleLeaseCount: 1,
+      partialLeaseCount: 0,
+      reviewRequiredInvoiceCount: 1,
+      requiresReview: true
+    });
+    await assert.rejects(
+      () => service.finalizeCycle(principal(), cycleId),
+      /pricing or meter review/
+    );
+
+    const electricityStart = await metering.addReading(
+      principal(),
+      electricityMeterId,
+      {
+        id: "94000000-0000-4000-8000-000000000001",
+        readingDate: "2026-10-01",
+        readingValue: "1000.000"
+      }
+    );
+    assert.deepEqual(
+      await metering.addReading(principal(), electricityMeterId, {
+        id: "94000000-0000-4000-8000-000000000001",
+        readingDate: "2026-10-01",
+        readingValue: "1000.000"
+      }),
+      electricityStart
+    );
+    await metering.addReading(principal(), electricityMeterId, {
+      id: "94000000-0000-4000-8000-000000000002",
+      readingDate: "2026-10-31",
+      readingValue: "1120.500"
+    });
+    await metering.addReading(principal(), waterMeterId, {
+      id: "94000000-0000-4000-8000-000000000003",
+      readingDate: "2026-10-01",
+      readingValue: "50.000"
+    });
+    await metering.addReading(principal(), waterMeterId, {
+      id: "94000000-0000-4000-8000-000000000004",
+      readingDate: "2026-10-31",
+      readingValue: "54.000"
+    });
+
     const generated = await service.generateRentDrafts(principal(), cycleId);
     assert.deepEqual(generated, {
       cycleId,
-      created: 1,
+      created: 0,
+      refreshed: 1,
       eligibleLeaseCount: 1,
       partialLeaseCount: 0,
+      reviewRequiredInvoiceCount: 0,
       requiresReview: false
     });
 
-    const generatedRetry = await service.generateRentDrafts(principal(), cycleId);
-    assert.equal(generatedRetry.created, 0);
-    assert.equal(generatedRetry.partialLeaseCount, 0);
-
     const detailBeforeIssue = await service.detail(principal(), cycleId);
     assert.equal(detailBeforeIssue.invoices.length, 1);
-    assert.equal(detailBeforeIssue.invoices[0]?.status, "DRAFT");
-    assert.equal(detailBeforeIssue.invoices[0]?.totalVnd, 3500000);
-    assert.equal(detailBeforeIssue.invoices[0]?.lines.length, 1);
-    assert.equal(detailBeforeIssue.invoices[0]?.lines[0]?.type, "RENT");
-    assert.equal(detailBeforeIssue.invoices[0]?.lines[0]?.amountVnd, 3500000);
+    const octoberInvoice = detailBeforeIssue.invoices[0]!;
+    assert.equal(octoberInvoice.status, "DRAFT");
+    assert.equal(octoberInvoice.calculationStatus, "READY");
+    assert.deepEqual(octoberInvoice.reviewReasons, []);
+    assert.ok(octoberInvoice.calculatedAt);
+    assert.equal(octoberInvoice.totalVnd, 4081750);
+    assert.equal(octoberInvoice.lines.length, 4);
+    assert.deepEqual(
+      octoberInvoice.lines.map((line) => [line.type, line.amountVnd]),
+      [
+        ["RENT", 3500000],
+        ["ELECTRICITY", 421750],
+        ["WATER", 60000],
+        ["SERVICE", 100000]
+      ]
+    );
+    assert.equal(octoberInvoice.lines[1]?.quantity, "120.500");
+    assert.equal(octoberInvoice.lines[2]?.quantity, "4.000");
+
+    const generatedRetry = await service.generateRentDrafts(
+      principal(),
+      cycleId
+    );
+    assert.equal(generatedRetry.created, 0);
+    assert.equal(generatedRetry.refreshed, 1);
+    const detailAfterRetry = await service.detail(principal(), cycleId);
+    assert.equal(detailAfterRetry.invoices[0]?.lines.length, 4);
+    assert.equal(detailAfterRetry.invoices[0]?.totalVnd, 4081750);
 
     const finalized = await service.finalizeCycle(principal(), cycleId);
     assert.deepEqual(finalized, {
       cycleId,
       status: "FINALIZED",
       invoiceCount: 1,
-      totalVnd: 3500000
+      totalVnd: 4081750
     });
     assert.deepEqual(
       await service.finalizeCycle(principal(), cycleId),
@@ -183,6 +358,17 @@ test("renter billing snapshots full-period rent and blocks partial-period finali
     const detailAfterIssue = await service.detail(principal(), cycleId);
     assert.equal(detailAfterIssue.invoices[0]?.status, "ISSUED");
     assert.ok(detailAfterIssue.invoices[0]?.issuedAt);
+
+    await metering.addReading(principal(), electricityMeterId, {
+      id: "94000000-0000-4000-8000-000000000005",
+      readingDate: "2026-11-30",
+      readingValue: "1200.500"
+    });
+    await metering.addReading(principal(), waterMeterId, {
+      id: "94000000-0000-4000-8000-000000000006",
+      readingDate: "2026-11-30",
+      readingValue: "59.000"
+    });
 
     await fixturePool.query(
       `INSERT INTO leases (
@@ -215,6 +401,7 @@ test("renter billing snapshots full-period rent and blocks partial-period finali
     assert.equal(november.created, 1);
     assert.equal(november.eligibleLeaseCount, 1);
     assert.equal(november.partialLeaseCount, 1);
+    assert.equal(november.reviewRequiredInvoiceCount, 0);
     assert.equal(november.requiresReview, true);
 
     await assert.rejects(
@@ -229,19 +416,22 @@ test("renter billing snapshots full-period rent and blocks partial-period finali
       `SELECT action
        FROM audit_events
        WHERE organization_id = $1
-         AND resource_type = 'RENTER_BILLING_CYCLE'
        ORDER BY occurred_at, id`,
       [organizationId]
     );
-    assert.ok(
-      audits.rows.some((row) => row.action === "RENTER_BILLING_CYCLE_CREATED")
-    );
-    assert.ok(
-      audits.rows.some((row) => row.action === "RENTER_RENT_DRAFTS_GENERATED")
-    );
-    assert.ok(
-      audits.rows.some((row) => row.action === "RENTER_BILLING_CYCLE_FINALIZED")
-    );
+    for (const action of [
+      "PRICING_POLICY_CREATED",
+      "METER_CREATED",
+      "METER_READING_RECORDED",
+      "RENTER_BILLING_CYCLE_CREATED",
+      "RENTER_RENT_DRAFTS_GENERATED",
+      "RENTER_BILLING_CYCLE_FINALIZED"
+    ]) {
+      assert.ok(
+        audits.rows.some((row) => row.action === action),
+        "expected audit action " + action
+      );
+    }
   } finally {
     await database.onModuleDestroy();
     await cleanup(fixturePool);

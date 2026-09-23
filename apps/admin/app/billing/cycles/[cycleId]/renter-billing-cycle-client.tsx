@@ -8,6 +8,29 @@ import {
   type RenterBillingDetailResponse
 } from "../../../../lib/renter-billing-api";
 
+function reviewReasonLabel(reason: Record<string, unknown>) {
+  const code = typeof reason.code === "string" ? reason.code : "UNKNOWN";
+  const meterType =
+    reason.meterType === "ELECTRICITY"
+      ? "điện"
+      : reason.meterType === "WATER"
+        ? "nước"
+        : "đồng hồ";
+
+  switch (code) {
+    case "MISSING_PRICING_POLICY":
+      return "Chưa có biểu giá bao phủ toàn bộ kỳ hóa đơn.";
+    case "MISSING_METER":
+      return "Phòng chưa có đồng hồ " + meterType + " đang hoạt động.";
+    case "MISSING_PREVIOUS_READING":
+      return "Thiếu chỉ số đầu kỳ của " + meterType + ".";
+    case "MISSING_CURRENT_READING":
+      return "Thiếu chỉ số cuối kỳ của " + meterType + ".";
+    default:
+      return "Dữ liệu tính tiền cần được kiểm tra lại (" + code + ").";
+  }
+}
+
 export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [data, setData] = useState<RenterBillingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,7 +92,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           {data.invoices.length === 0 ? (
             <div className="admin-state">
               <strong>Chưa có invoice draft.</strong>
-              <span>Quay lại danh sách và chạy “Sinh rent draft”.</span>
+              <span>Quay lại danh sách và chạy “Tính hóa đơn nháp”.</span>
             </div>
           ) : (
             <div className="renter-invoice-stack">
@@ -85,12 +108,36 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                         {invoice.primaryResidentName}
                       </p>
                     </div>
-                    <StatusBadge
-                      tone={invoice.status === "ISSUED" ? "success" : "neutral"}
-                    >
-                      {invoice.status}
-                    </StatusBadge>
+                    <div className="button-row">
+                      <StatusBadge
+                        tone={
+                          invoice.calculationStatus === "READY"
+                            ? "success"
+                            : "warning"
+                        }
+                      >
+                        {invoice.calculationStatus}
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={invoice.status === "ISSUED" ? "success" : "neutral"}
+                      >
+                        {invoice.status}
+                      </StatusBadge>
+                    </div>
                   </div>
+
+                  {invoice.calculationStatus === "REVIEW_REQUIRED" ? (
+                    <div className="admin-state admin-state--error">
+                      <strong>Chưa thể phát hành hóa đơn này.</strong>
+                      {invoice.reviewReasons.length === 0 ? (
+                        <span>Dữ liệu tính tiền chưa sẵn sàng.</span>
+                      ) : (
+                        invoice.reviewReasons.map((reason, index) => (
+                          <span key={index}>{reviewReasonLabel(reason)}</span>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="billing-cycle-card__stats">
                     <div>
