@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/admin-assets-read-model
+feature/admin-asset-management
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -256,14 +256,24 @@ Implemented first live asset slice:
 - responsive loading / empty / error states;
 - Admin navigation now links to the live asset workflow.
 
+Implemented management slice:
+
+- property create/edit/deactivate commands;
+- floor create/edit/deactivate commands;
+- room create/edit/deactivate commands;
+- property.manage scope enforcement;
+- organization-scope requirement for creating a new property;
+- room-limit enforcement through the existing commercial policy;
+- idempotent client-generated UUID create commands;
+- audit events for property/floor/room mutations;
+- safe deactivation invariants for active leases and active child resources;
+- Admin forms wired to the live command API.
+
 Still required:
 
 - organization/workspace switcher and real session integration;
 - administrative areas;
 - operational groups;
-- property create/edit;
-- floor create/edit;
-- room create/edit/deactivate;
 - residents;
 - deeper leases/contracts;
 - deposits;
@@ -1249,7 +1259,7 @@ The compact Control Plane foundation is substantially complete and the Admin Web
 Current most immediate unfinished product task:
 
 ```text
-Admin Web -> property / floor / room management commands
+Admin Web -> lease / contract operational workflow
 ```
 
-Next add explicit property.manage workflows for creating/editing properties, floors and rooms with commercial-limit enforcement, validation, audit and optimistic/idempotent behavior where applicable. After that, deepen the lease/contract workflow and remove the remaining Admin demo surfaces.
+Property / floor / room management commands are now implemented with property.manage authorization, commercial write enforcement, room quota checks, audit logging and safe deactivation rules. Next deepen contract creation, activation, renewal/termination and move-out flows, then continue with production Playwright Zalo, payment integration, messaging/notification operations and user-group management.
