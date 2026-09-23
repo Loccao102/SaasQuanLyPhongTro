@@ -43,7 +43,7 @@ The project already has working foundations for:
 Current development branch:
 
 ```text
-feature/admin-asset-management
+feature/admin-lease-operations
 ```
 
 At the time this file was created, the latest completed CI checkpoint was green.
@@ -295,28 +295,40 @@ The CMS must not become a substitute for the tenant-facing Admin Web.
 
 ## 3.2 Contract / lease management completion
 
-Foundation exists, but product workflow still needs deeper operational handling.
+The transactional lifecycle foundation is now exposed through the tenant Admin Web.
 
-Required:
+Implemented live operational slice:
 
-- contract creation form;
-- draft → active lifecycle UI;
+- tenant-scoped lease list and detail from PostgreSQL;
+- property-scope lease.read / lease.manage / lease.terminate enforcement;
+- create Lease DRAFT with a primary Resident in one transaction;
+- client UUID + persisted idempotency receipt for draft creation;
+- explicit DRAFT -> ACTIVE activation flow;
+- explicit DRAFT -> CANCELLED flow;
+- ACTIVE -> TERMINATION_SCHEDULED scheduling;
+- cancellation of scheduled termination back to ACTIVE;
+- readiness-aware final termination;
+- database-backed single-current-lease-per-room guard with conflict mapping;
+- audit timeline surfaced in Admin;
+- live termination readiness display;
+- explicit confirmation UI for activation, draft cancellation and termination;
+- retry-safe command keys preserved across recoverable frontend failures.
+
+Still required:
+
+- select/reuse an existing Resident instead of always creating a new Resident;
 - multiple lease parties;
-- deposit details;
-- rent/payment terms;
+- edit DRAFT contractual terms before activation;
+- deposit payment/settlement integration;
 - utility pricing snapshot/reference;
 - attachments;
 - contract PDF/document output;
 - amendment workflow;
 - renewal workflow;
-- scheduled end date;
-- terminate contract;
-- move-out orchestration;
-- final meter reading;
-- final invoice/debt;
-- deposit settlement;
-- room occupancy release;
-- create replacement/new contract.
+- final meter reading integration;
+- final invoice/debt integration;
+- deposit settlement integration;
+- create replacement/new contract directly from terminated lease/room.
 
 Important invariant:
 
@@ -1259,7 +1271,7 @@ The compact Control Plane foundation is substantially complete and the Admin Web
 Current most immediate unfinished product task:
 
 ```text
-Admin Web -> lease / contract operational workflow
+Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property / floor / room management commands are now implemented with property.manage authorization, commercial write enforcement, room quota checks, audit logging and safe deactivation rules. Next deepen contract creation, activation, renewal/termination and move-out flows, then continue with production Playwright Zalo, payment integration, messaging/notification operations and user-group management.
+Property/floor/room management and the first live Lease operational workflow are implemented. Next connect move-out readiness to Metering + renter Billing/Payment + deposit settlement, add Resident reuse/multiple parties and draft editing. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.

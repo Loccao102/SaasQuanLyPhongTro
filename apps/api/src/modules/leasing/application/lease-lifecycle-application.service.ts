@@ -62,6 +62,13 @@ export class LeaseTerminationRecordNotFoundError extends Error {
   }
 }
 
+export class LeaseRoomOccupancyConflictError extends Error {
+  constructor() {
+    super("Room already has another current lease.");
+    this.name = "LeaseRoomOccupancyConflictError";
+  }
+}
+
 @Injectable()
 export class LeaseLifecycleApplicationService {
   constructor(
@@ -235,11 +242,26 @@ export class LeaseLifecycleApplicationService {
       const previousVersion = context.lease.version;
       const transition = await operation(repository, context);
 
-      await repository.updateLease(
-        transition.lease,
-        previousVersion,
-        input.actor.userId
-      );
+      try {
+        await repository.updateLease(
+          transition.lease,
+          previousVersion,
+          input.actor.userId
+        );
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code?: string }).code === "23505" &&
+          "constraint" in error &&
+          (error as { constraint?: string }).constraint ===
+            "leases_one_current_per_room_uidx"
+        ) {
+          throw new LeaseRoomOccupancyConflictError();
+        }
+        throw error;
+      }
 
       await repository.appendAuditEvents(
         input.actor.userId,

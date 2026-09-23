@@ -1,0 +1,258 @@
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+  UseGuards
+} from "@nestjs/common";
+import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import type {
+  TenantPrincipal,
+  TenantRequest
+} from "../../identity/tenant-principal.js";
+import {
+  IdempotencyConflictError,
+  InvalidIdempotencyKeyError
+} from "./idempotent-command.js";
+import {
+  LeaseAuthorizationError,
+  LeaseLifecycleApplicationService,
+  LeaseNotFoundError,
+  LeaseRoomOccupancyConflictError,
+  LeaseTerminationRecordNotFoundError
+} from "./lease-lifecycle-application.service.js";
+import {
+  InvalidLeaseDateError,
+  InvalidLeaseTransitionError,
+  LeaseTerminationNotReadyError
+} from "../domain/lease-lifecycle.js";
+import { LeaseAdminService } from "./lease-admin.service.js";
+
+type BodyInput = Record<string, unknown>;
+
+function requiredString(input: BodyInput, field: string): string {
+  const value = input[field];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new BadRequestException(field + " is required.");
+  }
+  return value.trim();
+}
+
+function optionalString(
+  input: BodyInput,
+  field: string
+): string | null | undefined {
+  const value = input[field];
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException(field + " must be a string or null.");
+  }
+  return value;
+}
+
+function requiredUuid(input: BodyInput, field: string): string {
+  const value = requiredString(input, field);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+  ) {
+    throw new BadRequestException(field + " must be a UUID v4.");
+  }
+  return value;
+}
+
+function requiredInteger(input: BodyInput, field: string): number {
+  const value = input[field];
+  if (!Number.isSafeInteger(value)) {
+    throw new BadRequestException(field + " must be an integer.");
+  }
+  return Number(value);
+}
+
+@Controller("admin/leases")
+@UseGuards(TenantPrincipalGuard)
+export class LeaseAdminController {
+  constructor(
+    private readonly admin: LeaseAdminService,
+    private readonly lifecycle: LeaseLifecycleApplicationService
+  ) {}
+
+  @Get()
+  list(@Req() request: TenantRequest) {
+    return this.admin.list(this.principal(request));
+  }
+
+  @Get(":leaseId")
+  detail(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string
+  ) {
+    return this.admin.detail(this.principal(request), leaseId);
+  }
+
+  @Post()
+  createDraft(@Req() request: TenantRequest, @Body() input: BodyInput) {
+    const primaryResidentRaw = input.primaryResident;
+    if (
+      typeof primaryResidentRaw !== "object" ||
+      primaryResidentRaw === null ||
+      Array.isArray(primaryResidentRaw)
+    ) {
+      throw new BadRequestException("primaryResident is required.");
+    }
+    const primaryResident = primaryResidentRaw as BodyInput;
+
+    return this.admin.createDraft(this.principal(request), {
+      leaseId: requiredUuid(input, "leaseId"),
+      residentId: requiredUuid(input, "residentId"),
+      idempotencyKey: requiredString(input, "idempotencyKey"),
+      roomId: requiredUuid(input, "roomId"),
+      leaseCode: requiredString(input, "leaseCode"),
+      startDate: requiredString(input, "startDate"),
+      plannedEndDate: optionalString(input, "plannedEndDate"),
+      baseRentVnd: requiredInteger(input, "baseRentVnd"),
+      depositRequiredVnd: requiredInteger(input, "depositRequiredVnd"),
+      billingDay: requiredInteger(input, "billingDay"),
+      primaryResident: {
+        fullName: requiredString(primaryResident, "fullName"),
+        phone: optionalString(primaryResident, "phone"),
+        email: optionalString(primaryResident, "email")
+      }
+    });
+  }
+
+  @Post(":leaseId/activate")
+  activate(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.transition(() =>
+      this.lifecycle.activate({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey")
+      })
+    );
+  }
+
+  @Post(":leaseId/cancel-draft")
+  cancelDraft(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.transition(() =>
+      this.lifecycle.cancelDraft({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey")
+      })
+    );
+  }
+
+  @Post(":leaseId/termination")
+  scheduleTermination(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.transition(() =>
+      this.lifecycle.scheduleTermination({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey"),
+        effectiveDate: requiredString(input, "effectiveDate"),
+        reason: requiredString(input, "reason")
+      })
+    );
+  }
+
+  @Post(":leaseId/termination/cancel")
+  cancelTermination(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.transition(() =>
+      this.lifecycle.cancelTermination({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey")
+      })
+    );
+  }
+
+  @Post(":leaseId/termination/finalize")
+  finalizeTermination(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.transition(() =>
+      this.lifecycle.finalizeTermination({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey")
+      })
+    );
+  }
+
+  private principal(request: TenantRequest): TenantPrincipal {
+    if (!request.tenantPrincipal) {
+      throw new Error("TenantPrincipalGuard did not attach a principal.");
+    }
+    return request.tenantPrincipal;
+  }
+
+  private actor(request: TenantRequest) {
+    const principal = this.principal(request);
+    return {
+      userId: principal.userId,
+      membership: principal.membership
+    };
+  }
+
+  private async transition<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof LeaseAuthorizationError) {
+        throw new ForbiddenException(error.message);
+      }
+      if (
+        error instanceof LeaseNotFoundError ||
+        error instanceof LeaseTerminationRecordNotFoundError
+      ) {
+        throw new NotFoundException(error.message);
+      }
+      if (
+        error instanceof InvalidLeaseTransitionError ||
+        error instanceof InvalidLeaseDateError ||
+        error instanceof LeaseTerminationNotReadyError ||
+        error instanceof LeaseRoomOccupancyConflictError ||
+        error instanceof IdempotencyConflictError
+      ) {
+        throw new ConflictException(error.message);
+      }
+      if (error instanceof InvalidIdempotencyKeyError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+}
