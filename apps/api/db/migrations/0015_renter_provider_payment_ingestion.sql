@@ -58,11 +58,19 @@ CREATE INDEX renter_payment_transactions_reference_idx
 CREATE TABLE renter_billing_webhook_event_links (
   event_id uuid PRIMARY KEY
     REFERENCES saas_billing_webhook_events(id) ON DELETE RESTRICT,
-  renter_payment_transaction_id uuid NOT NULL UNIQUE
+  renter_payment_transaction_id uuid NOT NULL
     REFERENCES renter_payment_transactions(id) ON DELETE RESTRICT,
   normalized_payment_fingerprint text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (normalized_payment_fingerprint ~ '^[a-f0-9]{64}$')
+  CHECK (normalized_payment_fingerprint ~ '^[a-f0-9]{64}
+)
 );
+
+CREATE INDEX renter_billing_webhook_event_links_payment_idx
+  ON renter_billing_webhook_event_links (
+    renter_payment_transaction_id,
+    created_at,
+    event_id
+  );
 
 COMMIT;
