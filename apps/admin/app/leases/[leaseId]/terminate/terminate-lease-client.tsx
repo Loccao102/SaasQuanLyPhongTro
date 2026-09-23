@@ -110,6 +110,37 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     }
   }
 
+  async function setReadiness(
+    kind: "meter" | "financial" | "deposit",
+    state: "READY" | "NOT_REQUIRED" | "PENDING"
+  ) {
+    const reason = window.prompt(
+      "Lý do manual override readiness (sẽ được ghi audit):"
+    );
+    if (!reason?.trim()) return;
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.setTerminationReadiness(leaseId, {
+        kind,
+        state,
+        reason: reason.trim()
+      });
+      setActionSuccess("Đã cập nhật readiness và ghi audit manual override.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể cập nhật readiness."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function finalize() {
     setSaving(true);
     setActionError(null);
@@ -324,27 +355,51 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                     <strong>Chỉ số điện / nước cuối</strong>
                     <span>Metering giữ reading source-of-truth.</span>
                   </div>
-                  <StatusBadge tone={readinessTone(readiness!.meter)}>
-                    {readiness!.meter}
-                  </StatusBadge>
+                  <div className="button-row">
+                    <StatusBadge tone={readinessTone(readiness!.meter)}>
+                      {readiness!.meter}
+                    </StatusBadge>
+                    {data.permissions.terminate ? (
+                      <>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "READY")}>Ready</button>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "NOT_REQUIRED")}>N/A</button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="readiness-row">
                   <div>
                     <strong>Công nợ cuối</strong>
                     <span>Billing/Payment giữ invoice và settlement source-of-truth.</span>
                   </div>
-                  <StatusBadge tone={readinessTone(readiness!.financial)}>
-                    {readiness!.financial}
-                  </StatusBadge>
+                  <div className="button-row">
+                    <StatusBadge tone={readinessTone(readiness!.financial)}>
+                      {readiness!.financial}
+                    </StatusBadge>
+                    {data.permissions.terminate ? (
+                      <>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "READY")}>Ready</button>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "NOT_REQUIRED")}>N/A</button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="readiness-row">
                   <div>
                     <strong>Tiền cọc</strong>
                     <span>Yêu cầu theo HĐ: <MoneyDisplay amountVnd={lease.depositRequiredVnd} /></span>
                   </div>
-                  <StatusBadge tone={readinessTone(readiness!.deposit)}>
-                    {readiness!.deposit}
-                  </StatusBadge>
+                  <div className="button-row">
+                    <StatusBadge tone={readinessTone(readiness!.deposit)}>
+                      {readiness!.deposit}
+                    </StatusBadge>
+                    {data.permissions.terminate ? (
+                      <>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "READY")}>Ready</button>
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "NOT_REQUIRED")}>N/A</button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </article>

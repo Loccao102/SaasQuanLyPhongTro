@@ -174,5 +174,21 @@ export const adminLeasesApi = {
     command(
       "/" + encodeURIComponent(leaseId) + "/termination/finalize",
       idempotencyKey
+    ),
+  setTerminationReadiness: (
+    leaseId: string,
+    input: {
+      kind: "meter" | "financial" | "deposit";
+      state: "PENDING" | "READY" | "NOT_REQUIRED";
+      reason: string;
+    }
+  ) =>
+    request<{
+      meter: "PENDING" | "READY" | "NOT_REQUIRED";
+      financial: "PENDING" | "READY" | "NOT_REQUIRED";
+      deposit: "PENDING" | "READY" | "NOT_REQUIRED";
+    }>(
+      "/" + encodeURIComponent(leaseId) + "/termination/readiness",
+      { method: "POST", body: input }
     )
 };

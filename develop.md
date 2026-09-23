@@ -1283,4 +1283,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the first live Lease operational workflow are implemented. Next connect move-out readiness to Metering + renter Billing/Payment + deposit settlement, add Resident reuse/multiple parties and draft editing. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
+Property/floor/room management and the first live Lease operational workflow are implemented. Manual audited termination-readiness override is now available as an interim operational bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Next add Resident reuse/multiple parties and draft editing, then replace manual readiness with module integrations. After that move to the planned production sequence: Playwright Zalo edge adapter, payment provider integration, messaging/notification operations, then user-group/member management.
