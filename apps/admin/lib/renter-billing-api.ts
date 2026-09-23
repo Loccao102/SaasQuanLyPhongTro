@@ -32,6 +32,9 @@ export type RenterBillingDetailResponse = {
     adjustmentVnd: number;
     previousBalanceVnd: number;
     totalVnd: number;
+    paidVnd: number;
+    remainingVnd: number;
+    collectionStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
     calculationStatus: "READY" | "REVIEW_REQUIRED";
     reviewReasons: Array<Record<string, unknown>>;
     calculatedAt: string | null;

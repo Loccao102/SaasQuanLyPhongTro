@@ -52,6 +52,9 @@ type InvoiceRow = QueryResultRow & {
   adjustment_vnd: string;
   previous_balance_vnd: string;
   total_vnd: string;
+  paid_vnd: string;
+  remaining_vnd: string;
+  collection_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
   calculation_status: "READY" | "REVIEW_REQUIRED";
   review_reasons: unknown;
   calculated_at: Date | string | null;
@@ -209,6 +212,9 @@ export class RenterBillingService {
            adjustment_vnd::text,
            previous_balance_vnd::text,
            total_vnd::text,
+           paid_vnd::text,
+           remaining_vnd::text,
+           collection_status,
            calculation_status,
            review_reasons,
            calculated_at,
@@ -276,6 +282,9 @@ export class RenterBillingService {
         adjustmentVnd: Number(row.adjustment_vnd),
         previousBalanceVnd: Number(row.previous_balance_vnd),
         totalVnd: Number(row.total_vnd),
+        paidVnd: Number(row.paid_vnd),
+        remainingVnd: Number(row.remaining_vnd),
+        collectionStatus: row.collection_status,
         calculationStatus: row.calculation_status,
         reviewReasons: Array.isArray(row.review_reasons) ? row.review_reasons : [],
         calculatedAt: row.calculated_at
@@ -648,6 +657,13 @@ export class RenterBillingService {
           `UPDATE renter_invoices
            SET subtotal_vnd = $3::bigint,
                total_vnd = $3::bigint + adjustment_vnd + previous_balance_vnd,
+               paid_vnd = 0,
+               remaining_vnd = $3::bigint + adjustment_vnd + previous_balance_vnd,
+               collection_status = CASE
+                 WHEN $3::bigint + adjustment_vnd + previous_balance_vnd = 0
+                   THEN 'PAID'
+                 ELSE 'UNPAID'
+               END,
                calculation_status = $4,
                review_reasons = $5::jsonb,
                calculated_at = now(),

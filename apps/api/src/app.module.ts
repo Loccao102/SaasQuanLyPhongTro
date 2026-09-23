@@ -11,6 +11,7 @@ import { PricingModule } from "./modules/pricing/pricing.module.js";
 import { ObservabilityModule } from "./modules/observability/observability.module.js";
 import { PropertiesModule } from "./modules/properties/properties.module.js";
 import { RenterBillingModule } from "./modules/renter-billing/renter-billing.module.js";
+import { RenterPaymentsModule } from "./modules/renter-payments/renter-payments.module.js";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { RenterBillingModule } from "./modules/renter-billing/renter-billing.mod
     PricingModule,
     MeteringModule,
     RenterBillingModule,
+    RenterPaymentsModule,
     CommercialModule,
     IntegrationsModule,
     NotificationsModule,
