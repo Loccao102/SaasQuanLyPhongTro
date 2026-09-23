@@ -312,26 +312,39 @@ export class MeteringService {
           this.decimal3(existingRow.reading_value) !== readingValue ||
           existingRow.source !== source
         ) {
-          throw new ConflictException(
-            "Meter reading id was already used with different data."
-          );
+          throw new ConflictException({
+            statusCode: 409,
+            code: "METER_READING_ID_CONFLICT",
+            message: "Meter reading id was already used with different data.",
+            serverReading: this.mapReading(existingRow)
+          });
         }
         return this.mapReading(existingRow);
       }
 
-      const sameDate = await client.query(
-        `SELECT id
+      const sameDate = await client.query<ReadingRow>(
+        `SELECT
+           id::text,
+           meter_id::text,
+           reading_date,
+           reading_value::text,
+           source
          FROM meter_readings
          WHERE organization_id = $1::uuid
            AND meter_id = $2::uuid
            AND reading_date = $3::date
+         ORDER BY id
          LIMIT 1`,
         [principal.organizationId, meterId, readingDate]
       );
-      if ((sameDate.rowCount ?? 0) > 0) {
-        throw new ConflictException(
-          "A meter reading already exists for this date."
-        );
+      const sameDateRow = sameDate.rows[0];
+      if (sameDateRow) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "METER_READING_DATE_CONFLICT",
+          message: "A meter reading already exists for this date.",
+          serverReading: this.mapReading(sameDateRow)
+        });
       }
 
       const [previous, next] = await Promise.all([
@@ -373,18 +386,24 @@ export class MeteringService {
         previousRow &&
         valueMilli < this.toMilli(this.decimal3(previousRow.reading_value))
       ) {
-        throw new ConflictException(
-          "Meter reading cannot be lower than the previous reading."
-        );
+        throw new ConflictException({
+          statusCode: 409,
+          code: "METER_READING_BELOW_PREVIOUS",
+          message: "Meter reading cannot be lower than the previous reading.",
+          previousReading: this.mapReading(previousRow)
+        });
       }
       const nextRow = next.rows[0];
       if (
         nextRow &&
         valueMilli > this.toMilli(this.decimal3(nextRow.reading_value))
       ) {
-        throw new ConflictException(
-          "Meter reading cannot be higher than the next reading."
-        );
+        throw new ConflictException({
+          statusCode: 409,
+          code: "METER_READING_ABOVE_NEXT",
+          message: "Meter reading cannot be higher than the next reading.",
+          nextReading: this.mapReading(nextRow)
+        });
       }
 
       await client.query(

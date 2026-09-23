@@ -361,20 +361,27 @@ The core metering backend foundation now implements:
 - audited meter and reading writes;
 - billing usage resolution with explicit missing-meter / missing-reading states.
 
-The Staff offline-first workflow is still required:
+The Staff offline-first baseline now implements:
 
-- property/room checklist;
-- fast electricity input;
-- fast water input;
+- scope-aware property/room checklist;
+- fast electricity -> water -> next-room input flow;
 - previous reading display;
-- anomaly warning;
-- IndexedDB local persistence;
-- sync queue;
-- offline status;
-- conflict resolution;
-- admin progress tracking;
-- assignment of staff to areas/properties;
-- retry failed sync.
+- historical-usage anomaly warning;
+- IndexedDB checklist + reading persistence;
+- stable client UUID/idempotency across retry;
+- PENDING_SYNC / SYNCING / SYNCED / CONFLICT / FAILED queue states;
+- offline status and service-worker app-shell caching;
+- explicit server/local conflict visibility without silent overwrite;
+- retry failed sync;
+- Admin property-level progress tracking;
+- membership scopes as the initial Staff assignment source.
+
+Still required for the expanded Staff operations layer:
+
+- dedicated StaffAssignment/shift scheduling only if assignment must differ from access scope;
+- Admin correction/approval workflow for choosing a conflicting local reading over an existing server reading;
+- richer anomaly policy/acknowledgement and audit when product rules require it;
+- camera/OCR-assisted capture.
 
 Local states:
 
@@ -1307,4 +1314,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Next complete the Staff offline meter-entry/sync workflow, then tenant payment allocation and the production payment provider integration. After that move to messaging/notification operations and user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented. Next add the Admin meter-correction path for unresolved conflicts only if needed by field operations, then move to tenant payment allocation and the production payment provider integration. After that move to messaging/notification operations and user-group/member management.

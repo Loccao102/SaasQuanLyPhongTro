@@ -1,7 +1,26 @@
 import type { Metadata } from "next";
 import "@propops/ui/styles.css";
 import "./styles.css";
-export const metadata: Metadata = { title: "PropOps Staff", description: "Ứng dụng hiện trường cho nhân viên vận hành." };
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="vi"><body>{children}</body></html>;
+import { ServiceWorkerRegistration } from "./service-worker-registration";
+export const metadata: Metadata = {
+  title: "Habi Staff",
+  description: "Chốt chỉ số điện nước offline-first cho nhân viên vận hành.",
+  applicationName: "Habi Staff",
+  appleWebApp: {
+    capable: true,
+    title: "Habi Staff"
+  }
+};
+
+export default function RootLayout({
+  children
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="vi">
+      <body>
+        <ServiceWorkerRegistration />
+        {children}
+      </body>
+    </html>
+  );
 }
