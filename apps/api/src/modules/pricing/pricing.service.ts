@@ -88,7 +88,7 @@ export class PricingService {
   ) {}
 
   async listForProperty(principal: TenantPrincipal, propertyId: string) {
-    await this.requirePropertyRead(principal, propertyId);
+    const propertyScope = await this.requirePropertyRead(principal, propertyId);
 
     const [policies, items] = await Promise.all([
       this.db.query<PolicyRow>(
@@ -133,7 +133,18 @@ export class PricingService {
 
     return {
       propertyId,
-      policies: policies.rows.map((row) => this.mapPolicy(row, itemMap.get(row.id) ?? []))
+      permissions: {
+        manage:
+          roleHasPermission(principal.role, "billing.manage") &&
+          this.accessControl.can(principal.membership, "billing.manage", {
+            organizationId: principal.organizationId,
+            propertyId,
+            operationalGroupIds: propertyScope.operational_group_ids
+          })
+      },
+      policies: policies.rows.map((row) =>
+        this.mapPolicy(row, itemMap.get(row.id) ?? [])
+      )
     };
   }
 
@@ -428,6 +439,7 @@ export class PricingService {
     ) {
       throw new ForbiddenException("Billing scope denied for this property.");
     }
+    return row;
   }
 
   private async requirePropertyManage(
