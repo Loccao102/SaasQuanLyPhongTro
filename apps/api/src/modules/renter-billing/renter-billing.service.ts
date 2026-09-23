@@ -10,6 +10,16 @@ import { DatabaseService } from "../database/database.service.js";
 import { AccessControlService } from "../identity/access-control.service.js";
 import { roleHasPermission } from "../identity/domain/access-control.js";
 import type { TenantPrincipal } from "../identity/tenant-principal.js";
+import { MeteringService } from "../metering/metering.service.js";
+import {
+  PricingService,
+  type ResolvedPricingItem,
+  type ResolvedPricingPolicy
+} from "../pricing/pricing.service.js";
+import {
+  normalizeQuantity3,
+  quantityTimesUnitPriceVnd
+} from "./domain/quantity-money.js";
 
 type CycleRow = QueryResultRow & {
   id: string;
@@ -42,6 +52,9 @@ type InvoiceRow = QueryResultRow & {
   adjustment_vnd: string;
   previous_balance_vnd: string;
   total_vnd: string;
+  calculation_status: "READY" | "REVIEW_REQUIRED";
+  review_reasons: unknown;
+  calculated_at: Date | string | null;
   issued_at: Date | string | null;
 };
 
@@ -102,7 +115,9 @@ export class RenterBillingService {
   constructor(
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
-    private readonly commercialPolicy: CommercialPolicyService
+    private readonly commercialPolicy: CommercialPolicyService,
+    private readonly pricing: PricingService,
+    private readonly metering: MeteringService
   ) {}
 
   async list(principal: TenantPrincipal) {
@@ -194,6 +209,9 @@ export class RenterBillingService {
            adjustment_vnd::text,
            previous_balance_vnd::text,
            total_vnd::text,
+           calculation_status,
+           review_reasons,
+           calculated_at,
            issued_at
          FROM renter_invoices
          WHERE organization_id = $1::uuid
@@ -258,6 +276,11 @@ export class RenterBillingService {
         adjustmentVnd: Number(row.adjustment_vnd),
         previousBalanceVnd: Number(row.previous_balance_vnd),
         totalVnd: Number(row.total_vnd),
+        calculationStatus: row.calculation_status,
+        reviewReasons: Array.isArray(row.review_reasons) ? row.review_reasons : [],
+        calculatedAt: row.calculated_at
+          ? this.isoTimestamp(row.calculated_at)
+          : null,
         issuedAt: row.issued_at ? this.isoTimestamp(row.issued_at) : null,
         lines: lines.get(row.id) ?? []
       }))
@@ -433,7 +456,7 @@ export class RenterBillingService {
       );
       if (cycle.status !== "OPEN") {
         throw new ConflictException(
-          "Rent drafts can only be generated for an OPEN billing cycle."
+          "Renter invoice drafts can only be generated for an OPEN billing cycle."
         );
       }
       await this.commercialPolicy.assertTenantWriteAllowed(
@@ -441,6 +464,13 @@ export class RenterBillingService {
         principal.organizationId
       );
 
+      const pricingPolicy = await this.pricing.resolvePolicy(
+        client,
+        principal.organizationId,
+        cycle.propertyId,
+        cycle.periodStart,
+        cycle.periodEnd
+      );
       const candidates = await this.findLeaseCandidates(
         client,
         principal.organizationId,
@@ -455,9 +485,14 @@ export class RenterBillingService {
       const partialLeaseCount = candidates.length - fullPeriod.length;
 
       let created = 0;
+      let refreshed = 0;
+      let reviewRequiredInvoiceCount = 0;
+
       for (const lease of fullPeriod) {
-        const existing = await client.query(
-          `SELECT id
+        const existing = await client.query<
+          QueryResultRow & { id: string; status: "DRAFT" | "ISSUED" | "VOID" }
+        >(
+          `SELECT id::text, status
            FROM renter_invoices
            WHERE organization_id = $1::uuid
              AND billing_cycle_id = $2::uuid
@@ -465,60 +500,81 @@ export class RenterBillingService {
            LIMIT 1`,
           [principal.organizationId, cycle.id, lease.id]
         );
-        if ((existing.rowCount ?? 0) > 0) continue;
 
-        const invoiceNumber =
-          cycle.code +
-          "-" +
-          lease.room_code +
-          "-" +
-          lease.id.slice(0, 8).toUpperCase();
+        let invoiceId: string;
+        const existingInvoice = existing.rows[0];
+        if (existingInvoice) {
+          if (existingInvoice.status !== "DRAFT") {
+            throw new ConflictException(
+              "Issued or void renter invoices cannot be regenerated."
+            );
+          }
+          invoiceId = existingInvoice.id;
+          refreshed += 1;
+        } else {
+          const invoiceNumber =
+            cycle.code +
+            "-" +
+            lease.room_code +
+            "-" +
+            lease.id.slice(0, 8).toUpperCase();
 
-        const inserted = await client.query<QueryResultRow & { id: string }>(
-          `INSERT INTO renter_invoices (
-             organization_id,
-             billing_cycle_id,
-             property_id,
-             room_id,
-             lease_id,
-             invoice_number,
-             status,
-             period_start,
-             period_end,
-             due_date,
-             property_name_snapshot,
-             room_code_snapshot,
-             lease_code_snapshot,
-             primary_resident_name_snapshot,
-             subtotal_vnd,
-             adjustment_vnd,
-             previous_balance_vnd,
-             total_vnd
-           )
-           VALUES (
-             $1, $2, $3, $4, $5, $6, 'DRAFT',
-             $7, $8, $9, $10, $11, $12, $13,
-             $14, 0, 0, $14
-           )
-           RETURNING id::text`,
-          [
-            principal.organizationId,
-            cycle.id,
-            cycle.propertyId,
-            lease.room_id,
-            lease.id,
-            invoiceNumber,
-            cycle.periodStart,
-            cycle.periodEnd,
-            cycle.dueDate,
-            cycle.propertyName,
-            lease.room_code,
-            lease.lease_code,
-            lease.primary_resident_name ?? "Chưa cập nhật",
-            Number(lease.base_rent_vnd)
-          ]
+          const inserted = await client.query<QueryResultRow & { id: string }>(
+            `INSERT INTO renter_invoices (
+               organization_id,
+               billing_cycle_id,
+               property_id,
+               room_id,
+               lease_id,
+               invoice_number,
+               status,
+               period_start,
+               period_end,
+               due_date,
+               property_name_snapshot,
+               room_code_snapshot,
+               lease_code_snapshot,
+               primary_resident_name_snapshot,
+               subtotal_vnd,
+               adjustment_vnd,
+               previous_balance_vnd,
+               total_vnd,
+               calculation_status,
+               review_reasons
+             )
+             VALUES (
+               $1, $2, $3, $4, $5, $6, 'DRAFT',
+               $7, $8, $9, $10, $11, $12, $13,
+               0, 0, 0, 0, 'REVIEW_REQUIRED', '[]'::jsonb
+             )
+             RETURNING id::text`,
+            [
+              principal.organizationId,
+              cycle.id,
+              cycle.propertyId,
+              lease.room_id,
+              lease.id,
+              invoiceNumber,
+              cycle.periodStart,
+              cycle.periodEnd,
+              cycle.dueDate,
+              cycle.propertyName,
+              lease.room_code,
+              lease.lease_code,
+              lease.primary_resident_name ?? "Chưa cập nhật"
+            ]
+          );
+          invoiceId = inserted.rows[0]!.id;
+          created += 1;
+        }
+
+        await client.query(
+          `DELETE FROM renter_invoice_lines
+           WHERE organization_id = $1::uuid
+             AND invoice_id = $2::uuid
+             AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE')`,
+          [principal.organizationId, invoiceId]
         );
-        const invoiceId = inserted.rows[0]!.id;
 
         await client.query(
           `INSERT INTO renter_invoice_lines (
@@ -547,7 +603,66 @@ export class RenterBillingService {
             })
           ]
         );
-        created += 1;
+
+        const reviewReasons: Array<Record<string, unknown>> = [];
+        if (!pricingPolicy) {
+          reviewReasons.push({
+            code: "MISSING_PRICING_POLICY",
+            propertyId: cycle.propertyId,
+            periodStart: cycle.periodStart,
+            periodEnd: cycle.periodEnd
+          });
+        } else {
+          for (const item of pricingPolicy.items) {
+            const reason = await this.appendPricingItem(
+              client,
+              principal.organizationId,
+              invoiceId,
+              lease,
+              cycle,
+              pricingPolicy,
+              item
+            );
+            if (reason) reviewReasons.push(reason);
+          }
+        }
+
+        const subtotal = await client.query<
+          QueryResultRow & { subtotal_vnd: string }
+        >(
+          `SELECT COALESCE(sum(amount_vnd), 0)::text AS subtotal_vnd
+           FROM renter_invoice_lines
+           WHERE organization_id = $1::uuid
+             AND invoice_id = $2::uuid
+             AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE')`,
+          [principal.organizationId, invoiceId]
+        );
+        const subtotalVnd = subtotal.rows[0]?.subtotal_vnd ?? "0";
+        const calculationStatus =
+          reviewReasons.length === 0 ? "READY" : "REVIEW_REQUIRED";
+        if (calculationStatus === "REVIEW_REQUIRED") {
+          reviewRequiredInvoiceCount += 1;
+        }
+
+        await client.query(
+          `UPDATE renter_invoices
+           SET subtotal_vnd = $3::bigint,
+               total_vnd = $3::bigint + adjustment_vnd + previous_balance_vnd,
+               calculation_status = $4,
+               review_reasons = $5::jsonb,
+               calculated_at = now(),
+               updated_at = now()
+           WHERE organization_id = $1::uuid
+             AND id = $2::uuid
+             AND status = 'DRAFT'`,
+          [
+            principal.organizationId,
+            invoiceId,
+            subtotalVnd,
+            calculationStatus,
+            JSON.stringify(reviewReasons)
+          ]
+        );
       }
 
       await this.audit(
@@ -558,20 +673,148 @@ export class RenterBillingService {
         cycle.id,
         {
           created,
+          refreshed,
           fullPeriodLeaseCount: fullPeriod.length,
           partialLeaseCount,
-          pricingPolicy: "FULL_PERIOD_BASE_RENT_V1"
+          reviewRequiredInvoiceCount,
+          rentPricingPolicy: "FULL_PERIOD_BASE_RENT_V1",
+          utilityPricingPolicyId: pricingPolicy?.id ?? null
         }
       );
 
       return {
         cycleId: cycle.id,
         created,
+        refreshed,
         eligibleLeaseCount: fullPeriod.length,
         partialLeaseCount,
-        requiresReview: partialLeaseCount > 0
+        reviewRequiredInvoiceCount,
+        requiresReview:
+          partialLeaseCount > 0 || reviewRequiredInvoiceCount > 0
       };
     });
+  }
+
+  private async appendPricingItem(
+    client: PoolClient,
+    organizationId: string,
+    invoiceId: string,
+    lease: LeaseCandidateRow,
+    cycle: CycleContext,
+    policy: ResolvedPricingPolicy,
+    item: ResolvedPricingItem
+  ): Promise<Record<string, unknown> | null> {
+    const meterType =
+      item.itemType === "ELECTRICITY_PER_KWH"
+        ? "ELECTRICITY"
+        : item.itemType === "WATER_PER_M3"
+          ? "WATER"
+          : null;
+
+    if (meterType) {
+      const usage = await this.metering.resolveUsage(
+        client,
+        organizationId,
+        lease.room_id,
+        meterType,
+        cycle.periodStart,
+        cycle.periodEnd
+      );
+      if (usage.status !== "READY") {
+        return {
+          code: usage.status,
+          pricingItemId: item.id,
+          itemType: item.itemType,
+          meterType,
+          meterId: usage.meterId ?? null
+        };
+      }
+
+      const amountVnd = quantityTimesUnitPriceVnd(
+        usage.quantity,
+        item.unitPriceVnd
+      );
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, $3, $4, $5::numeric, $6, $7, $8, $9::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          meterType === "ELECTRICITY" ? "ELECTRICITY" : "WATER",
+          item.description,
+          usage.quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "METER_DELTA",
+            meter: {
+              id: usage.meterId,
+              type: usage.meterType,
+              unit: usage.unit,
+              previous: usage.previous,
+              current: usage.current
+            }
+          })
+        ]
+      );
+      return null;
+    }
+
+    const quantity = normalizeQuantity3(item.fixedQuantity, "fixedQuantity");
+    const amountVnd = quantityTimesUnitPriceVnd(
+      quantity,
+      item.unitPriceVnd
+    );
+    await client.query(
+      `INSERT INTO renter_invoice_lines (
+         organization_id,
+         invoice_id,
+         line_type,
+         description,
+         quantity,
+         unit_price_vnd,
+         amount_vnd,
+         sort_order,
+         snapshot
+       )
+       VALUES ($1, $2, 'SERVICE', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+      [
+        organizationId,
+        invoiceId,
+        item.description,
+        quantity,
+        item.unitPriceVnd,
+        amountVnd,
+        item.sortOrder,
+        JSON.stringify({
+          pricingPolicyId: policy.id,
+          pricingPolicyName: policy.name,
+          pricingItemId: item.id,
+          itemType: item.itemType,
+          effectiveFrom: policy.effectiveFrom,
+          effectiveTo: policy.effectiveTo,
+          quantitySource: "FIXED"
+        })
+      ]
+    );
+    return null;
   }
 
   async finalizeCycle(principal: TenantPrincipal, cycleId: string) {
@@ -609,6 +852,23 @@ export class RenterBillingService {
       if (partialLeaseCount > 0) {
         throw new ConflictException(
           "Billing cycle has partial-period leases requiring proration or manual adjustment."
+        );
+      }
+
+      const reviewRequired = await client.query<
+        QueryResultRow & { count: number }
+      >(
+        `SELECT count(*)::int AS count
+         FROM renter_invoices
+         WHERE organization_id = $1::uuid
+           AND billing_cycle_id = $2::uuid
+           AND status = 'DRAFT'
+           AND calculation_status <> 'READY'`,
+        [principal.organizationId, cycle.id]
+      );
+      if ((reviewRequired.rows[0]?.count ?? 0) > 0) {
+        throw new ConflictException(
+          "Billing cycle has invoices requiring pricing or meter review."
         );
       }
 
