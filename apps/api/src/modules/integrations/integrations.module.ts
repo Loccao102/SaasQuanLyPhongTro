@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CommercialModule } from "../commercial/commercial.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { InternalServiceGuard } from "../internal/internal-service.guard.js";
+import { RenterPaymentsModule } from "../renter-payments/renter-payments.module.js";
 import { BillingWebhookIngressService } from "./billing-webhook-ingress.service.js";
 import { BillingWebhookInternalController } from "./billing-webhook-internal.controller.js";
 import { DevJsonBankWebhookController } from "./dev-json-bank-webhook.controller.js";
@@ -10,7 +11,7 @@ import { SaasBillingWebhookProcessingService } from "./saas-billing-webhook-proc
 import { SaasBillingWebhookInboxService } from "./saas-billing-webhook-inbox.service.js";
 
 @Module({
-  imports: [DatabaseModule, CommercialModule],
+  imports: [DatabaseModule, CommercialModule, RenterPaymentsModule],
   controllers: [
     BillingWebhookInternalController,
     DevJsonBankWebhookController
