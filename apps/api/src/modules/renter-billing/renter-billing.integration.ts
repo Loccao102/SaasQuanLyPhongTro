@@ -440,6 +440,19 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
     assert.equal(paymentDetail.invoice.collectionStatus, "PAID");
     assert.equal(paymentDetail.allocations.length, 2);
 
+    const paymentViewer = principal();
+    paymentViewer.role = "VIEWER";
+    paymentViewer.membership = {
+      ...paymentViewer.membership,
+      role: "VIEWER"
+    };
+    const viewerPaymentDetail = await payments.detail(
+      paymentViewer,
+      issuedInvoice.id
+    );
+    assert.equal(viewerPaymentDetail.permissions.reconcile, false);
+    assert.equal(viewerPaymentDetail.invoice.collectionStatus, "PAID");
+
     await assert.rejects(
       () =>
         payments.createManualAllocation(principal(), {
