@@ -15,6 +15,9 @@ psql "$DATABASE_URL" -f apps/api/db/migrations/0005_notification_jobs_foundation
 psql "$DATABASE_URL" -f apps/api/db/migrations/0006_notification_provider_operations.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0007_saas_subscription_billing.sql
 psql "$DATABASE_URL" -f apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0009_brand_dashboard_defaults.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0010_habi_brand_refresh.sql
+psql "$DATABASE_URL" -f apps/api/db/migrations/0011_dashboard_analytics_formats.sql
 psql "$DATABASE_URL" -f apps/api/db/seeds/cms_dev_operator.sql
 ```
 
@@ -54,7 +57,9 @@ Connected to PostgreSQL/API now:
 - durable notification Jobs/Queue inspection + audited manual retry;
 - automation quota reservation/consumption inspection;
 - platform audit;
-- dashboard counts.
+- live Habi dashboard metrics from PostgreSQL;
+- occupancy, lease-expiry, subscription, payment, notification and worker analytics;
+- database-driven locale/currency/date/number format presets.
 
 Explicitly pending:
 - real login/session middleware (local dev uses a server-side dev principal);
