@@ -32,6 +32,9 @@ export type RenterBillingDetailResponse = {
     adjustmentVnd: number;
     previousBalanceVnd: number;
     totalVnd: number;
+    calculationStatus: "READY" | "REVIEW_REQUIRED";
+    reviewReasons: Array<Record<string, unknown>>;
+    calculatedAt: string | null;
     issuedAt: string | null;
     lines: Array<{
       id: string;
@@ -100,8 +103,10 @@ export const renterBillingApi = {
     request<{
       cycleId: string;
       created: number;
+      refreshed: number;
       eligibleLeaseCount: number;
       partialLeaseCount: number;
+      reviewRequiredInvoiceCount: number;
       requiresReview: boolean;
     }>("/cycles/" + encodeURIComponent(cycleId) + "/generate-rent", {
       method: "POST"
