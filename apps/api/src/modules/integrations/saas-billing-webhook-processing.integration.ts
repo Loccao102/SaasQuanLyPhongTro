@@ -136,7 +136,9 @@ test("verified billing webhook processing commits one payment effect and replays
       normalized
     );
 
-    assert.equal(first.domain, "SAAS");
+    if (first.domain !== "SAAS" || !first.ingestion) {
+      assert.fail("Expected SAAS webhook ingestion.");
+    }
     assert.equal(first.replayed, false);
     assert.equal(first.event.processingStatus, "PROCESSED");
     assert.equal(first.event.paymentId, first.ingestion.payment.id);
@@ -153,6 +155,9 @@ test("verified billing webhook processing commits one payment effect and replays
       normalized
     );
 
+    if (replayed.domain !== "SAAS" || !replayed.ingestion) {
+      assert.fail("Expected replayed SAAS webhook ingestion.");
+    }
     assert.equal(replayed.replayed, true);
     assert.equal(
       replayed.ingestion.payment.id,
