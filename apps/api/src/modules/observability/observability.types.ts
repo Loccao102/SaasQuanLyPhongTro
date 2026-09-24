@@ -73,4 +73,22 @@ export type OperationalSnapshot = {
     processed24h: number;
     oldestBacklogAgeSeconds: number;
   };
+  renterPaymentWebhooks: {
+    received: number;
+    processing: number;
+    reviewRequired: number;
+    failed: number;
+    staleProcessing: number;
+    processed24h: number;
+    invalidSignature24h: number;
+    oldestBacklogAgeSeconds: number;
+  };
+  renterPaymentReconciliation: {
+    streams: Array<{
+      provider: string;
+      scopeKey: string;
+      initialized: boolean;
+      lastSuccessAgeSeconds: number;
+    }>;
+  };
 };
