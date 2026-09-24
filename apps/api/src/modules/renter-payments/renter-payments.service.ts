@@ -18,6 +18,7 @@ type InvoiceContextRow = QueryResultRow & {
   property_name: string;
   room_code_snapshot: string;
   invoice_number: string;
+  payment_reference: string;
   primary_resident_name_snapshot: string;
   status: "DRAFT" | "ISSUED" | "VOID";
   total_vnd: string;
@@ -346,6 +347,7 @@ export class RenterPaymentsService {
          p.name AS property_name,
          i.room_code_snapshot,
          i.invoice_number,
+         i.payment_reference,
          i.primary_resident_name_snapshot,
          i.status,
          i.total_vnd::text,
@@ -530,6 +532,7 @@ export class RenterPaymentsService {
     return {
       id: row.id,
       number: row.invoice_number,
+      paymentReference: row.payment_reference,
       property: {
         id: row.property_id,
         code: row.property_code,

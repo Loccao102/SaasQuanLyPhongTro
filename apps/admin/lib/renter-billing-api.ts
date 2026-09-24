@@ -24,6 +24,7 @@ export type RenterBillingDetailResponse = {
   invoices: Array<{
     id: string;
     number: string;
+    paymentReference: string;
     status: "DRAFT" | "ISSUED" | "VOID";
     room: { id: string; code: string };
     lease: { id: string; code: string };

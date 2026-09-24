@@ -181,6 +181,7 @@ export function ManualPaymentAllocationClient({
               <p>
                 Hạn {data.invoice.dueDate} · Invoice {data.invoice.status}
               </p>
+              <code>{data.invoice.paymentReference}</code>
             </div>
             <StatusBadge tone={collectionTone(data.invoice.collectionStatus)}>
               {collectionLabel(data.invoice.collectionStatus)}

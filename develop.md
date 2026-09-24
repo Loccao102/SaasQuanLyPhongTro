@@ -1346,3 +1346,26 @@ Still required:
 - invitation expiry/resend/revoke;
 - custom roles only if product evidence requires them;
 - bulk staff import if pilot onboarding needs it.
+
+
+## Renter payment provider ingestion
+
+Implemented baseline:
+- immutable globally unique renter invoice payment reference `RENT<uuid>`;
+- dedicated renter-payment webhook inbox separate from SaaS subscription billing;
+- raw webhook persistence before async normalization;
+- signature status, processing attempts, stale-claim recovery and safe event replay;
+- provider transaction idempotency;
+- exact payment-reference matching only;
+- safe AUTO allocation for exact/partial payments;
+- overpayment, paid/non-issued invoice, missing/unknown reference -> REVIEW_REQUIRED;
+- provider transaction + allocation remain separate;
+- worker role `RENTER_PAYMENT_WEBHOOK` and local Docker service;
+- system audit for provider auto-allocation/review;
+- integration coverage for partial/full/overpayment/wrong-reference/replay.
+
+Still required:
+- production SePay ingress/normalizer based on current provider documentation and signature/auth contract;
+- tenant-facing review UI for unmatched/overpaid provider transactions;
+- public invoice token + VietQR/bank deeplink using paymentReference;
+- realtime/polling payment-state refresh on public invoice.

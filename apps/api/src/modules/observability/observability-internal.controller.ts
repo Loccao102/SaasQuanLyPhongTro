@@ -51,7 +51,8 @@ export class ObservabilityInternalController {
     if (
       input.role !== "NOTIFICATION" &&
       input.role !== "BILLING" &&
-      input.role !== "BILLING_WEBHOOK"
+      input.role !== "BILLING_WEBHOOK" &&
+      input.role !== "RENTER_PAYMENT_WEBHOOK"
     ) {
       throw new BadRequestException("Invalid worker role.");
     }

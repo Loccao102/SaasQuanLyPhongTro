@@ -8,6 +8,7 @@ export type RenterPaymentDetailResponse = {
   invoice: {
     id: string;
     number: string;
+    paymentReference: string;
     property: { id: string; code: string; name: string };
     roomCode: string;
     primaryResidentName: string;

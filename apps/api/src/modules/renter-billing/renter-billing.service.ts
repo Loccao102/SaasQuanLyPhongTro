@@ -42,6 +42,7 @@ type CycleRow = QueryResultRow & {
 type InvoiceRow = QueryResultRow & {
   id: string;
   invoice_number: string;
+  payment_reference: string;
   status: "DRAFT" | "ISSUED" | "VOID";
   room_id: string;
   room_code_snapshot: string;
@@ -202,6 +203,7 @@ export class RenterBillingService {
         `SELECT
            id::text,
            invoice_number,
+           payment_reference,
            status,
            room_id::text,
            room_code_snapshot,
@@ -274,6 +276,7 @@ export class RenterBillingService {
       invoices: invoiceResult.rows.map((row) => ({
         id: row.id,
         number: row.invoice_number,
+        paymentReference: row.payment_reference,
         status: row.status,
         room: { id: row.room_id, code: row.room_code_snapshot },
         lease: { id: row.lease_id, code: row.lease_code_snapshot },

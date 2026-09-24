@@ -1,19 +1,21 @@
 export type WorkerRole =
   | "NOTIFICATION"
   | "BILLING"
-  | "BILLING_WEBHOOK";
+  | "BILLING_WEBHOOK"
+  | "RENTER_PAYMENT_WEBHOOK";
 
 export function resolveWorkerRole(value: string | undefined): WorkerRole {
   const normalized = value?.trim().toUpperCase() || "NOTIFICATION";
   if (
     normalized === "NOTIFICATION" ||
     normalized === "BILLING" ||
-    normalized === "BILLING_WEBHOOK"
+    normalized === "BILLING_WEBHOOK" ||
+    normalized === "RENTER_PAYMENT_WEBHOOK"
   ) {
     return normalized;
   }
   throw new Error(
-    "WORKER_ROLE must be NOTIFICATION, BILLING or BILLING_WEBHOOK."
+    "WORKER_ROLE must be NOTIFICATION, BILLING, BILLING_WEBHOOK or RENTER_PAYMENT_WEBHOOK."
   );
 }
 

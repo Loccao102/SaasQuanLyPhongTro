@@ -24,6 +24,8 @@ x-worker-environment: &worker-environment
   BILLING_SWEEP_LIMIT: ${BILLING_SWEEP_LIMIT:-100}
   BILLING_WEBHOOK_PROVIDER: ${BILLING_WEBHOOK_PROVIDER:-DEV_JSON_BANK}
   BILLING_WEBHOOK_POLL_INTERVAL_MS: ${BILLING_WEBHOOK_POLL_INTERVAL_MS:-1500}
+  RENTER_PAYMENT_WEBHOOK_PROVIDER: ${RENTER_PAYMENT_WEBHOOK_PROVIDER:-DEV_JSON_BANK}
+  RENTER_PAYMENT_WEBHOOK_POLL_INTERVAL_MS: ${RENTER_PAYMENT_WEBHOOK_POLL_INTERVAL_MS:-1500}
   DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
 
 services:
@@ -239,6 +241,17 @@ services:
       <<: *worker-environment
       WORKER_ROLE: BILLING_WEBHOOK
       WORKER_ID: docker-billing-webhook-worker
+    command: ["pnpm", "--filter", "@propops/worker", "dev"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-renter-payment-webhook:
+    <<: *node-service
+    environment:
+      <<: *worker-environment
+      WORKER_ROLE: RENTER_PAYMENT_WEBHOOK
+      WORKER_ID: docker-renter-payment-webhook-worker
     command: ["pnpm", "--filter", "@propops/worker", "dev"]
     depends_on:
       api:
