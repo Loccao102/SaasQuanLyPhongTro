@@ -345,3 +345,207 @@ body { background: var(--color-bg); }
   .team-form,.team-inline-editor { grid-template-columns:1fr; }
   .team-form__wide,.team-inline-editor__wide { grid-column:auto; }
 }
+
+
+/* Admin authentication + workspace session */
+.workspace-card--interactive select {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 750;
+  outline: 0;
+}
+.workspace-card--interactive select:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.account-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: white;
+}
+.account-card__avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--color-text);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+}
+.account-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.account-card strong,
+.account-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-card strong {
+  font-size: 11px;
+}
+.account-card > div span {
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+.account-card button {
+  grid-column: 1 / -1;
+  min-height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.avatar-button {
+  border: 0;
+}
+.session-state-page,
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+.session-state-card,
+.login-card {
+  width: min(100%, 440px);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: var(--shadow-md);
+}
+.session-state-card {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 26px;
+}
+.session-state-card > span:not(.brand__mark) {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.session-state-card--error {
+  border-color: #efc7c7;
+}
+.login-page {
+  background:
+    radial-gradient(circle at top left, rgb(36 87 230 / 7%), transparent 34%),
+    var(--color-bg);
+}
+.login-card {
+  display: grid;
+  gap: 24px;
+  padding: 30px;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.login-brand > div {
+  display: grid;
+  gap: 2px;
+}
+.login-brand strong {
+  font-size: 15px;
+}
+.login-brand > div span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.login-heading {
+  display: grid;
+  gap: 7px;
+}
+.login-heading h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -.04em;
+}
+.login-heading p,
+.login-footnote {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+.login-form label {
+  display: grid;
+  gap: 7px;
+}
+.login-form label > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.login-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: white;
+  color: var(--color-text);
+}
+.login-form input:focus {
+  border-color: var(--color-primary);
+  outline: 3px solid rgb(36 87 230 / 10%);
+}
+.login-submit {
+  width: 100%;
+  min-height: 48px;
+}
+.login-error,
+.login-inline-state {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.login-error {
+  border: 1px solid #efc0c0;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+.login-inline-state {
+  border: 1px solid #d7e1f7;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+@media (max-width: 560px) {
+  .login-page,
+  .session-state-page {
+    padding: 14px;
+  }
+  .login-card {
+    padding: 22px;
+    border-radius: 14px;
+  }
+}

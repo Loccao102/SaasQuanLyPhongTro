@@ -1,3 +1,5 @@
+import { adminApiRequest } from "./admin-api-client";
+
 export type AdminAssetPropertySummary = {
   id: string;
   code: string;
@@ -88,39 +90,12 @@ export type CreateRoomInput = {
   sortOrder?: number;
 };
 
-const apiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
-const configuredOrganizationId =
-  process.env.NEXT_PUBLIC_ADMIN_ORGANIZATION_ID?.trim() ?? "";
 
 async function request<T>(
   path: string,
   init?: { method?: string; body?: unknown }
 ): Promise<T> {
-  const headers = new Headers();
-  if (configuredOrganizationId) {
-    headers.set("x-organization-id", configuredOrganizationId);
-  }
-  if (init?.body !== undefined) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(apiBase + "/admin/assets" + path, {
-    credentials: "include",
-    method: init?.method ?? "GET",
-    headers,
-    body:
-      init?.body === undefined ? undefined : JSON.stringify(init.body)
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      text || "Admin API request failed with status " + String(response.status)
-    );
-  }
-
-  return response.json() as Promise<T>;
+  return adminApiRequest<T>("/admin/assets" + path, init);
 }
 
 export const adminAssetsApi = {
