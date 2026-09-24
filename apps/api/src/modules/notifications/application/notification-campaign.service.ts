@@ -278,6 +278,8 @@ export class NotificationCampaignService {
           personalizedRecipients: recipients.filter(
             (recipient) => recipient.messageBodyOverride !== null
           ).length,
+          sourceType,
+          sourceId,
           quotaReservationId: reservation.id
         })
       ]
