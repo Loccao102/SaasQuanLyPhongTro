@@ -52,6 +52,15 @@ test("SePay worker normalizes incoming payment with exact Habi payment code", as
     "RENT0123456789ABCDEF0123456789ABCDEF"
   );
   assert.equal(result.payment.destinationAccountNo, "0123456789");
+  assert.deepEqual(result.payment.providerIdentity, {
+    aliasType: "SEPAY_WEBHOOK_NUMERIC_ID",
+    aliasValue: "92704",
+    referenceNumber: "FT260924ABC",
+    destinationAccountNo: "0123456789",
+    occurredAt: "2026-09-24T09:08:33.000Z",
+    direction: "IN",
+    amountVnd: 100000
+  });
   assert.equal(
     (result.payment.metadata as { gateway?: string }).gateway,
     "MBBank"
@@ -79,6 +88,7 @@ test("SePay worker extracts Habi payment reference from content when code is abs
     result.payment.paymentReference,
     "RENTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   );
+  assert.equal(result.payment.providerIdentity, null);
 });
 
 test("SePay worker keeps unmatched incoming payments for review instead of guessing", async () => {
