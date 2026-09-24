@@ -111,6 +111,20 @@ async function request<T>(
   return adminApiRequest<T>("/admin/leases" + path, init);
 }
 
+function command(
+  path: string,
+  idempotencyKey: string,
+  body: Record<string, unknown> = {}
+) {
+  return request<{ lease: { status: LeaseStatus; version: number } }>(path, {
+    method: "POST",
+    body: {
+      ...body,
+      idempotencyKey
+    }
+  });
+}
+
 export const adminLeasesApi = {
   list: () => request<LeaseListResponse>(""),
   detail: (leaseId: string) =>
