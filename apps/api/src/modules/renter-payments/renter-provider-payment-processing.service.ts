@@ -12,6 +12,7 @@ export interface NormalizedRenterProviderPaymentInput {
   amountVnd: number;
   occurredAt: string;
   paymentReference?: string | null;
+  destinationAccountNo?: string | null;
   payerName?: string | null;
   note?: string | null;
   metadata?: unknown;
@@ -195,8 +196,30 @@ export class RenterProviderPaymentProcessingService {
         };
       }
 
+      let destinationAccountIssue: string | null = null;
+      if (normalized.destinationAccountNo) {
+        const paymentProfile = await client.query<
+          QueryResultRow & { account_no: string; is_active: boolean }
+        >(
+          `SELECT account_no, is_active
+           FROM organization_payment_profiles
+           WHERE organization_id = $1::uuid
+           LIMIT 1`,
+          [invoice.organization_id]
+        );
+        const profile = paymentProfile.rows[0];
+        if (!profile || !profile.is_active) {
+          destinationAccountIssue =
+            "RENTER_PAYMENT_DESTINATION_PROFILE_MISSING";
+        } else if (profile.account_no !== normalized.destinationAccountNo) {
+          destinationAccountIssue =
+            "RENTER_PAYMENT_DESTINATION_ACCOUNT_MISMATCH";
+        }
+      }
+
       const transactionId = randomUUID();
       const canAllocate =
+        destinationAccountIssue === null &&
         invoice.status === "ISSUED" &&
         invoice.collection_status !== "PAID" &&
         normalized.amountVnd <= Number(invoice.remaining_vnd);
@@ -247,11 +270,12 @@ export class RenterProviderPaymentProcessingService {
 
       if (!canAllocate) {
         const reason =
-          invoice.status !== "ISSUED"
+          destinationAccountIssue ??
+          (invoice.status !== "ISSUED"
             ? "RENTER_INVOICE_NOT_ISSUED"
             : invoice.collection_status === "PAID"
               ? "RENTER_INVOICE_ALREADY_PAID"
-              : "RENTER_PAYMENT_OVERPAYMENT";
+              : "RENTER_PAYMENT_OVERPAYMENT");
 
         await this.auditSystem(
           client,
@@ -282,7 +306,11 @@ export class RenterProviderPaymentProcessingService {
             errorMessage:
               reason === "RENTER_PAYMENT_OVERPAYMENT"
                 ? "Provider payment exceeds invoice remaining amount."
-                : "Invoice is not eligible for automatic allocation."
+                : reason === "RENTER_PAYMENT_DESTINATION_ACCOUNT_MISMATCH"
+                  ? "Provider payment was received by a different bank account than the organization's active payment profile."
+                  : reason === "RENTER_PAYMENT_DESTINATION_PROFILE_MISSING"
+                    ? "Organization payment profile is missing or inactive, so the destination account cannot be verified."
+                    : "Invoice is not eligible for automatic allocation."
           }
         );
         return {
@@ -430,11 +458,14 @@ export class RenterProviderPaymentProcessingService {
     }
     const paymentReference =
       input.paymentReference?.trim().toUpperCase() || null;
+    const destinationAccountNo =
+      input.destinationAccountNo?.trim() || null;
     return {
       providerTransactionId,
       amountVnd: input.amountVnd,
       occurredAt: occurred.toISOString(),
       paymentReference,
+      destinationAccountNo,
       payerName: input.payerName?.trim() || null,
       note: input.note?.trim() || null
     };

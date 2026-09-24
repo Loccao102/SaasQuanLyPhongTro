@@ -27,6 +27,7 @@ export type NormalizedBillingWebhookPayment = {
   amountVnd: number;
   occurredAt: string;
   paymentReference?: string | null;
+  destinationAccountNo?: string | null;
   payerName?: string | null;
   note?: string | null;
   metadata?: unknown;

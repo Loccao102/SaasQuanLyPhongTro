@@ -7,9 +7,11 @@ import { BillingWebhookIngressService } from "./billing-webhook-ingress.service.
 import { BillingWebhookInternalController } from "./billing-webhook-internal.controller.js";
 import { DevJsonBankWebhookController } from "./dev-json-bank-webhook.controller.js";
 import { DevJsonBankRenterPaymentWebhookController } from "./dev-json-bank-renter-payment-webhook.controller.js";
+import { SePayRenterPaymentWebhookController } from "./sepay-renter-payment-webhook.controller.js";
 import { RenterPaymentWebhookIngressService } from "./renter-payment-webhook-ingress.service.js";
 import { RenterPaymentWebhookInternalController } from "./renter-payment-webhook-internal.controller.js";
 import { DevJsonBankWebhookIngressAdapter } from "./providers/dev-json-bank-webhook-ingress.adapter.js";
+import { SePayRenterPaymentWebhookIngressAdapter } from "./providers/sepay-renter-payment-webhook-ingress.adapter.js";
 import { SaasBillingWebhookProcessingService } from "./saas-billing-webhook-processing.service.js";
 import { SaasBillingWebhookInboxService } from "./saas-billing-webhook-inbox.service.js";
 
@@ -19,13 +21,15 @@ import { SaasBillingWebhookInboxService } from "./saas-billing-webhook-inbox.ser
     BillingWebhookInternalController,
     RenterPaymentWebhookInternalController,
     DevJsonBankWebhookController,
-    DevJsonBankRenterPaymentWebhookController
+    DevJsonBankRenterPaymentWebhookController,
+    SePayRenterPaymentWebhookController
   ],
   providers: [
     InternalServiceGuard,
     BillingWebhookIngressService,
     RenterPaymentWebhookIngressService,
     DevJsonBankWebhookIngressAdapter,
+    SePayRenterPaymentWebhookIngressAdapter,
     SaasBillingWebhookInboxService,
     SaasBillingWebhookProcessingService
   ],
