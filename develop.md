@@ -1426,11 +1426,17 @@ Still required before production cutover:
 
 - configure and verify a SePay Test mode webhook against the deployed endpoint;
 - run a low-value real Live payment smoke test;
-- periodic SePay transaction reconciliation (15-30 minute operational sweep);
-- define/test a canonical SePay transaction identity across legacy webhook numeric IDs and API v2 UUID IDs before enabling sweep ingestion, so polling cannot duplicate webhook financial effects;
-- secret rotation runbook and alerting for invalid-signature spikes.
+- deployed Test-mode verification of the API-v2 reconciliation sweep;
+- low-value Live smoke test covering webhook + API-v2 cross-channel replay;
+- secret rotation runbook and alerting for invalid-signature/API-auth spikes.
 
 Implemented follow-up:
+- canonical SePay transaction identity across webhook numeric IDs and API-v2 UUID aliases;
+- migration backfill for strong legacy SePay identity evidence;
+- periodic API-v2 incoming-transaction sweep with durable optimistic cursor;
+- bounded initial lookback followed by `since_id` polling;
+- API-v2 observations persist through the existing provider inbox before cursor advance;
+- reconciliation worker remains opt-in and provider secrets stay outside PostgreSQL;
 - tenant Admin REVIEW_REQUIRED queue for attributable overpayment/account-mismatch cases;
 - safe partial manual allocation preserves any excess as REVIEW_REQUIRED;
 - retry-safe allocation UUID + financial audit trail.
