@@ -156,6 +156,20 @@ export class SePayRenterPaymentWebhookAdapter
 
     const content = optionalString(payload.content);
     const reference = paymentReference(payload);
+    const destinationAccountNo = optionalString(payload.accountNumber);
+    const referenceNumber = optionalString(payload.referenceCode);
+    const providerIdentity =
+      destinationAccountNo && referenceNumber
+        ? {
+            aliasType: "SEPAY_WEBHOOK_NUMERIC_ID",
+            aliasValue: providerTransactionId,
+            referenceNumber,
+            destinationAccountNo,
+            occurredAt,
+            direction: "IN" as const,
+            amountVnd: payload.transferAmount
+          }
+        : null;
 
     return {
       kind: "PAYMENT",
@@ -164,7 +178,8 @@ export class SePayRenterPaymentWebhookAdapter
         amountVnd: payload.transferAmount,
         occurredAt,
         paymentReference: reference,
-        destinationAccountNo: optionalString(payload.accountNumber),
+        destinationAccountNo,
+        providerIdentity,
         ...(content ? { note: content } : {}),
         metadata: {
           adapter: this.provider,
