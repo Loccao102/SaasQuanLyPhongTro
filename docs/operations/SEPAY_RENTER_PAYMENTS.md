@@ -37,6 +37,20 @@ WORKER_ROLE=RENTER_PAYMENT_WEBHOOK
 RENTER_PAYMENT_WEBHOOK_PROVIDER=SEPAY
 ```
 
+After webhook Test/Live validation, enable the periodic API-v2 reconciliation
+sweep on the same worker:
+
+```text
+SEPAY_RECONCILIATION_ENABLED=true
+SEPAY_API_TOKEN=<Bearer token stored in deployment secrets>
+SEPAY_RECONCILIATION_SCOPE_KEY=production-company
+SEPAY_RECONCILIATION_INTERVAL_MS=900000
+SEPAY_RECONCILIATION_INITIAL_LOOKBACK_HOURS=24
+```
+
+The API token is an Edge secret and must never be stored in PostgreSQL, logs,
+browser bundles, or committed configuration.
+
 The worker does not need the HMAC secret. Signature verification happens only at
 the API ingress boundary.
 
@@ -84,10 +98,34 @@ or silent overpayment allocation is allowed.
 
 ## Recovery
 
-If the webhook endpoint is unavailable, do not invent transactions from
-application logs. Reconcile against SePay's transaction API and insert missing
-provider events through a controlled reconciliation path using the same
-provider transaction idempotency rules.
+If the webhook endpoint is unavailable, the enabled API-v2 sweep fetches
+incoming transactions with a durable `since_id` cursor and persists each row
+through the same renter-payment inbox before advancing the cursor.
+
+Webhook numeric IDs and API-v2 UUID IDs are aliases, not the financial
+identity. Habi derives a canonical identity from exact bank reference number,
+destination account, transaction timestamp, direction and integer-VND amount.
+A cross-channel replay therefore reuses the existing PaymentTransaction.
+Missing or conflicting strong identity evidence never triggers fuzzy merge and
+is routed to review.
+
+The first enabled sweep bootstraps from a bounded lookback window (24 hours by
+default). After a successful durable page, later sweeps use SePay `since_id`.
+If the worker fails before cursor advance, persisted observations may be seen
+again; provider-event and canonical-transaction idempotency make this safe.
 
 If a payment is ambiguous, leave it in `REVIEW_REQUIRED` until an authorized
 operator explicitly resolves it.
+
+
+## Reconciliation cutover checklist
+
+- keep `SEPAY_RECONCILIATION_ENABLED=false` until migration 0019/0020 is applied;
+- verify legacy SePay provider transactions were backfilled without uniqueness errors;
+- use a dedicated SePay API bearer token in deployment secrets;
+- enable one reconciliation worker for a scope first;
+- confirm worker heartbeat remains healthy and reconciliation observed count is visible;
+- confirm a webhook-delivered transaction later seen by API v2 does not create another allocation;
+- simulate worker interruption before cursor advance and confirm replay is harmless;
+- alert on REVIEW_REQUIRED growth and repeated API authentication/rate failures;
+- rotate the API token independently from the webhook HMAC secret.

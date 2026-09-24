@@ -5,6 +5,10 @@ import { executeBillingWebhookAdapterSafely } from "./billing-webhook-execution.
 import { loadRenterPaymentWebhookAdapter } from "./billing-webhook-provider-registry.js";
 import { InternalWorkerApiClient } from "./internal-api-client.js";
 import { positiveInteger } from "./worker-config.js";
+import {
+  runSePayReconciliationSweepOnce,
+  SePayApiV2Client
+} from "./sepay-api-v2-reconciliation.js";
 
 export async function processRenterPaymentWebhookOnce(
   api: Pick<
@@ -48,6 +52,28 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
   const workerId =
     process.env.WORKER_ID?.trim() ||
     hostname() + "-renter-payment-webhook-" + String(process.pid);
+  const reconciliationEnabled =
+    process.env.SEPAY_RECONCILIATION_ENABLED?.trim().toLowerCase() === "true";
+  if (reconciliationEnabled && adapter.provider !== "SEPAY") {
+    throw new Error(
+      "SePay reconciliation can only run with RENTER_PAYMENT_WEBHOOK_PROVIDER=SEPAY."
+    );
+  }
+  const reconciliationIntervalMs = positiveInteger(
+    process.env.SEPAY_RECONCILIATION_INTERVAL_MS,
+    900000,
+    "SEPAY_RECONCILIATION_INTERVAL_MS"
+  );
+  const reconciliationLookbackHours = positiveInteger(
+    process.env.SEPAY_RECONCILIATION_INITIAL_LOOKBACK_HOURS,
+    24,
+    "SEPAY_RECONCILIATION_INITIAL_LOOKBACK_HOURS"
+  );
+  const reconciliationScopeKey =
+    process.env.SEPAY_RECONCILIATION_SCOPE_KEY?.trim() || "default";
+  const reconciliationClient = reconciliationEnabled
+    ? new SePayApiV2Client()
+    : null;
   const staleAfterSeconds = Math.min(
     86400,
     Math.max(30, Math.ceil(heartbeatIntervalMs / 1000) * 4)
@@ -55,7 +81,9 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
 
   let stopping = false;
   let lastHeartbeatAt = 0;
+  let lastReconciliationAttemptAt = 0;
   let processedSinceHeartbeat = 0;
+  let reconciliationObservedSinceHeartbeat = 0;
   const stop = () => {
     stopping = true;
   };
@@ -74,7 +102,13 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
         status,
         staleAfterSeconds,
         lastErrorCode: lastErrorCode ?? null,
-        metadata: { pollIntervalMs, processedSinceHeartbeat }
+        metadata: {
+          pollIntervalMs,
+          processedSinceHeartbeat,
+          reconciliationEnabled,
+          reconciliationIntervalMs,
+          reconciliationObservedSinceHeartbeat
+        }
       });
       lastHeartbeatAt = Date.now();
     } catch (error) {
@@ -99,17 +133,45 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
 
   while (!stopping) {
     try {
+      const now = Date.now();
+      if (
+        reconciliationClient &&
+        now - lastReconciliationAttemptAt >= reconciliationIntervalMs
+      ) {
+        lastReconciliationAttemptAt = now;
+        const sweep = await runSePayReconciliationSweepOnce(
+          api,
+          reconciliationClient,
+          {
+            scopeKey: reconciliationScopeKey,
+            initialLookbackHours: reconciliationLookbackHours
+          }
+        );
+        reconciliationObservedSinceHeartbeat += sweep.observed;
+        process.stdout.write(
+          "[renter-payment-reconciliation] observed=" +
+            String(sweep.observed) +
+            " pages=" +
+            String(sweep.pages) +
+            " cursor=" +
+            String(sweep.nextCursor ?? "none") +
+            "\n"
+        );
+      }
+
       const processed = await processRenterPaymentWebhookOnce(api, adapter);
       if (processed) processedSinceHeartbeat += 1;
 
       if (Date.now() - lastHeartbeatAt >= heartbeatIntervalMs) {
         await reportHeartbeat("HEALTHY");
         processedSinceHeartbeat = 0;
+        reconciliationObservedSinceHeartbeat = 0;
       }
       if (!processed && !stopping) await sleep(pollIntervalMs);
     } catch (error) {
       await reportHeartbeat("DEGRADED", "RENTER_PAYMENT_WEBHOOK_LOOP_ERROR");
       processedSinceHeartbeat = 0;
+      reconciliationObservedSinceHeartbeat = 0;
       process.stderr.write(
         "[renter-payment-webhook-worker] " +
           (error instanceof Error ? error.message : "Unknown worker error") +

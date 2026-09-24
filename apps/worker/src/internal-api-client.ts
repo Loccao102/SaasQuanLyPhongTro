@@ -115,6 +115,53 @@ export class InternalWorkerApiClient {
     );
   }
 
+
+  renterPaymentReconciliationCursor(
+    provider: string,
+    scopeKey: string
+  ): Promise<{
+    provider: string;
+    scopeKey: string;
+    cursor: string | null;
+    version: number;
+    lastSuccessAt: string | null;
+  }> {
+    return this.request(
+      "/internal/renter-payment-reconciliation/cursor",
+      { provider, scopeKey }
+    );
+  }
+
+  persistRenterPaymentReconciliationObservation(input: {
+    provider: string;
+    scopeKey: string;
+    providerEventId: string;
+    rawBody: string;
+  }): Promise<unknown> {
+    return this.request(
+      "/internal/renter-payment-reconciliation/observations",
+      input
+    );
+  }
+
+  advanceRenterPaymentReconciliationCursor(input: {
+    provider: string;
+    scopeKey: string;
+    expectedVersion: number;
+    nextCursor: string;
+  }): Promise<{
+    provider: string;
+    scopeKey: string;
+    cursor: string | null;
+    version: number;
+    lastSuccessAt: string | null;
+  }> {
+    return this.request(
+      "/internal/renter-payment-reconciliation/advance",
+      input
+    );
+  }
+
   billingSweep(limit: number): Promise<{
     processed: number;
     results: Array<{
