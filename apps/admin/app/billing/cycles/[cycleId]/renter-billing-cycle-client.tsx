@@ -54,6 +54,10 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
   const [linkSaving, setLinkSaving] = useState<string | null>(null);
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [notificationRequestKey, setNotificationRequestKey] =
+    useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,6 +121,51 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
     }
   }
 
+  async function sendInvoiceNotifications() {
+    if (
+      !window.confirm(
+        "Gửi hóa đơn sẽ tạo link công khai mới cho tất cả hóa đơn ISSUED còn nợ có số điện thoại người thuê. Link cũ của các hóa đơn đó sẽ bị vô hiệu. Hóa đơn đã thanh toán không gửi; hóa đơn thiếu số điện thoại sẽ được báo skipped. Tiếp tục?"
+      )
+    ) {
+      return;
+    }
+
+    const requestKey =
+      notificationRequestKey ??
+      "invoice-notify:" + cycleId + ":" + crypto.randomUUID();
+    setNotificationRequestKey(requestKey);
+    setNotificationSaving(true);
+    setNotificationMessage(null);
+    setError(null);
+
+    try {
+      const result = await renterBillingApi.createNotificationCampaign(
+        cycleId,
+        requestKey
+      );
+      setNotificationMessage(
+        "Đã xếp hàng " +
+          String(result.invoiceCount) +
+          " hóa đơn cho " +
+          String(result.recipientCount) +
+          " người nhận. " +
+          String(result.skippedInvoiceCount) +
+          " hóa đơn bị bỏ qua vì thiếu số điện thoại." +
+          (result.replayed ? " Đây là kết quả retry của cùng yêu cầu." : "")
+      );
+      setNotificationRequestKey(null);
+      await load();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Không thể tạo chiến dịch gửi hóa đơn."
+      );
+    } finally {
+      setNotificationSaving(false);
+    }
+  }
+
   async function revokePublicLink(invoiceId: string) {
     if (
       !window.confirm(
@@ -158,6 +207,15 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           <span>{error}</span>
         </div>
       ) : null}
+      {notificationMessage ? (
+        <div className="admin-state admin-state--success">
+          <strong>Chiến dịch gửi hóa đơn đã được tạo.</strong>
+          <span>{notificationMessage}</span>
+          <a className="text-link" href="/notifications">
+            Mở trung tâm thông báo →
+          </a>
+        </div>
+      ) : null}
       {linkMessage ? (
         <div className="admin-state admin-state--success">
           <strong>Public invoice đã cập nhật.</strong>
@@ -185,11 +243,23 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                 {data.cycle.dueDate}
               </p>
             </div>
-            <StatusBadge
-              tone={data.cycle.status === "FINALIZED" ? "success" : "warning"}
-            >
-              {data.cycle.status}
-            </StatusBadge>
+            <div className="button-row">
+              <StatusBadge
+                tone={data.cycle.status === "FINALIZED" ? "success" : "warning"}
+              >
+                {data.cycle.status}
+              </StatusBadge>
+              {data.cycle.status === "FINALIZED" ? (
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={notificationSaving}
+                  onClick={() => void sendInvoiceNotifications()}
+                >
+                  {notificationSaving ? "Đang xếp hàng…" : "Gửi hóa đơn"}
+                </button>
+              ) : null}
+            </div>
           </section>
 
           {data.invoices.length === 0 ? (
