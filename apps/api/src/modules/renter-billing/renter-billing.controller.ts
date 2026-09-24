@@ -16,6 +16,7 @@ import type {
 } from "../identity/tenant-principal.js";
 import { RenterBillingService } from "./renter-billing.service.js";
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
+import { RenterInvoiceNotificationService } from "./renter-invoice-notification.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -44,7 +45,8 @@ function requiredUuid(input: BodyInput, field: string): string {
 export class RenterBillingController {
   constructor(
     private readonly billing: RenterBillingService,
-    private readonly publicInvoices: RenterPublicInvoiceService
+    private readonly publicInvoices: RenterPublicInvoiceService,
+    private readonly invoiceNotifications: RenterInvoiceNotificationService
   ) {}
 
   @Get()
@@ -86,6 +88,19 @@ export class RenterBillingController {
     @Param("cycleId", new ParseUUIDPipe({ version: "4" })) cycleId: string
   ) {
     return this.billing.finalizeCycle(this.principal(request), cycleId);
+  }
+
+  @Post("cycles/:cycleId/notification-campaign")
+  createInvoiceNotificationCampaign(
+    @Req() request: TenantRequest,
+    @Param("cycleId", new ParseUUIDPipe({ version: "4" })) cycleId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.invoiceNotifications.createCycleCampaign(
+      this.principal(request),
+      cycleId,
+      requiredString(input, "idempotencyKey")
+    );
   }
 
   @Post("invoices/:invoiceId/public-link")
