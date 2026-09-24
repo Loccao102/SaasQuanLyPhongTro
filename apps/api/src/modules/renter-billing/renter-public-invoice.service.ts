@@ -57,80 +57,88 @@ export class RenterPublicInvoiceService {
   ) {}
 
   async issueAccess(principal: TenantPrincipal, invoiceId: string) {
-    return this.db.withTransaction(async (client) => {
-      const invoice = await this.requireInvoiceManage(
-        client,
-        principal,
-        invoiceId
+    return this.db.withTransaction((client) =>
+      this.issueAccessInTransaction(client, principal, invoiceId)
+    );
+  }
+
+  async issueAccessInTransaction(
+    client: PoolClient,
+    principal: TenantPrincipal,
+    invoiceId: string
+  ) {
+    const invoice = await this.requireInvoiceManage(
+      client,
+      principal,
+      invoiceId
+    );
+    await this.commercialPolicy.assertTenantWriteAllowed(
+      client,
+      principal.organizationId
+    );
+
+    if (invoice.status !== "ISSUED") {
+      throw new ConflictException(
+        "Public invoice access can only be issued for an ISSUED invoice."
       );
-      await this.commercialPolicy.assertTenantWriteAllowed(
-        client,
-        principal.organizationId
-      );
+    }
 
-      if (invoice.status !== "ISSUED") {
-        throw new ConflictException(
-          "Public invoice access can only be issued for an ISSUED invoice."
-        );
-      }
+    await client.query(
+      `UPDATE renter_invoice_public_links
+       SET status = 'REVOKED',
+           revoked_by_user_id = $3::uuid,
+           revoked_at = now(),
+           updated_at = now()
+       WHERE organization_id = $1::uuid
+         AND invoice_id = $2::uuid
+         AND status = 'ACTIVE'`,
+      [principal.organizationId, invoiceId, principal.userId]
+    );
 
-      await client.query(
-        `UPDATE renter_invoice_public_links
-         SET status = 'REVOKED',
-             revoked_by_user_id = $3::uuid,
-             revoked_at = now(),
-             updated_at = now()
-         WHERE organization_id = $1::uuid
-           AND invoice_id = $2::uuid
-           AND status = 'ACTIVE'`,
-        [principal.organizationId, invoiceId, principal.userId]
-      );
+    const token = "habi_inv_" + randomBytes(24).toString("base64url");
+    const tokenHash = this.hashToken(token);
+    const tokenHint = token.slice(-6);
 
-      const token = "habi_inv_" + randomBytes(24).toString("base64url");
-      const tokenHash = this.hashToken(token);
-      const tokenHint = token.slice(-6);
-
-      const link = await client.query<QueryResultRow & {
-        id: string;
-        created_at: Date;
-      }>(
-        `INSERT INTO renter_invoice_public_links (
-           organization_id,
-           invoice_id,
-           token_hash,
-           token_hint,
-           created_by_user_id
-         )
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id::text, created_at`,
-        [
-          principal.organizationId,
-          invoiceId,
-          tokenHash,
-          tokenHint,
-          principal.userId
-        ]
-      );
-
-      await this.audit(
-        client,
+    const link = await client.query<QueryResultRow & {
+      id: string;
+      created_at: Date;
+    }>(
+      `INSERT INTO renter_invoice_public_links (
+         organization_id,
+         invoice_id,
+         token_hash,
+         token_hint,
+         created_by_user_id
+       )
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id::text, created_at`,
+      [
         principal.organizationId,
-        principal.userId,
-        "RENTER_INVOICE_PUBLIC_LINK_ISSUED",
         invoiceId,
-        {
-          linkId: link.rows[0]!.id,
-          tokenHint
-        }
-      );
-
-      return {
-        invoiceId,
-        token,
+        tokenHash,
         tokenHint,
-        createdAt: link.rows[0]!.created_at.toISOString()
-      };
-    });
+        principal.userId
+      ]
+    );
+
+    await this.audit(
+      client,
+      principal.organizationId,
+      principal.userId,
+      "RENTER_INVOICE_PUBLIC_LINK_ISSUED",
+      invoiceId,
+      {
+        linkId: link.rows[0]!.id,
+        tokenHint
+      }
+    );
+
+    return {
+      invoiceId,
+      token,
+      tokenHint,
+      createdAt: link.rows[0]!.created_at.toISOString()
+    };
   }
 
   async revokeAccess(principal: TenantPrincipal, invoiceId: string) {

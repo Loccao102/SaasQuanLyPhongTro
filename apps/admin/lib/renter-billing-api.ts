@@ -105,6 +105,33 @@ export const renterBillingApi = {
       "/invoices/" + encodeURIComponent(invoiceId) + "/public-link/revoke",
       { method: "POST" }
     ),
+  createNotificationCampaign: (
+    cycleId: string,
+    idempotencyKey: string
+  ) =>
+    request<{
+      replayed: boolean;
+      campaign: {
+        id: string;
+        status: string;
+        totalRecipients: number;
+        queued: number;
+        sent: number;
+        failed: number;
+        manualReview: number;
+      };
+      invoiceCount: number;
+      recipientCount: number;
+      skippedInvoiceCount: number;
+    }>(
+      "/cycles/" +
+        encodeURIComponent(cycleId) +
+        "/notification-campaign",
+      {
+        method: "POST",
+        body: { idempotencyKey }
+      }
+    ),
   finalizeCycle: (cycleId: string) =>
     request<{
       cycleId: string;

@@ -2,7 +2,7 @@
 
 > Status source for work that is **not finished yet**, production gaps, and expansion directions.
 >
-> Last reviewed: 2026-09-23
+> Last reviewed: 2026-09-25
 >
 > Architecture baseline: modular monolith + isolated workers + PostgreSQL source of truth.
 >
@@ -1324,7 +1324,7 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Provider/webhook ingestion, public invoice payment status/VietQR, and notification campaign operations are the next active product slices. The Admin notification surface supports create/list/detail/pause/resume/cancel/retry. Tenant team management now supports invitations, role changes, activation/suspension, ORGANIZATION/OPERATIONAL_GROUP/PROPERTY scopes, operational-group property assignment, OWNER safety invariants, staff quota enforcement on activation, and audit. Next deepen provider/webhook matching and finish real auth/invitation delivery.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Provider/webhook ingestion, public invoice payment status/VietQR, and notification campaign operations are the next active product slices. The Admin notification surface supports create/list/detail/pause/resume/cancel/retry. Tenant team management now supports invitations, role changes, activation/suspension, ORGANIZATION/OPERATIONAL_GROUP/PROPERTY scopes, operational-group property assignment, OWNER safety invariants, staff quota enforcement on activation, and audit. Next finish SePay production cutover/runbooks and design the canonical webhook/API transaction identity required for a safe periodic reconciliation sweep. Authenticated invitation delivery/recovery hardening remains separate follow-up.
 
 
 ## Team / membership management implemented
@@ -1364,9 +1364,13 @@ Implemented baseline:
 - system audit for provider auto-allocation/review;
 - integration coverage for partial/full/overpayment/wrong-reference/replay.
 
+Implemented follow-up:
+- tenant-facing provider-payment REVIEW_REQUIRED queue;
+- property/operational-group scoped review access;
+- audited manual allocation into the referenced invoice;
+- overpayment remains visible as unallocated REVIEW_REQUIRED money rather than implicit credit.
+
 Still required:
-- production SePay ingress/normalizer based on current provider documentation and signature/auth contract;
-- tenant-facing review UI for unmatched/overpaid provider transactions;
 - payer-bank deeplink selection if pilot usage proves it useful.
 
 
@@ -1386,9 +1390,14 @@ Still required:
 - Admin billing cycle detail can create/rotate/revoke the public link;
 - integration coverage for token storage, rotation, tenant isolation, VietQR data, payment-state refresh and revocation.
 
+Implemented follow-up:
+- finalized billing cycles can create durable personalized notification campaigns;
+- each outstanding ISSUED invoice gets a freshly rotated opaque public link;
+- multiple invoices for one phone are grouped into one notification job;
+- campaign creation + link rotation are transactional and idempotent;
+- missing tenant phone numbers are reported as skipped.
+
 Still required:
-- tenant-facing provider-payment review UI;
-- notification templates should embed freshly issued public invoice links;
 - optional payer-bank deeplink selector can be added after pilot evidence.
 
 
@@ -1418,5 +1427,10 @@ Still required before production cutover:
 - configure and verify a SePay Test mode webhook against the deployed endpoint;
 - run a low-value real Live payment smoke test;
 - periodic SePay transaction reconciliation (15-30 minute operational sweep);
-- Admin review queue for unmatched/overpaid/account-mismatch provider payments;
+- define/test a canonical SePay transaction identity across legacy webhook numeric IDs and API v2 UUID IDs before enabling sweep ingestion, so polling cannot duplicate webhook financial effects;
 - secret rotation runbook and alerting for invalid-signature spikes.
+
+Implemented follow-up:
+- tenant Admin REVIEW_REQUIRED queue for attributable overpayment/account-mismatch cases;
+- safe partial manual allocation preserves any excess as REVIEW_REQUIRED;
+- retry-safe allocation UUID + financial audit trail.

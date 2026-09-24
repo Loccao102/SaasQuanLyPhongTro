@@ -22,6 +22,7 @@ type ClaimRow = QueryResultRow & {
   quota_reservation_id: string;
   channel: string;
   message_body: string;
+  message_body_override: string | null;
 };
 
 type JobRow = QueryResultRow & {
@@ -81,7 +82,8 @@ export class NotificationWorkerService {
            j.max_attempts,
            c.quota_reservation_id::text,
            c.channel,
-           c.message_body
+           c.message_body,
+           j.message_body_override
          FROM notification_jobs j
          JOIN notification_campaigns c
            ON c.organization_id = j.organization_id
@@ -182,7 +184,7 @@ export class NotificationWorkerService {
         recipientDisplayName: row.recipient_display_name,
         provider: row.provider,
         channel: row.channel,
-        messageBody: row.message_body,
+        messageBody: row.message_body_override ?? row.message_body,
         attemptNumber,
         maxAttempts: row.max_attempts
       };

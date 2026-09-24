@@ -9,6 +9,8 @@ import { RenterPaymentsModule } from "../renter-payments/renter-payments.module.
 import { RenterBillingService } from "./renter-billing.service.js";
 import { RenterPublicInvoiceController } from "./renter-public-invoice.controller.js";
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
+import { RenterInvoiceNotificationService } from "./renter-invoice-notification.service.js";
+import { NotificationsModule } from "../notifications/notifications.module.js";
 
 @Module({
   imports: [
@@ -17,10 +19,15 @@ import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
     CommercialModule,
     PricingModule,
     MeteringModule,
-    RenterPaymentsModule
+    RenterPaymentsModule,
+    NotificationsModule
   ],
   controllers: [RenterBillingController, RenterPublicInvoiceController],
-  providers: [RenterBillingService, RenterPublicInvoiceService],
+  providers: [
+    RenterBillingService,
+    RenterPublicInvoiceService,
+    RenterInvoiceNotificationService
+  ],
   exports: [RenterBillingService, RenterPublicInvoiceService]
 })
 export class RenterBillingModule {}

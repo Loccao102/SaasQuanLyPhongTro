@@ -16,7 +16,6 @@ import { InternalServiceGuard } from "../internal/internal-service.guard.js";
   providers: [
     InternalServiceGuard,
     NotificationAdminService,
-    NotificationAdminService,
     NotificationCampaignService,
     NotificationWorkerService,
     NotificationOperationsService
