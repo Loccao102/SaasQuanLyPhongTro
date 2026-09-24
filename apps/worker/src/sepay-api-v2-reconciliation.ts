@@ -301,6 +301,8 @@ export async function runSePayReconciliationSweepOnce(
     (input.now ?? new Date()).getTime() - lookbackHours * 60 * 60 * 1000
   );
 
+  let completed = false;
+
   while (pages < maxPages) {
     const result = await client.listTransactions(
       nextCursor
@@ -326,6 +328,7 @@ export async function runSePayReconciliationSweepOnce(
     }
 
     if (!result.hasMore || result.transactions.length === 0) {
+      completed = true;
       break;
     }
 
@@ -334,7 +337,7 @@ export async function runSePayReconciliationSweepOnce(
     }
   }
 
-  if (pages >= maxPages) {
+  if (!completed) {
     throw new Error(
       "SePay reconciliation page safety limit reached before completion."
     );
