@@ -151,3 +151,43 @@ test("SePay worker routes invalid amount or date to review", async () => {
   if (invalidDate.kind !== "REVIEW_REQUIRED") return;
   assert.equal(invalidDate.errorCode, "SEPAY_TRANSACTION_DATE_INVALID");
 });
+
+
+test("SePay worker normalizes API v2 observation into the same provider identity model", async () => {
+  const adapter = new SePayRenterPaymentWebhookAdapter();
+  const result = await adapter.normalize(
+    event({
+      _habiSource: "SEPAY_API_V2",
+      id: "5a03e3d5-7cc5-4bfe-b88e-f78738fbf8e2",
+      transaction_date: "2026-09-24T16:08:33+07:00",
+      account_number: "0123456789",
+      transfer_type: "in",
+      amount_in: 100000,
+      amount_out: 0,
+      transaction_content:
+        "RENT0123456789ABCDEF0123456789ABCDEF thanh toan",
+      reference_number: "FT260924ABC",
+      code: "RENT0123456789ABCDEF0123456789ABCDEF",
+      bank_brand_name: "MBBank",
+      bank_account_id: "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
+      va_id: null
+    })
+  );
+
+  assert.equal(result.kind, "PAYMENT");
+  if (result.kind !== "PAYMENT") return;
+  assert.equal(
+    result.payment.providerTransactionId,
+    "5a03e3d5-7cc5-4bfe-b88e-f78738fbf8e2"
+  );
+  assert.equal(result.payment.occurredAt, "2026-09-24T09:08:33.000Z");
+  assert.deepEqual(result.payment.providerIdentity, {
+    aliasType: "SEPAY_API_V2_UUID",
+    aliasValue: "5a03e3d5-7cc5-4bfe-b88e-f78738fbf8e2",
+    referenceNumber: "FT260924ABC",
+    destinationAccountNo: "0123456789",
+    occurredAt: "2026-09-24T09:08:33.000Z",
+    direction: "IN",
+    amountVnd: 100000
+  });
+});
