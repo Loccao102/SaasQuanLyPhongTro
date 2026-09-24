@@ -85,6 +85,7 @@ services:
       OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:-replace-with-a-separate-long-random-metrics-token}
       DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
       SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
+      PUBLIC_INVOICE_BASE_URL: ${PUBLIC_INVOICE_BASE_URL:-http://localhost:3002}
     command: ["pnpm", "--filter", "@propops/api", "dev"]
     ports:
       - "4000:4000"
