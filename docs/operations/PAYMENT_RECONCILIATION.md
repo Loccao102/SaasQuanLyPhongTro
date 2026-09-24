@@ -17,12 +17,20 @@ Bank transaction
 
 Webhook có thể được gửi lại.
 
-Bắt buộc có unique key phù hợp, ví dụ:
+Bắt buộc có provider-event idempotency và canonical transaction identity.
+
 ```text
-(provider, provider_transaction_id)
+Provider delivery/event
+  -> source alias
+  -> CanonicalProviderTransaction
+  -> PaymentTransaction
 ```
 
-Một provider event chỉ tạo financial effect một lần.
+Không giả định `provider_transaction_id` giống nhau giữa mọi API của cùng
+provider. Với SePay, legacy webhook numeric ID và API-v2 UUID có thể là hai alias
+cho cùng một giao dịch ngân hàng. Canonical matching chỉ dùng strong evidence
+(reference number + destination account + timestamp + direction + exact amount).
+Một canonical provider transaction chỉ được gắn với một PaymentTransaction.
 
 ## Matching
 
@@ -143,7 +151,28 @@ Operational follow-up still required:
 
 - configure NTP on production hosts because timestamp validation is time based;
 - alert on repeated invalid signatures and REVIEW_REQUIRED growth;
-- run periodic SePay transaction reconciliation to recover webhook gaps;
+- periodic SePay API-v2 reconciliation is implemented behind an explicit opt-in flag;
 - exercise SePay Test mode and Live delivery logs before enabling a real bank
   account;
 - define secret rotation procedure with an overlap/cutover plan.
+
+
+## Periodic SePay API-v2 reconciliation
+
+The renter-payment worker can optionally poll SePay API v2 every 15 minutes.
+
+Safety sequence:
+
+```text
+read durable cursor
+ -> GET SePay /v2/transactions
+ -> persist stable API-v2 observation(s) through Internal API
+ -> existing renter-payment inbox/worker normalization
+ -> canonical provider identity
+ -> existing PaymentTransaction/Allocation processor
+ -> advance cursor only after the page is durable
+```
+
+The worker never writes PostgreSQL directly. Initial bootstrap uses a bounded
+lookback; subsequent sweeps use `since_id`. Cursor advance is optimistic by
+version so two workers cannot silently overwrite each other's progress.
