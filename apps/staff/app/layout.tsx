@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import "@propops/ui/styles.css";
 import "./styles.css";
+import { StaffAuthProvider } from "../components/staff-auth-provider";
 import { ServiceWorkerRegistration } from "./service-worker-registration";
+
 export const metadata: Metadata = {
   title: "Habi Staff",
   description: "Chốt chỉ số điện nước offline-first cho nhân viên vận hành.",
@@ -19,7 +21,7 @@ export default function RootLayout({
     <html lang="vi">
       <body>
         <ServiceWorkerRegistration />
-        {children}
+        <StaffAuthProvider>{children}</StaffAuthProvider>
       </body>
     </html>
   );

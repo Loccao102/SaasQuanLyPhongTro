@@ -144,3 +144,150 @@ body { background: #eef0f3; }
   .staff-sync-summary { grid-template-columns: auto 1fr; gap: 6px; justify-items: start; align-items: baseline; }
   .meter-field > span { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
+
+
+/* Staff authenticated/offline session */
+.staff-session-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: -8px 0 16px;
+  padding: 11px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: white;
+}
+.staff-session-strip > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.staff-session-strip select {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.staff-session-strip select:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.staff-session-strip small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.staff-session-strip button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+.staff-session-strip button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.staff-login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at top, rgb(36 87 230 / 7%), transparent 35%),
+    #eef0f3;
+}
+.staff-login-card {
+  display: grid;
+  gap: 22px;
+  width: min(100%, 440px);
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: var(--shadow-md);
+}
+.staff-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.staff-login-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--color-text);
+  color: white;
+  font-weight: 850;
+}
+.staff-login-brand > div,
+.staff-login-heading {
+  display: grid;
+  gap: 4px;
+}
+.staff-login-brand span:not(.staff-login-mark),
+.staff-login-heading p {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.staff-login-heading {
+  gap: 7px;
+}
+.staff-login-heading h1 {
+  margin: 0;
+  font-size: 25px;
+  letter-spacing: -.04em;
+}
+.staff-login-heading p {
+  margin: 0;
+  line-height: 1.6;
+}
+.staff-login-form {
+  display: grid;
+  gap: 14px;
+}
+.staff-login-form label {
+  display: grid;
+  gap: 7px;
+}
+.staff-login-form label > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.staff-login-form input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: white;
+  font-size: 16px;
+}
+.staff-login-form input:focus {
+  border-color: var(--color-primary);
+  outline: 3px solid rgb(36 87 230 / 10%);
+}
+@media (max-width: 420px) {
+  .staff-session-strip {
+    grid-template-columns: 1fr;
+  }
+  .staff-session-strip button {
+    width: 100%;
+  }
+}

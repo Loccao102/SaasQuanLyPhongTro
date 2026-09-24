@@ -30,6 +30,7 @@ import {
   normalizeMeterInput,
   validateAgainstPrevious
 } from "../lib/meter-entry-domain";
+import { useStaffAuth } from "../components/staff-auth-provider";
 
 function todayIso() {
   const now = new Date();
@@ -189,6 +190,11 @@ function MeterInput({
 }
 
 export function StaffMeterEntryClient() {
+  const auth = useStaffAuth();
+  const actorUserId = auth.session?.user.id ?? "";
+  const authOrganizationId =
+    auth.selectedMembership?.organizationId ?? "";
+
   const [readingDate, setReadingDate] = useState(todayIso);
   const [checklist, setChecklist] =
     useState<StaffMeteringChecklistResponse | null>(null);
@@ -209,11 +215,15 @@ export function StaffMeterEntryClient() {
 
   const refreshLocal = useCallback(
     async (organizationId: string, date = readingDate) => {
-      const rows = await listLocalReadings(organizationId, date);
+      const rows = await listLocalReadings(
+        actorUserId,
+        organizationId,
+        date
+      );
       setLocalReadings(rows);
       return rows;
     },
-    [readingDate]
+    [actorUserId, readingDate]
   );
 
   const loadChecklist = useCallback(
@@ -225,8 +235,7 @@ export function StaffMeterEntryClient() {
       if (typeof navigator !== "undefined" && navigator.onLine) {
         try {
           loaded = await staffMeteringApi.checklist(date);
-          await cacheChecklist(loaded);
-          localStorage.setItem("habi-staff-organization-id", loaded.organization.id);
+          await cacheChecklist(loaded, actorUserId);
         } catch (loadError) {
           if (
             loadError instanceof StaffMeteringApiError &&
@@ -238,11 +247,12 @@ export function StaffMeterEntryClient() {
       }
 
       if (!loaded) {
-        const cachedOrganizationId = localStorage.getItem(
-          "habi-staff-organization-id"
-        );
-        if (cachedOrganizationId) {
-          loaded = await getCachedChecklist(cachedOrganizationId, date);
+        if (actorUserId && authOrganizationId) {
+          loaded = await getCachedChecklist(
+            actorUserId,
+            authOrganizationId,
+            date
+          );
         }
       }
 
@@ -262,11 +272,20 @@ export function StaffMeterEntryClient() {
         }
         return loaded?.properties[0]?.id ?? "";
       });
-      await recoverInterruptedSync(loaded.organization.id, date);
+      await recoverInterruptedSync(
+        actorUserId,
+        loaded.organization.id,
+        date
+      );
       await refreshLocal(loaded.organization.id, date);
       setLoading(false);
     },
-    [readingDate, refreshLocal]
+    [
+      actorUserId,
+      authOrganizationId,
+      readingDate,
+      refreshLocal
+    ]
   );
 
   useEffect(() => {
@@ -341,7 +360,11 @@ export function StaffMeterEntryClient() {
 
     try {
       const organizationId = checklist.organization.id;
-      let rows = await listLocalReadings(organizationId, readingDate);
+      let rows = await listLocalReadings(
+        actorUserId,
+        organizationId,
+        readingDate
+      );
       const pending = rows.filter((row) => row.status === "PENDING_SYNC");
 
       for (const row of pending) {
@@ -417,13 +440,19 @@ export function StaffMeterEntryClient() {
       if (remaining === 0) {
         setNotice("Tất cả chỉ số trên máy đã được đồng bộ.");
         const fresh = await staffMeteringApi.checklist(readingDate);
-        await cacheChecklist(fresh);
+        await cacheChecklist(fresh, actorUserId);
         setChecklist(fresh);
       }
     } finally {
       setSyncing(false);
     }
-  }, [checklist, readingDate, refreshLocal, syncing]);
+  }, [
+    actorUserId,
+    checklist,
+    readingDate,
+    refreshLocal,
+    syncing
+  ]);
 
   useEffect(() => {
     syncQueueRef.current = syncQueue;
@@ -502,6 +531,7 @@ export function StaffMeterEntryClient() {
       }
       await putLocalReading({
         id: existing?.id ?? crypto.randomUUID(),
+        actorUserId,
         organizationId: checklist.organization.id,
         readingDate,
         propertyId: selectedProperty.id,
@@ -605,6 +635,56 @@ export function StaffMeterEntryClient() {
             {online ? "ONLINE" : "OFFLINE"}
           </StatusBadge>
         </header>
+
+        <section className="staff-session-strip">
+          <div>
+            <span className="staff-kicker">WORKSPACE</span>
+            <select
+              aria-label="Chọn workspace Staff"
+              value={auth.selectedMembership?.organizationId ?? ""}
+              onChange={(event) =>
+                auth.switchOrganization(event.target.value)
+              }
+            >
+              {auth.session?.memberships.map((membership) => (
+                <option
+                  key={membership.organizationId}
+                  value={membership.organizationId}
+                >
+                  {membership.organizationName}
+                </option>
+              ))}
+            </select>
+            <small>
+              {auth.session?.user.displayName ||
+                auth.session?.user.email}
+              {" · "}
+              {auth.selectedMembership?.role}
+            </small>
+          </div>
+          <button
+            type="button"
+            disabled={!auth.online}
+            title={
+              auth.online
+                ? "Đăng xuất khỏi thiết bị"
+                : "Cần có mạng để thu hồi phiên đăng nhập"
+            }
+            onClick={() => void auth.logout()}
+          >
+            Đăng xuất
+          </button>
+        </section>
+
+        {auth.status === "offline-authenticated" ? (
+          <div className="staff-state staff-state--warning">
+            <strong>Phiên offline đang được dùng.</strong>
+            <span>
+              Có thể tiếp tục nhập. Hàng chờ chỉ sync sau khi mạng và phiên
+              server được xác thực lại.
+            </span>
+          </div>
+        ) : null}
 
         <section className="staff-toolbar">
           <label>
