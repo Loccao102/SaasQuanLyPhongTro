@@ -6,6 +6,13 @@ import {
 } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
 import { DatabaseService } from "../database/database.service.js";
+import {
+  assertTrustedBrowserOrigin,
+  isUnsafeHttpMethod,
+  readCsrfHeader,
+  readSessionToken
+} from "./auth/auth-http.js";
+import { AuthenticationService } from "./auth/authentication.service.js";
 import type {
   MembershipAccess,
   MembershipScope,
@@ -34,15 +41,39 @@ type ScopeRow = QueryResultRow & {
 
 @Injectable()
 export class TenantPrincipalGuard implements CanActivate {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly authentication: AuthenticationService
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<TenantRequest>();
-    const userId =
-      request.authenticatedUserId ??
-      (process.env.NODE_ENV !== "production"
-        ? process.env.ADMIN_DEV_USER_ID
-        : undefined);
+    let userId = request.authenticatedUserId;
+
+    const sessionToken = readSessionToken(request);
+    if (!userId && sessionToken) {
+      const session = await this.authentication.authenticateSession(sessionToken);
+      if (!session) {
+        throw new UnauthorizedException(
+          "Authentication session is invalid or expired."
+        );
+      }
+
+      if (isUnsafeHttpMethod(request.method)) {
+        assertTrustedBrowserOrigin(request);
+        if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
+          throw new UnauthorizedException("Valid CSRF token is required.");
+        }
+      }
+
+      userId = session.userId;
+      request.authenticatedUserId = session.userId;
+      request.authSessionId = session.sessionId;
+    }
+
+    if (!userId && process.env.NODE_ENV !== "production") {
+      userId = process.env.ADMIN_DEV_USER_ID;
+    }
 
     const headerValue = request.headers?.["x-organization-id"];
     const headerOrganizationId = Array.isArray(headerValue)
@@ -112,12 +143,10 @@ export class TenantPrincipalGuard implements CanActivate {
         scope.scope_type === "OPERATIONAL_GROUP" &&
         scope.operational_group_id
       ) {
-        return [
-          {
-            type: "OPERATIONAL_GROUP",
-            operationalGroupId: scope.operational_group_id
-          }
-        ];
+        return [{
+          type: "OPERATIONAL_GROUP",
+          operationalGroupId: scope.operational_group_id
+        }];
       }
       if (scope.scope_type === "PROPERTY" && scope.property_id) {
         return [{ type: "PROPERTY", propertyId: scope.property_id }];
@@ -141,7 +170,6 @@ export class TenantPrincipalGuard implements CanActivate {
       membership
     };
     request.tenantPrincipal = principal;
-
     return true;
   }
 }

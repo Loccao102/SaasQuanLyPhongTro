@@ -131,3 +131,23 @@ The API remains the authority for:
 - final send verification state.
 
 A worker retry that already consumed quota may reuse the same consumption idempotently, but it must still pass the current subscription/organization write policy before a new provider attempt starts.
+
+
+## Browser authentication
+
+Browser authentication uses opaque database-backed sessions.
+
+Rules:
+- password credentials use salted asynchronous scrypt; never plaintext or reversible encryption;
+- only a SHA-256 hash of the session token is persisted;
+- session expiry/revocation and `users.auth_version` are checked server-side;
+- production session cookies are HttpOnly, Secure and host-only;
+- unsafe cookie-authenticated tenant/CMS mutations require `X-CSRF-Token`;
+- browser `Origin` must match configured CORS origins when present;
+- `X-Organization-Id` is only a tenant selector and never an authorization claim;
+- `TenantPrincipalGuard` still resolves ACTIVE membership and scopes from PostgreSQL;
+- `CmsPlatformGuard` separately resolves ACTIVE platform-operator access.
+
+Development env user-ID fallbacks are forbidden in production and exist only as a temporary local migration aid.
+
+Before public launch, login abuse controls, password reset/recovery, session-management UX and MFA policy must be completed.
