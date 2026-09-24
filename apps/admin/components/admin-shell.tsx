@@ -8,7 +8,7 @@ const navItems = [
   { label: "Chốt số", href: "/metering" },
   { label: "Hóa đơn", href: "/billing" },
   { label: "Thu tiền", href: "#" },
-  { label: "Thông báo", href: "#" },
+  { label: "Thông báo", href: "/notifications" },
   { label: "Báo cáo", href: "#" }
 ];
 
