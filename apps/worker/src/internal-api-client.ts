@@ -77,6 +77,44 @@ export class InternalWorkerApiClient {
     );
   }
 
+
+  claimRenterPaymentWebhook(
+    provider: string
+  ): Promise<ClaimedBillingWebhookEvent | null> {
+    return this.request<ClaimedBillingWebhookEvent | null>(
+      "/internal/renter-payment-webhooks/claim",
+      { provider }
+    );
+  }
+
+  completeRenterPaymentWebhookPayment(
+    eventId: string,
+    payment: NormalizedBillingWebhookPayment
+  ): Promise<unknown> {
+    return this.request(
+      "/internal/renter-payment-webhooks/" +
+        encodeURIComponent(eventId) +
+        "/payment",
+      payment
+    );
+  }
+
+  completeRenterPaymentWebhookOutcome(
+    eventId: string,
+    input: {
+      outcome: "REVIEW_REQUIRED" | "IGNORED" | "FAILED";
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    }
+  ): Promise<unknown> {
+    return this.request(
+      "/internal/renter-payment-webhooks/" +
+        encodeURIComponent(eventId) +
+        "/outcome",
+      input
+    );
+  }
+
   billingSweep(limit: number): Promise<{
     processed: number;
     results: Array<{
@@ -93,7 +131,11 @@ export class InternalWorkerApiClient {
 
   observabilityHeartbeat(input: {
     workerId: string;
-    role: "NOTIFICATION" | "BILLING" | "BILLING_WEBHOOK";
+    role:
+      | "NOTIFICATION"
+      | "BILLING"
+      | "BILLING_WEBHOOK"
+      | "RENTER_PAYMENT_WEBHOOK";
     provider?: string | null;
     status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
     staleAfterSeconds: number;

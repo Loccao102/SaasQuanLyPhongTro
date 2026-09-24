@@ -9,6 +9,8 @@ type DevJsonBankPayload = {
   amountVnd?: unknown;
   occurredAt?: unknown;
   paymentReference?: unknown;
+  payerName?: unknown;
+  note?: unknown;
 };
 
 export class DevJsonBankBillingWebhookAdapter
@@ -77,6 +79,17 @@ export class DevJsonBankBillingWebhookAdapter
       };
     }
 
+    if (
+      (payload.payerName !== undefined && payload.payerName !== null && typeof payload.payerName !== "string") ||
+      (payload.note !== undefined && payload.note !== null && typeof payload.note !== "string")
+    ) {
+      return {
+        kind: "REVIEW_REQUIRED",
+        errorCode: "DEV_JSON_BANK_OPTIONAL_TEXT_INVALID",
+        errorMessage: "payerName and note must be strings when present."
+      };
+    }
+
     return {
       kind: "PAYMENT",
       payment: {
@@ -87,6 +100,12 @@ export class DevJsonBankBillingWebhookAdapter
           typeof payload.paymentReference === "string"
             ? payload.paymentReference.trim().toUpperCase() || null
             : null,
+        ...(typeof payload.payerName === "string" && payload.payerName.trim()
+          ? { payerName: payload.payerName.trim() }
+          : {}),
+        ...(typeof payload.note === "string" && payload.note.trim()
+          ? { note: payload.note.trim() }
+          : {}),
         metadata: {
           adapter: this.provider,
           providerEventId: event.providerEventId

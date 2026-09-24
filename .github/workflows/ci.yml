@@ -88,7 +88,9 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.sql
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
+          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
 
+          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.down.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.down.sql
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.down.sql
           run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.down.sql
@@ -118,6 +120,7 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.sql
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
+          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
 
       - name: Leasing integration tests
         env:

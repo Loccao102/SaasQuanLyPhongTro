@@ -1,7 +1,8 @@
 export type WorkerRole =
   | "NOTIFICATION"
   | "BILLING"
-  | "BILLING_WEBHOOK";
+  | "BILLING_WEBHOOK"
+  | "RENTER_PAYMENT_WEBHOOK";
 
 export type WorkerStatus =
   | "STARTING"
