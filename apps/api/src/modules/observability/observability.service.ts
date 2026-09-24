@@ -41,6 +41,24 @@ type BillingWebhookSummaryRow = QueryResultRow & {
   oldest_backlog_age_seconds: string | null;
 };
 
+type RenterPaymentWebhookSummaryRow = QueryResultRow & {
+  received_count: string;
+  processing_count: string;
+  review_required_count: string;
+  failed_count: string;
+  stale_processing_count: string;
+  processed_24h_count: string;
+  invalid_signature_24h_count: string;
+  oldest_backlog_age_seconds: string | null;
+};
+
+type ReconciliationCursorRow = QueryResultRow & {
+  provider: string;
+  scope_key: string;
+  initialized: boolean;
+  last_success_age_seconds: string;
+};
+
 const API_LATENCY_BUCKETS_MS = [50, 100, 250, 500, 1000, 2500, 5000];
 
 @Injectable()
@@ -116,8 +134,13 @@ export class ObservabilityService {
   }
 
   async getOperationalSnapshot(): Promise<OperationalSnapshot> {
-    const [workerResult, notificationResult, webhookResult] =
-      await Promise.all([
+    const [
+      workerResult,
+      notificationResult,
+      webhookResult,
+      renterPaymentWebhookResult,
+      reconciliationResult
+    ] = await Promise.all([
         this.database.query<WorkerHeartbeatRow>(
           `SELECT
              worker_id,
@@ -220,11 +243,83 @@ export class ObservabilityService {
            FROM saas_billing_webhook_events
            CROSS JOIN timeout_config
            GROUP BY timeout_config.timeout_seconds`
+        ),
+        this.database.query<RenterPaymentWebhookSummaryRow>(
+          `WITH timeout_config AS (
+             SELECT COALESCE(
+               (
+                 SELECT (value #>> '{}')::int
+                 FROM system_settings
+                 WHERE key = 'renter_payment_webhook_processing_timeout_seconds'
+               ),
+               300
+             ) AS timeout_seconds
+           )
+           SELECT
+             count(*) FILTER (
+               WHERE processing_status = 'RECEIVED'
+             )::text AS received_count,
+             count(*) FILTER (
+               WHERE processing_status = 'PROCESSING'
+             )::text AS processing_count,
+             count(*) FILTER (
+               WHERE processing_status = 'REVIEW_REQUIRED'
+             )::text AS review_required_count,
+             count(*) FILTER (
+               WHERE processing_status = 'FAILED'
+             )::text AS failed_count,
+             count(*) FILTER (
+               WHERE processing_status = 'PROCESSING'
+                 AND processing_started_at IS NOT NULL
+                 AND processing_started_at <=
+                   now() - make_interval(
+                     secs => timeout_config.timeout_seconds
+                   )
+             )::text AS stale_processing_count,
+             count(*) FILTER (
+               WHERE processing_status = 'PROCESSED'
+                 AND processed_at >= now() - interval '24 hours'
+             )::text AS processed_24h_count,
+             count(*) FILTER (
+               WHERE signature_status = 'INVALID'
+                 AND received_at >= now() - interval '24 hours'
+             )::text AS invalid_signature_24h_count,
+             EXTRACT(
+               EPOCH FROM GREATEST(
+                 now() - min(received_at) FILTER (
+                   WHERE processing_status IN (
+                     'RECEIVED',
+                     'PROCESSING',
+                     'REVIEW_REQUIRED',
+                     'FAILED'
+                   )
+                 ),
+                 interval '0 seconds'
+               )
+             )::text AS oldest_backlog_age_seconds
+           FROM renter_payment_webhook_events
+           CROSS JOIN timeout_config
+           GROUP BY timeout_config.timeout_seconds`
+        ),
+        this.database.query<ReconciliationCursorRow>(
+          `SELECT
+             provider,
+             scope_key,
+             (last_success_at IS NOT NULL) AS initialized,
+             EXTRACT(
+               EPOCH FROM GREATEST(
+                 now() - COALESCE(last_success_at, created_at),
+                 interval '0 seconds'
+               )
+             )::text AS last_success_age_seconds
+           FROM renter_payment_reconciliation_cursors
+           ORDER BY provider, scope_key`
         )
       ]);
 
     const notifications = notificationResult.rows[0];
     const webhooks = webhookResult.rows[0];
+    const renterPaymentWebhooks = renterPaymentWebhookResult.rows[0];
 
     return {
       generatedAt: new Date().toISOString(),
@@ -269,6 +364,38 @@ export class ObservabilityService {
           0,
           Number(webhooks?.oldest_backlog_age_seconds ?? 0)
         )
+      },
+      renterPaymentWebhooks: {
+        received: Number(renterPaymentWebhooks?.received_count ?? 0),
+        processing: Number(renterPaymentWebhooks?.processing_count ?? 0),
+        reviewRequired: Number(
+          renterPaymentWebhooks?.review_required_count ?? 0
+        ),
+        failed: Number(renterPaymentWebhooks?.failed_count ?? 0),
+        staleProcessing: Number(
+          renterPaymentWebhooks?.stale_processing_count ?? 0
+        ),
+        processed24h: Number(
+          renterPaymentWebhooks?.processed_24h_count ?? 0
+        ),
+        invalidSignature24h: Number(
+          renterPaymentWebhooks?.invalid_signature_24h_count ?? 0
+        ),
+        oldestBacklogAgeSeconds: Math.max(
+          0,
+          Number(renterPaymentWebhooks?.oldest_backlog_age_seconds ?? 0)
+        )
+      },
+      renterPaymentReconciliation: {
+        streams: reconciliationResult.rows.map((row) => ({
+          provider: row.provider,
+          scopeKey: row.scope_key,
+          initialized: row.initialized,
+          lastSuccessAgeSeconds: Math.max(
+            0,
+            Number(row.last_success_age_seconds ?? 0)
+          )
+        }))
       }
     };
   }
