@@ -82,3 +82,68 @@ Implemented baseline:
 - Admin financial review/confirmation before recording a manual payment.
 
 Provider/webhook ingestion must reuse these tables rather than attach provider transactions directly to invoices. Reversal/refund/correction is intentionally a separate explicit financial flow.
+
+
+## SePay renter-payment production adapter
+
+Habi now has a production SePay edge adapter for renter payments.
+
+Runtime contract:
+
+```text
+SePay
+ -> POST /api/integrations/renter-payment-webhooks/sepay
+ -> verify HMAC against the exact raw request body
+ -> persist renter_payment_webhook_events
+ -> RENTER_PAYMENT_WEBHOOK worker
+ -> normalize SePay transaction
+ -> provider-neutral renter payment processor
+ -> PaymentTransaction / PaymentAllocation
+```
+
+Deployment configuration:
+
+- configure the SePay webhook with JSON request content;
+- use HMAC-SHA256 authentication;
+- configure the same secret in `SEPAY_RENTER_WEBHOOK_SECRET`;
+- set the renter-payment worker to `RENTER_PAYMENT_WEBHOOK_PROVIDER=SEPAY`;
+- use a public HTTPS endpoint in Live mode;
+- configure incoming transactions only when possible;
+- configure SePay payment-code extraction for the `RENT` prefix so `code`
+  can carry Habi's immutable renter invoice payment reference.
+
+Ingress rules:
+
+- verify `X-SePay-Signature` against `{timestamp}.{raw_body}`;
+- reject timestamps more than 300 seconds from server time;
+- never reserialize parsed JSON before HMAC verification;
+- invalid signatures are persisted under a raw-body-derived event key and
+  never reserve the genuine SePay transaction id;
+- verified SePay `id` is the provider event / transaction id;
+- successful verified ingress responds HTTP 200 with `{"success":true}`;
+- raw signature/secret values are not persisted as safe headers.
+
+Normalization rules:
+
+- only `transferType=in` is treated as a payment;
+- `transferAmount` stays integer VND;
+- `transactionDate` is interpreted as Vietnam time for SePay's
+  `YYYY-MM-DD HH:mm:ss` payload;
+- payment reference prefers `code`, then a strict Habi `RENT...` token in
+  `content`;
+- no fuzzy reference guess is allowed;
+- SePay `accountNumber` is normalized as `destinationAccountNo`.
+
+Automatic allocation additionally checks the destination account when a
+provider supplies one. If it does not match the organization's active payment
+profile, the provider transaction is retained but reconciliation becomes
+`REVIEW_REQUIRED` and the invoice is not changed.
+
+Operational follow-up still required:
+
+- configure NTP on production hosts because timestamp validation is time based;
+- alert on repeated invalid signatures and REVIEW_REQUIRED growth;
+- run periodic SePay transaction reconciliation to recover webhook gaps;
+- exercise SePay Test mode and Live delivery logs before enabling a real bank
+  account;
+- define secret rotation procedure with an overlap/cutover plan.

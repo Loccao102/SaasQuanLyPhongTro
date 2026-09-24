@@ -1,5 +1,6 @@
 import type { BillingWebhookAdapter } from "./billing-webhook-types.js";
 import { DevJsonBankBillingWebhookAdapter } from "./providers/dev-json-bank-billing-webhook.provider.js";
+import { SePayRenterPaymentWebhookAdapter } from "./providers/sepay-renter-payment-webhook.provider.js";
 
 export function loadBillingWebhookAdapter(): BillingWebhookAdapter {
   const provider = process.env.BILLING_WEBHOOK_PROVIDER?.trim();
@@ -23,6 +24,10 @@ export function loadBillingWebhookAdapter(): BillingWebhookAdapter {
 export function loadRenterPaymentWebhookAdapter(): BillingWebhookAdapter {
   const provider = process.env.RENTER_PAYMENT_WEBHOOK_PROVIDER?.trim();
 
+  if (provider === "SEPAY") {
+    return new SePayRenterPaymentWebhookAdapter();
+  }
+
   if (provider === "DEV_JSON_BANK") {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
@@ -34,7 +39,7 @@ export function loadRenterPaymentWebhookAdapter(): BillingWebhookAdapter {
 
   throw new Error(
     "No renter payment webhook adapter is configured. " +
-      "Set RENTER_PAYMENT_WEBHOOK_PROVIDER to an installed adapter. " +
-      "DEV_JSON_BANK is available only for local development."
+      "Set RENTER_PAYMENT_WEBHOOK_PROVIDER to SEPAY in production " +
+      "or DEV_JSON_BANK for local development."
   );
 }

@@ -11,6 +11,8 @@ const roomId = "f1000000-0000-4000-8000-000000000003";
 const leaseId = "f1000000-0000-4000-8000-000000000004";
 const cycleId = "f1000000-0000-4000-8000-000000000005";
 const invoiceId = "f1000000-0000-4000-8000-000000000006";
+const accountCycleId = "f1000000-0000-4000-8000-000000000007";
+const accountInvoiceId = "f1000000-0000-4000-8000-000000000008";
 const provider = "TEST_RENTER_BANK";
 
 async function cleanup(pool: Pool) {
@@ -194,6 +196,92 @@ test("renter provider payments safely auto-allocate and route unsafe matches to 
     assert.equal(unmatched.allocated, false);
     assert.equal(unmatched.paymentTransactionId, null);
     assert.equal(unmatched.event.processingStatus, "REVIEW_REQUIRED");
+
+
+    await pool.query(
+      `INSERT INTO organization_payment_profiles (
+         organization_id, bank_id, account_no, account_name, is_active
+       ) VALUES ($1, '970422', '0123456789', 'RENTER PROVIDER TEST', true)`,
+      [organizationId]
+    );
+    await pool.query(
+      `INSERT INTO renter_billing_cycles (
+         id, organization_id, property_id, cycle_code,
+         period_start, period_end, due_date, status
+       ) VALUES (
+         $1, $2, $3, '2026-10', '2026-10-01', '2026-10-31',
+         '2026-11-05', 'FINALIZED'
+       )`,
+      [accountCycleId, organizationId, propertyId]
+    );
+    await pool.query(
+      `INSERT INTO renter_invoices (
+         id, organization_id, billing_cycle_id, property_id, room_id, lease_id,
+         invoice_number, payment_reference, status,
+         period_start, period_end, due_date,
+         property_name_snapshot, room_code_snapshot, lease_code_snapshot,
+         primary_resident_name_snapshot,
+         subtotal_vnd, adjustment_vnd, previous_balance_vnd, total_vnd,
+         paid_vnd, remaining_vnd, collection_status, issued_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         'INV-ACCOUNT', 'RENTACCOUNTTEST', 'ISSUED',
+         '2026-10-01', '2026-10-31', '2026-11-05',
+         'Property 1', 'R1', 'LEASE-1', 'Resident A',
+         50000, 0, 0, 50000,
+         0, 50000, 'UNPAID', now()
+       )`,
+      [
+        accountInvoiceId,
+        organizationId,
+        accountCycleId,
+        propertyId,
+        roomId,
+        leaseId
+      ]
+    );
+
+    const wrongAccountEvent = await acceptAndClaim(
+      inbox,
+      "event-wrong-account",
+      "{}"
+    );
+    const wrongAccount = await processing.processPayment(
+      wrongAccountEvent.id,
+      {
+        providerTransactionId: "tx-wrong-account",
+        amountVnd: 50_000,
+        occurredAt: new Date("2026-09-24T01:17:00.000Z").toISOString(),
+        paymentReference: "RENTACCOUNTTEST",
+        destinationAccountNo: "9999999999"
+      }
+    );
+    assert.equal(wrongAccount.allocated, false);
+    assert.equal(
+      wrongAccount.event.processingStatus,
+      "REVIEW_REQUIRED"
+    );
+    assert.equal(
+      wrongAccount.event.lastErrorCode,
+      "RENTER_PAYMENT_DESTINATION_ACCOUNT_MISMATCH"
+    );
+
+    const accountInvoice = await pool.query<{
+      paid_vnd: string;
+      remaining_vnd: string;
+      collection_status: string;
+    }>(
+      `SELECT paid_vnd::text, remaining_vnd::text, collection_status
+       FROM renter_invoices
+       WHERE id = $1`,
+      [accountInvoiceId]
+    );
+    assert.equal(Number(accountInvoice.rows[0]?.paid_vnd), 0);
+    assert.equal(Number(accountInvoice.rows[0]?.remaining_vnd), 50_000);
+    assert.equal(
+      accountInvoice.rows[0]?.collection_status,
+      "UNPAID"
+    );
 
     const invoice = await pool.query<{
       paid_vnd: string;

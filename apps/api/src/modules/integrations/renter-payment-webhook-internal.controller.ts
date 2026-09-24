@@ -64,6 +64,14 @@ export class RenterPaymentWebhookInternalController {
         input.paymentReference === null
           ? null
           : requiredString(input.paymentReference, "paymentReference"),
+      destinationAccountNo:
+        input.destinationAccountNo === undefined ||
+        input.destinationAccountNo === null
+          ? null
+          : requiredString(
+              input.destinationAccountNo,
+              "destinationAccountNo"
+            ),
       payerName:
         input.payerName === undefined || input.payerName === null
           ? null

@@ -26,6 +26,7 @@ x-worker-environment: &worker-environment
   BILLING_WEBHOOK_POLL_INTERVAL_MS: ${BILLING_WEBHOOK_POLL_INTERVAL_MS:-1500}
   RENTER_PAYMENT_WEBHOOK_PROVIDER: ${RENTER_PAYMENT_WEBHOOK_PROVIDER:-DEV_JSON_BANK}
   RENTER_PAYMENT_WEBHOOK_POLL_INTERVAL_MS: ${RENTER_PAYMENT_WEBHOOK_POLL_INTERVAL_MS:-1500}
+  SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
   DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
 
 services:
@@ -83,6 +84,7 @@ services:
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
       OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:-replace-with-a-separate-long-random-metrics-token}
       DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
+      SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
     command: ["pnpm", "--filter", "@propops/api", "dev"]
     ports:
       - "4000:4000"

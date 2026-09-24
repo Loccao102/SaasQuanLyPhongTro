@@ -1387,7 +1387,36 @@ Still required:
 - integration coverage for token storage, rotation, tenant isolation, VietQR data, payment-state refresh and revocation.
 
 Still required:
-- production SePay ingress/normalizer;
 - tenant-facing provider-payment review UI;
 - notification templates should embed freshly issued public invoice links;
 - optional payer-bank deeplink selector can be added after pilot evidence.
+
+
+## Production SePay renter-payment adapter
+
+Implemented:
+
+- production `POST /api/integrations/renter-payment-webhooks/sepay` endpoint;
+- HMAC-SHA256 verification on the exact raw request body;
+- `X-SePay-Timestamp` ±300 second replay protection;
+- fail-closed secret configuration;
+- invalid-signature event keys cannot poison a genuine SePay transaction id;
+- verified SePay transaction `id` used as durable provider event id;
+- HTTP 200 + `{"success":true}` success contract for accepted verified events;
+- production worker adapter for SePay payloads;
+- deterministic Vietnam-time `transactionDate` normalization;
+- incoming/outgoing transaction handling;
+- exact Habi `RENT...` payment-reference extraction from SePay `code` or
+  transfer `content`;
+- destination bank-account validation against the organization's active
+  payment profile before AUTO allocation;
+- unit tests for HMAC/tamper/replay/config and payload normalization;
+- integration coverage for destination-account mismatch -> REVIEW_REQUIRED.
+
+Still required before production cutover:
+
+- configure and verify a SePay Test mode webhook against the deployed endpoint;
+- run a low-value real Live payment smoke test;
+- periodic SePay transaction reconciliation (15-30 minute operational sweep);
+- Admin review queue for unmatched/overpaid/account-mismatch provider payments;
+- secret rotation runbook and alerting for invalid-signature spikes.
