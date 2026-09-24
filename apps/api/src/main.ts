@@ -1,32 +1,22 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module.js";
-
-function allowedCorsOrigins(): string[] {
-  const configured = process.env.CORS_ORIGINS
-    ?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (configured && configured.length > 0) {
-    return configured;
-  }
-
-  return [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:3002",
-    "http://localhost:3003"
-  ];
-}
+import { allowedBrowserOrigins } from "./modules/identity/auth/auth-http.js";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true
   });
   app.enableCors({
-    origin: allowedCorsOrigins(),
-    credentials: true
+    origin: allowedBrowserOrigins(),
+    credentials: true,
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Organization-Id",
+      "X-Idempotency-Key",
+      "X-CSRF-Token"
+    ]
   });
   app.setGlobalPrefix("api");
   const port = Number(process.env.API_PORT ?? 4000);

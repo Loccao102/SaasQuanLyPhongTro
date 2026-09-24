@@ -6,6 +6,13 @@ import {
 } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
 import { DatabaseService } from "../database/database.service.js";
+import {
+  assertTrustedBrowserOrigin,
+  isUnsafeHttpMethod,
+  readCsrfHeader,
+  readSessionToken
+} from "../identity/auth/auth-http.js";
+import { AuthenticationService } from "../identity/auth/authentication.service.js";
 import type { CmsRequest, PlatformPrincipal } from "./cms.types.js";
 import { isPlatformRole } from "./domain/platform-access.js";
 
@@ -18,12 +25,36 @@ type PlatformOperatorRow = QueryResultRow & {
 
 @Injectable()
 export class CmsPlatformGuard implements CanActivate {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly authentication: AuthenticationService
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<CmsRequest>();
-
     let userId = request.authenticatedUserId;
+    const sessionToken = readSessionToken(request);
+
+    if (!userId && sessionToken) {
+      const session = await this.authentication.authenticateSession(sessionToken);
+      if (!session) {
+        throw new UnauthorizedException(
+          "Authentication session is invalid or expired."
+        );
+      }
+
+      if (isUnsafeHttpMethod(request.method)) {
+        assertTrustedBrowserOrigin(request);
+        if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
+          throw new UnauthorizedException("Valid CSRF token is required.");
+        }
+      }
+
+      userId = session.userId;
+      request.authenticatedUserId = session.userId;
+      request.authSessionId = session.sessionId;
+    }
+
     if (!userId && process.env.NODE_ENV !== "production") {
       userId = process.env.CMS_DEV_USER_ID;
     }

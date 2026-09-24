@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { CommercialModule } from "../commercial/commercial.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { AuthenticationModule } from "../identity/auth/authentication.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { NotificationsModule } from "../notifications/notifications.module.js";
 import { CmsController } from "./cms.controller.js";
@@ -16,11 +17,23 @@ import { CmsService } from "./cms.service.js";
 @Module({
   imports: [
     DatabaseModule,
+    AuthenticationModule,
     CommercialModule,
     NotificationsModule,
     IntegrationsModule
   ],
-  controllers: [CmsController, CmsOrganizationDirectoryController, CmsBillingDetailController, CmsGlobalSearchController],
-  providers: [CmsPlatformGuard, CmsService, CmsOrganizationDirectoryService, CmsBillingDetailService, CmsGlobalSearchService]
+  controllers: [
+    CmsController,
+    CmsOrganizationDirectoryController,
+    CmsBillingDetailController,
+    CmsGlobalSearchController
+  ],
+  providers: [
+    CmsPlatformGuard,
+    CmsService,
+    CmsOrganizationDirectoryService,
+    CmsBillingDetailService,
+    CmsGlobalSearchService
+  ]
 })
 export class CmsModule {}

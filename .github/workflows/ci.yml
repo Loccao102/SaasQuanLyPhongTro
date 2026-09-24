@@ -8,7 +8,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17-alpine
@@ -51,84 +51,38 @@ jobs:
 
       - name: Database setup command smoke test
         run: |
-          docker run --rm --network host \
-            -e PGPASSWORD=propops \
-            postgres:17-alpine \
-            psql -h 127.0.0.1 -U propops -d postgres -v ON_ERROR_STOP=1 \
-            -c "DROP DATABASE IF EXISTS propops_runtime WITH (FORCE);" \
-            -c "CREATE DATABASE propops_runtime;"
+          docker run --rm --network host             -e PGPASSWORD=propops             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d postgres -v ON_ERROR_STOP=1             -c "DROP DATABASE IF EXISTS propops_runtime WITH (FORCE);"             -c "CREATE DATABASE propops_runtime;"
 
-          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime \
-            pnpm --filter @propops/api db:setup
+          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime             pnpm --filter @propops/api db:setup
 
-          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime \
-            pnpm --filter @propops/api db:setup
+          DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime             pnpm --filter @propops/api db:setup
 
       - name: Migration smoke test
         run: |
           run_psql() {
-            docker run --rm --network host \
-              -e PGPASSWORD=propops \
-              -v "$PWD:/repo:ro" \
-              postgres:17-alpine \
-              psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1 -f "$1"
+            docker run --rm --network host               -e PGPASSWORD=propops               -v "$PWD:/repo:ro"               postgres:17-alpine               psql -h 127.0.0.1 -U propops -d propops -v ON_ERROR_STOP=1 -f "$1"
           }
 
-          run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
-          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0004_automation_quota_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.sql
-          run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.sql
-          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
-          run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.sql
-          run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.sql
-          run_psql /repo/apps/api/db/migrations/0011_system_worker_observability.sql
-          run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
-          run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
-          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
-          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.sql
+          for migration in             0001_identity_property_foundation             0002_leasing_contract_lifecycle             0003_cms_commercial_foundation             0004_automation_quota_foundation             0005_notification_jobs_foundation             0006_notification_provider_operations             0007_saas_subscription_billing             0008_saas_billing_provider_inbox             0009_brand_dashboard_defaults             0010_habi_brand_refresh             0011_system_worker_observability             0012_renter_billing_foundation             0013_renter_pricing_metering             0014_renter_payment_allocation             0015_renter_payment_provider_inbox             0016_public_invoice_vietqr             0017_auth_sessions_and_credentials
+          do
+            run_psql "/repo/apps/api/db/migrations/${migration}.sql"
+          done
 
-          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.down.sql
-          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.down.sql
-          run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.down.sql
-          run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.down.sql
-          run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.down.sql
-          run_psql /repo/apps/api/db/migrations/0011_system_worker_observability.down.sql
-          run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.down.sql
-          run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.down.sql
-          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.down.sql
-          run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.down.sql
-          run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.down.sql
-          run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.down.sql
-          run_psql /repo/apps/api/db/migrations/0004_automation_quota_foundation.down.sql
-          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.down.sql
-          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.down.sql
-          run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.down.sql
+          for migration in             0017_auth_sessions_and_credentials             0016_public_invoice_vietqr             0015_renter_payment_provider_inbox             0014_renter_payment_allocation             0013_renter_pricing_metering             0012_renter_billing_foundation             0011_system_worker_observability             0010_habi_brand_refresh             0009_brand_dashboard_defaults             0008_saas_billing_provider_inbox             0007_saas_subscription_billing             0006_notification_provider_operations             0005_notification_jobs_foundation             0004_automation_quota_foundation             0003_cms_commercial_foundation             0002_leasing_contract_lifecycle             0001_identity_property_foundation
+          do
+            run_psql "/repo/apps/api/db/migrations/${migration}.down.sql"
+          done
 
-          run_psql /repo/apps/api/db/migrations/0001_identity_property_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0002_leasing_contract_lifecycle.sql
-          run_psql /repo/apps/api/db/migrations/0003_cms_commercial_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0004_automation_quota_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0005_notification_jobs_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0006_notification_provider_operations.sql
-          run_psql /repo/apps/api/db/migrations/0007_saas_subscription_billing.sql
-          run_psql /repo/apps/api/db/migrations/0008_saas_billing_provider_inbox.sql
-          run_psql /repo/apps/api/db/migrations/0009_brand_dashboard_defaults.sql
-          run_psql /repo/apps/api/db/migrations/0010_habi_brand_refresh.sql
-          run_psql /repo/apps/api/db/migrations/0011_system_worker_observability.sql
-          run_psql /repo/apps/api/db/migrations/0012_renter_billing_foundation.sql
-          run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
-          run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
-          run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
-          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.sql
+          for migration in             0001_identity_property_foundation             0002_leasing_contract_lifecycle             0003_cms_commercial_foundation             0004_automation_quota_foundation             0005_notification_jobs_foundation             0006_notification_provider_operations             0007_saas_subscription_billing             0008_saas_billing_provider_inbox             0009_brand_dashboard_defaults             0010_habi_brand_refresh             0011_system_worker_observability             0012_renter_billing_foundation             0013_renter_pricing_metering             0014_renter_payment_allocation             0015_renter_payment_provider_inbox             0016_public_invoice_vietqr             0017_auth_sessions_and_credentials
+          do
+            run_psql "/repo/apps/api/db/migrations/${migration}.sql"
+          done
 
       - name: Integration tests
         env:
           DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops
           DATABASE_POOL_MAX: 4
+          AUTH_SESSION_TTL_DAYS: 30
         run: pnpm --filter @propops/api test:integration
 
       - name: Build
