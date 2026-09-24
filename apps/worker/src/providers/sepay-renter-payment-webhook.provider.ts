@@ -4,7 +4,7 @@ import type {
   ClaimedBillingWebhookEvent
 } from "../billing-webhook-types.js";
 
-type SePayPayload = {
+type SePayWebhookPayload = {
   id?: unknown;
   gateway?: unknown;
   transactionDate?: unknown;
@@ -19,9 +19,40 @@ type SePayPayload = {
   referenceCode?: unknown;
 };
 
+type SePayApiV2Payload = {
+  _habiSource?: unknown;
+  id?: unknown;
+  transaction_date?: unknown;
+  account_number?: unknown;
+  transfer_type?: unknown;
+  amount_in?: unknown;
+  amount_out?: unknown;
+  transaction_content?: unknown;
+  reference_number?: unknown;
+  code?: unknown;
+  bank_brand_name?: unknown;
+  bank_account_id?: unknown;
+  va_id?: unknown;
+};
+
+type NormalizedSePayPayload = {
+  providerTransactionId: string | null;
+  aliasType: "SEPAY_WEBHOOK_NUMERIC_ID" | "SEPAY_API_V2_UUID";
+  transactionDate: unknown;
+  accountNumber: unknown;
+  code: unknown;
+  content: unknown;
+  transferType: unknown;
+  amount: unknown;
+  referenceNumber: unknown;
+  metadata: Record<string, unknown>;
+};
+
 const renterReferencePattern = /^RENT[A-F0-9]{32}$/i;
 const renterReferenceInTextPattern =
   /(?:^|[^A-Z0-9])(RENT[A-F0-9]{32})(?=$|[^A-Z0-9])/i;
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function optionalString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -29,13 +60,16 @@ function optionalString(value: unknown): string | null {
   return normalized || null;
 }
 
-function paymentReference(payload: SePayPayload): string | null {
-  const code = optionalString(payload.code);
+function paymentReference(
+  codeValue: unknown,
+  contentValue: unknown
+): string | null {
+  const code = optionalString(codeValue);
   if (code && renterReferencePattern.test(code)) {
     return code.toUpperCase();
   }
 
-  const content = optionalString(payload.content);
+  const content = optionalString(contentValue);
   if (!content) return null;
   const match = content.match(renterReferenceInTextPattern);
   return match?.[1]?.toUpperCase() ?? null;
@@ -77,6 +111,65 @@ function sePayTimestamp(value: unknown): string | null {
   return parsed.toISOString();
 }
 
+function normalizeSource(
+  payload: SePayWebhookPayload | SePayApiV2Payload
+): NormalizedSePayPayload {
+  if ((payload as SePayApiV2Payload)._habiSource === "SEPAY_API_V2") {
+    const api = payload as SePayApiV2Payload;
+    const id = optionalString(api.id);
+    return {
+      providerTransactionId: id && uuidPattern.test(id) ? id.toLowerCase() : null,
+      aliasType: "SEPAY_API_V2_UUID",
+      transactionDate: api.transaction_date,
+      accountNumber: api.account_number,
+      code: api.code,
+      content: api.transaction_content,
+      transferType: api.transfer_type,
+      amount: api.amount_in,
+      referenceNumber: api.reference_number,
+      metadata: {
+        source: "SEPAY_API_V2",
+        bankBrandName: optionalString(api.bank_brand_name),
+        bankAccountId: optionalString(api.bank_account_id),
+        vaId: optionalString(api.va_id)
+      }
+    };
+  }
+
+  const webhook = payload as SePayWebhookPayload;
+  let id: string | null = null;
+  if (
+    typeof webhook.id === "number" &&
+    Number.isSafeInteger(webhook.id) &&
+    webhook.id > 0
+  ) {
+    id = String(webhook.id);
+  } else if (
+    typeof webhook.id === "string" &&
+    /^[1-9]\d*$/.test(webhook.id.trim())
+  ) {
+    id = webhook.id.trim();
+  }
+
+  return {
+    providerTransactionId: id,
+    aliasType: "SEPAY_WEBHOOK_NUMERIC_ID",
+    transactionDate: webhook.transactionDate,
+    accountNumber: webhook.accountNumber,
+    code: webhook.code,
+    content: webhook.content,
+    transferType: webhook.transferType,
+    amount: webhook.transferAmount,
+    referenceNumber: webhook.referenceCode,
+    metadata: {
+      source: "SEPAY_WEBHOOK",
+      gateway: optionalString(webhook.gateway),
+      subAccount: optionalString(webhook.subAccount),
+      description: optionalString(webhook.description)
+    }
+  };
+}
+
 export class SePayRenterPaymentWebhookAdapter
   implements BillingWebhookAdapter
 {
@@ -85,16 +178,20 @@ export class SePayRenterPaymentWebhookAdapter
   async normalize(
     event: ClaimedBillingWebhookEvent
   ): Promise<BillingWebhookAdapterResult> {
-    let payload: SePayPayload;
+    let parsed: SePayWebhookPayload | SePayApiV2Payload;
     try {
-      payload = JSON.parse(event.rawBody) as SePayPayload;
+      parsed = JSON.parse(event.rawBody) as
+        | SePayWebhookPayload
+        | SePayApiV2Payload;
     } catch {
       return {
         kind: "REVIEW_REQUIRED",
         errorCode: "SEPAY_INVALID_JSON",
-        errorMessage: "SePay webhook body is not valid JSON."
+        errorMessage: "SePay payment observation is not valid JSON."
       };
     }
+
+    const payload = normalizeSource(parsed);
 
     if (payload.transferType === "out") {
       return {
@@ -107,40 +204,30 @@ export class SePayRenterPaymentWebhookAdapter
       return {
         kind: "REVIEW_REQUIRED",
         errorCode: "SEPAY_TRANSFER_TYPE_INVALID",
-        errorMessage: "SePay transferType must be in or out."
+        errorMessage: "SePay transfer type must be in or out."
       };
     }
 
-    let providerTransactionId: string | null = null;
-    if (
-      typeof payload.id === "number" &&
-      Number.isSafeInteger(payload.id) &&
-      payload.id > 0
-    ) {
-      providerTransactionId = String(payload.id);
-    } else if (
-      typeof payload.id === "string" &&
-      /^[1-9]\d*$/.test(payload.id.trim())
-    ) {
-      providerTransactionId = payload.id.trim();
-    }
-    if (!providerTransactionId) {
+    if (!payload.providerTransactionId) {
       return {
         kind: "REVIEW_REQUIRED",
         errorCode: "SEPAY_TRANSACTION_ID_INVALID",
-        errorMessage: "SePay id must be a positive transaction identifier."
+        errorMessage:
+          payload.aliasType === "SEPAY_API_V2_UUID"
+            ? "SePay API v2 id must be a UUID transaction identifier."
+            : "SePay webhook id must be a positive transaction identifier."
       };
     }
 
     if (
-      typeof payload.transferAmount !== "number" ||
-      !Number.isSafeInteger(payload.transferAmount) ||
-      payload.transferAmount <= 0
+      typeof payload.amount !== "number" ||
+      !Number.isSafeInteger(payload.amount) ||
+      payload.amount <= 0
     ) {
       return {
         kind: "REVIEW_REQUIRED",
         errorCode: "SEPAY_AMOUNT_INVALID",
-        errorMessage: "SePay transferAmount must be a positive integer VND amount."
+        errorMessage: "SePay incoming amount must be a positive integer VND amount."
       };
     }
 
@@ -150,32 +237,32 @@ export class SePayRenterPaymentWebhookAdapter
         kind: "REVIEW_REQUIRED",
         errorCode: "SEPAY_TRANSACTION_DATE_INVALID",
         errorMessage:
-          "SePay transactionDate must be a valid Vietnam local timestamp or ISO date-time."
+          "SePay transaction date must be a valid Vietnam local timestamp or ISO date-time."
       };
     }
 
     const content = optionalString(payload.content);
-    const reference = paymentReference(payload);
     const destinationAccountNo = optionalString(payload.accountNumber);
-    const referenceNumber = optionalString(payload.referenceCode);
+    const referenceNumber = optionalString(payload.referenceNumber);
+    const reference = paymentReference(payload.code, payload.content);
     const providerIdentity =
       destinationAccountNo && referenceNumber
         ? {
-            aliasType: "SEPAY_WEBHOOK_NUMERIC_ID",
-            aliasValue: providerTransactionId,
+            aliasType: payload.aliasType,
+            aliasValue: payload.providerTransactionId,
             referenceNumber,
             destinationAccountNo,
             occurredAt,
             direction: "IN" as const,
-            amountVnd: payload.transferAmount
+            amountVnd: payload.amount
           }
         : null;
 
     return {
       kind: "PAYMENT",
       payment: {
-        providerTransactionId,
-        amountVnd: payload.transferAmount,
+        providerTransactionId: payload.providerTransactionId,
+        amountVnd: payload.amount,
         occurredAt,
         paymentReference: reference,
         destinationAccountNo,
@@ -184,12 +271,10 @@ export class SePayRenterPaymentWebhookAdapter
         metadata: {
           adapter: this.provider,
           providerEventId: event.providerEventId,
-          gateway: optionalString(payload.gateway),
-          accountNumber: optionalString(payload.accountNumber),
-          subAccount: optionalString(payload.subAccount),
-          referenceCode: optionalString(payload.referenceCode),
-          description: optionalString(payload.description),
-          transferType: payload.transferType
+          accountNumber: destinationAccountNo,
+          referenceNumber,
+          transferType: payload.transferType,
+          ...payload.metadata
         }
       }
     };
