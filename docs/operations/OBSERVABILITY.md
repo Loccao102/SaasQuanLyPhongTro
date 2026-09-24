@@ -27,6 +27,7 @@ All worker roles report into the same runtime heartbeat table:
 - `NOTIFICATION`
 - `BILLING`
 - `BILLING_WEBHOOK`
+- `RENTER_PAYMENT_WEBHOOK`
 
 Each worker reports its own stale threshold so deployments with different poll/sweep intervals do not share an unsafe hardcoded timeout.
 
@@ -69,6 +70,15 @@ Billing webhook operations:
 - stale processing;
 - oldest backlog age.
 
+Renter-payment provider operations:
+
+- provider inbox received / processing / review-required / failed;
+- stale processing;
+- invalid-signature deliveries observed in the last 24 hours;
+- oldest renter-payment backlog age;
+- reconciliation stream initialized state;
+- age since each provider/scope reconciliation cursor last advanced.
+
 The CMS Observability surface also shows 24-hour notification/webhook operational counts.
 
 ## Important limitations
@@ -94,7 +104,13 @@ Configure externally once metrics are scraped:
 
 - `habi_worker_stale{role="BILLING"} > 0`;
 - `habi_worker_stale{role="BILLING_WEBHOOK"} > 0`;
+- `habi_worker_stale{role="RENTER_PAYMENT_WEBHOOK"} > 0`;
 - `habi_billing_webhook_stale_processing > 0`;
+- `habi_renter_payment_webhook_stale_processing > 0`;
+- renter-payment backlog age above the payment-processing SLA;
+- repeated/increasing `habi_renter_payment_webhook_invalid_signature_24h`;
+- `habi_renter_payment_reconciliation_initialized == 0` after a stream is intentionally enabled;
+- reconciliation last-success age above roughly 2x the configured sweep interval;
 - `habi_db_pool_connections{state="waiting"} > 0` sustained;
 - increasing `habi_api_http_errors_total`;
 - notification pending age above the operational SLA.
