@@ -6,6 +6,7 @@
 - Modular monolith skeleton.
 - PostgreSQL migrations.
 - Organization + roles.
+- Browser authentication + trusted principal sessions.
 - Administrative areas + operational groups.
 - Property/floor/room model.
 - CI: lint, typecheck, unit tests, migration checks.
