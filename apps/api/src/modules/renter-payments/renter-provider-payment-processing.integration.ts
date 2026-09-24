@@ -25,6 +25,10 @@ async function cleanup(pool: Pool) {
     [organizationId]
   );
   await pool.query(
+    "DELETE FROM renter_provider_transaction_identities WHERE provider = $1",
+    [provider]
+  );
+  await pool.query(
     "DELETE FROM renter_payment_transactions WHERE organization_id = $1 OR provider = $2",
     [organizationId, provider]
   );
@@ -164,12 +168,27 @@ test("renter provider payments safely auto-allocate and route unsafe matches to 
     assert.equal(overpay.event.processingStatus, "REVIEW_REQUIRED");
     assert.ok(overpay.paymentTransactionId);
 
+    const exactOccurredAt =
+      new Date("2026-09-24T01:10:00.000Z").toISOString();
+    const exactIdentityEvidence = {
+      referenceNumber: "BANKREF-EXACT-001",
+      destinationAccountNo: "0123456789",
+      occurredAt: exactOccurredAt,
+      direction: "IN" as const,
+      amountVnd: 60_000
+    };
+
     const exact = await acceptAndClaim(inbox, "event-exact", "{}");
     const paid = await processing.processPayment(exact.id, {
-      providerTransactionId: "tx-exact",
+      providerTransactionId: "92704",
       amountVnd: 60_000,
-      occurredAt: new Date("2026-09-24T01:10:00.000Z").toISOString(),
-      paymentReference: "RENTTEST100"
+      occurredAt: exactOccurredAt,
+      paymentReference: "RENTTEST100",
+      providerIdentity: {
+        aliasType: "WEBHOOK_NUMERIC_ID",
+        aliasValue: "92704",
+        ...exactIdentityEvidence
+      }
     });
     assert.equal(paid.allocated, true);
     assert.equal(paid.collectionStatus, "PAID");
@@ -177,14 +196,38 @@ test("renter provider payments safely auto-allocate and route unsafe matches to 
 
     const duplicate = await acceptAndClaim(inbox, "event-exact-replay", "{}");
     const replay = await processing.processPayment(duplicate.id, {
-      providerTransactionId: "tx-exact",
+      providerTransactionId: "5a03e3d5-7cc5-4bfe-b88e-f78738fbf8e2",
       amountVnd: 60_000,
-      occurredAt: new Date("2026-09-24T01:10:00.000Z").toISOString(),
-      paymentReference: "RENTTEST100"
+      occurredAt: exactOccurredAt,
+      paymentReference: "RENTTEST100",
+      providerIdentity: {
+        aliasType: "API_V2_UUID",
+        aliasValue: "5a03e3d5-7cc5-4bfe-b88e-f78738fbf8e2",
+        ...exactIdentityEvidence
+      }
     });
     assert.equal(replay.replayed, true);
     assert.equal(replay.allocated, true);
     assert.equal(replay.paymentTransactionId, paid.paymentTransactionId);
+
+    const canonicalPaymentCount = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM renter_payment_transactions
+       WHERE organization_id = $1
+         AND provider = $2
+         AND id = $3::uuid`,
+      [organizationId, provider, paid.paymentTransactionId]
+    );
+    assert.equal(canonicalPaymentCount.rows[0]?.count, 1);
+
+    const aliasCount = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM renter_provider_transaction_aliases
+       WHERE provider = $1
+         AND alias_type IN ('WEBHOOK_NUMERIC_ID', 'API_V2_UUID')`,
+      [provider]
+    );
+    assert.equal(aliasCount.rows[0]?.count, 2);
 
     const wrong = await acceptAndClaim(inbox, "event-wrong-ref", "{}");
     const unmatched = await processing.processPayment(wrong.id, {

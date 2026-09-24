@@ -30,6 +30,15 @@ export type NormalizedBillingWebhookPayment = {
   destinationAccountNo?: string | null;
   payerName?: string | null;
   note?: string | null;
+  providerIdentity?: {
+    aliasType: string;
+    aliasValue: string;
+    referenceNumber: string;
+    destinationAccountNo: string;
+    occurredAt: string;
+    direction: "IN" | "OUT";
+    amountVnd: number;
+  } | null;
   metadata?: unknown;
 };
 

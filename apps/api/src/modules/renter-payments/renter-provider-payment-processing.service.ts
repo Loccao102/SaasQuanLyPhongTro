@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../database/database.service.js";
+import type { ProviderTransactionIdentityEvidence } from "./provider-transaction-identity.js";
+import { ProviderTransactionIdentityRegistry } from "./provider-transaction-identity.registry.js";
 import {
   RenterPaymentWebhookConflictError,
   RenterPaymentWebhookInboxService
@@ -15,6 +17,7 @@ export interface NormalizedRenterProviderPaymentInput {
   destinationAccountNo?: string | null;
   payerName?: string | null;
   note?: string | null;
+  providerIdentity?: ProviderTransactionIdentityEvidence | null;
   metadata?: unknown;
 }
 
@@ -40,6 +43,9 @@ type PaymentRow = QueryResultRow & {
 
 @Injectable()
 export class RenterProviderPaymentProcessingService {
+  private readonly identityRegistry =
+    new ProviderTransactionIdentityRegistry();
+
   constructor(
     private readonly db: DatabaseService,
     private readonly inbox: RenterPaymentWebhookInboxService
@@ -81,6 +87,34 @@ export class RenterProviderPaymentProcessingService {
           paymentTransactionId: event.paymentTransactionId,
           allocated: event.processingStatus === "PROCESSED",
           replayed: true
+        };
+      }
+
+      const identityClaim = normalized.providerIdentity
+        ? await this.identityRegistry.claimInTransaction(client, {
+            provider: event.provider,
+            evidence: normalized.providerIdentity
+          })
+        : null;
+
+      if (identityClaim?.kind === "CONFLICT") {
+        const completed = await this.inbox.completeNormalizedInTransaction(
+          client,
+          {
+            eventId,
+            outcome: "REVIEW_REQUIRED",
+            ...normalized,
+            fingerprint,
+            errorCode: "RENTER_PROVIDER_IDENTITY_CONFLICT",
+            errorMessage:
+              "Provider transaction identity alias/evidence conflicts with an existing observation."
+          }
+        );
+        return {
+          event: completed,
+          paymentTransactionId: null,
+          allocated: false,
+          replayed: false
         };
       }
 
@@ -138,6 +172,65 @@ export class RenterProviderPaymentProcessingService {
           paymentTransactionId: null,
           allocated: false,
           replayed: false
+        };
+      }
+
+      if (
+        identityClaim?.kind === "MATCHED" &&
+        identityClaim.paymentTransactionId
+      ) {
+        const canonicalResult = await client.query<PaymentRow>(
+          `SELECT
+             id::text,
+             organization_id::text,
+             amount_vnd::text,
+             occurred_at,
+             payment_reference,
+             reconciliation_status
+           FROM renter_payment_transactions
+           WHERE id = $1
+             AND source = 'PROVIDER'
+             AND provider = $2
+           FOR UPDATE`,
+          [identityClaim.paymentTransactionId, event.provider]
+        );
+        const canonical = canonicalResult.rows[0];
+        const same =
+          canonical !== undefined &&
+          canonical.organization_id === invoice.organization_id &&
+          Number(canonical.amount_vnd) === normalized.amountVnd &&
+          canonical.occurred_at.toISOString() === normalized.occurredAt &&
+          canonical.payment_reference === normalized.paymentReference;
+        const outcome =
+          same && canonical?.reconciliation_status === "ALLOCATED"
+            ? "PROCESSED"
+            : "REVIEW_REQUIRED";
+        const completed = await this.inbox.completeNormalizedInTransaction(
+          client,
+          {
+            eventId,
+            outcome,
+            ...normalized,
+            fingerprint,
+            organizationId: same ? canonical!.organization_id : null,
+            paymentTransactionId: same ? canonical!.id : null,
+            errorCode: same
+              ? canonical!.reconciliation_status === "REVIEW_REQUIRED"
+                ? "RENTER_PAYMENT_REQUIRES_REVIEW"
+                : null
+              : "RENTER_PROVIDER_IDENTITY_CONFLICT",
+            errorMessage: same
+              ? canonical!.reconciliation_status === "REVIEW_REQUIRED"
+                ? "Canonical provider transaction still requires manual review."
+                : null
+              : "Canonical provider identity is linked to different payment content."
+          }
+        );
+        return {
+          event: completed,
+          paymentTransactionId: same ? canonical!.id : null,
+          allocated: outcome === "PROCESSED",
+          replayed: same
         };
       }
 
@@ -267,6 +360,19 @@ export class RenterProviderPaymentProcessingService {
           })
         ]
       );
+
+      if (
+        identityClaim?.kind === "MATCHED" &&
+        identityClaim.paymentTransactionId === null
+      ) {
+        await this.identityRegistry.bindPaymentTransactionInTransaction(
+          client,
+          {
+            identityId: identityClaim.identityId,
+            paymentTransactionId: transactionId
+          }
+        );
+      }
 
       if (!canAllocate) {
         const reason =
@@ -460,14 +566,54 @@ export class RenterProviderPaymentProcessingService {
       input.paymentReference?.trim().toUpperCase() || null;
     const destinationAccountNo =
       input.destinationAccountNo?.trim() || null;
+    const occurredAt = occurred.toISOString();
+    const providerIdentity = input.providerIdentity ?? null;
+
+    if (providerIdentity) {
+      if (providerIdentity.aliasValue.trim() !== providerTransactionId) {
+        throw new RenterPaymentWebhookConflictError(
+          "providerIdentity aliasValue must match providerTransactionId."
+        );
+      }
+      if (providerIdentity.amountVnd !== input.amountVnd) {
+        throw new RenterPaymentWebhookConflictError(
+          "providerIdentity amountVnd must match normalized payment amount."
+        );
+      }
+      const identityOccurredAt = new Date(providerIdentity.occurredAt);
+      if (
+        Number.isNaN(identityOccurredAt.getTime()) ||
+        identityOccurredAt.toISOString() !== occurredAt
+      ) {
+        throw new RenterPaymentWebhookConflictError(
+          "providerIdentity occurredAt must match normalized payment timestamp."
+        );
+      }
+      if (
+        destinationAccountNo &&
+        providerIdentity.destinationAccountNo.replace(/\s+/g, "") !==
+          destinationAccountNo.replace(/\s+/g, "")
+      ) {
+        throw new RenterPaymentWebhookConflictError(
+          "providerIdentity destination account must match normalized payment destination."
+        );
+      }
+      if (providerIdentity.direction !== "IN") {
+        throw new RenterPaymentWebhookConflictError(
+          "Renter provider payment identity must represent an incoming transaction."
+        );
+      }
+    }
+
     return {
       providerTransactionId,
       amountVnd: input.amountVnd,
-      occurredAt: occurred.toISOString(),
+      occurredAt,
       paymentReference,
       destinationAccountNo,
       payerName: input.payerName?.trim() || null,
-      note: input.note?.trim() || null
+      note: input.note?.trim() || null,
+      providerIdentity
     };
   }
 

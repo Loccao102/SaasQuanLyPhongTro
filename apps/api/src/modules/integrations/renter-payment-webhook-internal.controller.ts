@@ -80,6 +80,7 @@ export class RenterPaymentWebhookInternalController {
         input.note === undefined || input.note === null
           ? null
           : requiredString(input.note, "note"),
+      providerIdentity: input.providerIdentity ?? null,
       metadata: input.metadata
     });
   }
