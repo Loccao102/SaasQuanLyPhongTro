@@ -15,6 +15,7 @@ import type {
   TenantRequest
 } from "../identity/tenant-principal.js";
 import { RenterBillingService } from "./renter-billing.service.js";
+import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -41,7 +42,10 @@ function requiredUuid(input: BodyInput, field: string): string {
 @Controller("admin/renter-billing")
 @UseGuards(TenantPrincipalGuard)
 export class RenterBillingController {
-  constructor(private readonly billing: RenterBillingService) {}
+  constructor(
+    private readonly billing: RenterBillingService,
+    private readonly publicInvoices: RenterPublicInvoiceService
+  ) {}
 
   @Get()
   list(@Req() request: TenantRequest) {
@@ -82,6 +86,22 @@ export class RenterBillingController {
     @Param("cycleId", new ParseUUIDPipe({ version: "4" })) cycleId: string
   ) {
     return this.billing.finalizeCycle(this.principal(request), cycleId);
+  }
+
+  @Post("invoices/:invoiceId/public-link")
+  issuePublicLink(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string
+  ) {
+    return this.publicInvoices.issueAccess(this.principal(request), invoiceId);
+  }
+
+  @Post("invoices/:invoiceId/public-link/revoke")
+  revokePublicLink(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string
+  ) {
+    return this.publicInvoices.revokeAccess(this.principal(request), invoiceId);
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

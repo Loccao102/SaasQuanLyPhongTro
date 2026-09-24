@@ -89,7 +89,9 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
           run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
+          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.sql
 
+          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.down.sql
           run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.down.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.down.sql
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.down.sql
@@ -121,8 +123,9 @@ jobs:
           run_psql /repo/apps/api/db/migrations/0013_renter_pricing_metering.sql
           run_psql /repo/apps/api/db/migrations/0014_renter_payment_allocation.sql
           run_psql /repo/apps/api/db/migrations/0015_renter_payment_provider_inbox.sql
+          run_psql /repo/apps/api/db/migrations/0016_public_invoice_vietqr.sql
 
-      - name: Leasing integration tests
+      - name: Integration tests
         env:
           DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops
           DATABASE_POOL_MAX: 4

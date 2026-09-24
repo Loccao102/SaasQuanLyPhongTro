@@ -22,6 +22,7 @@ export function RenterBillingClient() {
   const [cycles, setCycles] = useState<RenterBillingCycle[]>([]);
   const [properties, setProperties] = useState<AdminAssetPropertySummary[]>([]);
   const [organizationName, setOrganizationName] = useState("");
+  const [paymentProfileRead, setPaymentProfileRead] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -38,6 +39,7 @@ export function RenterBillingClient() {
       setCycles(billing.cycles);
       setProperties(assets.properties);
       setOrganizationName(billing.organization.name);
+      setPaymentProfileRead(billing.permissions.paymentProfileRead);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -152,6 +154,11 @@ export function RenterBillingClient() {
           </p>
         </div>
         <div className="button-row">
+          {paymentProfileRead ? (
+            <a className="secondary-link-button" href="/billing/payment-settings">
+              Tài khoản nhận tiền
+            </a>
+          ) : null}
           <a className="secondary-link-button" href="/billing/pricing">
             Cấu hình biểu giá
           </a>

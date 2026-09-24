@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -62,6 +63,28 @@ function requiredMoney(input: BodyInput, field: string) {
 @UseGuards(TenantPrincipalGuard)
 export class RenterPaymentsController {
   constructor(private readonly payments: RenterPaymentsService) {}
+
+  @Get("payment-profile")
+  paymentProfile(@Req() request: TenantRequest) {
+    return this.payments.paymentProfile(this.principal(request));
+  }
+
+  @Put("payment-profile")
+  updatePaymentProfile(
+    @Req() request: TenantRequest,
+    @Body() input: BodyInput
+  ) {
+    if (typeof input.isActive !== "boolean") {
+      throw new BadRequestException("isActive must be a boolean.");
+    }
+    return this.payments.updatePaymentProfile(this.principal(request), {
+      bankId: requiredString(input, "bankId"),
+      accountNo: requiredString(input, "accountNo"),
+      accountName: requiredString(input, "accountName"),
+      vietQrTemplate: requiredString(input, "vietQrTemplate"),
+      isActive: input.isActive
+    });
+  }
 
   @Get("invoices/:invoiceId")
   detail(

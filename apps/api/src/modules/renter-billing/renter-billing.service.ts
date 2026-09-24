@@ -183,6 +183,13 @@ export class RenterBillingService {
         id: principal.organizationId,
         name: principal.organizationName
       },
+      permissions: {
+        paymentProfileRead: this.accessControl.can(
+          principal.membership,
+          "payment.read",
+          { organizationId: principal.organizationId }
+        )
+      },
       cycles: result.rows
         .filter((row) =>
           this.accessControl.can(principal.membership, "billing.read", {
