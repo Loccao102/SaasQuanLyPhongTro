@@ -22,6 +22,15 @@ type CycleRow = QueryResultRow & {
   operational_group_ids: string[];
 };
 
+type LockedCycleRow = QueryResultRow & {
+  id: string;
+  cycle_code: string;
+  property_id: string;
+  property_name: string;
+  due_date: Date | string;
+  status: "OPEN" | "FINALIZED" | "CANCELLED";
+};
+
 type CandidateRow = QueryResultRow & {
   invoice_id: string;
   invoice_number: string;
@@ -200,9 +209,7 @@ export class RenterInvoiceNotificationService {
     principal: TenantPrincipal,
     cycleId: string
   ): Promise<CycleRow> {
-    const result = await client.query<
-      QueryResultRow & Omit<CycleRow, "operational_group_ids">
-    >(
+    const result = await client.query<LockedCycleRow>(
       `SELECT
          c.id::text,
          c.cycle_code,
