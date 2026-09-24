@@ -200,42 +200,48 @@ export class RenterInvoiceNotificationService {
     principal: TenantPrincipal,
     cycleId: string
   ): Promise<CycleRow> {
-    const result = await client.query<CycleRow>(
+    const result = await client.query<
+      QueryResultRow & Omit<CycleRow, "operational_group_ids">
+    >(
       `SELECT
          c.id::text,
          c.cycle_code,
          c.property_id::text,
          p.name AS property_name,
          c.due_date,
-         c.status,
-         COALESCE(
-           array_agg(DISTINCT pog.operational_group_id::text)
-             FILTER (WHERE pog.operational_group_id IS NOT NULL),
-           '{}'::text[]
-         ) AS operational_group_ids
+         c.status
        FROM renter_billing_cycles c
        JOIN properties p
          ON p.organization_id = c.organization_id
         AND p.id = c.property_id
-       LEFT JOIN property_operational_groups pog
-         ON pog.organization_id = c.organization_id
-        AND pog.property_id = c.property_id
        WHERE c.organization_id = $1::uuid
          AND c.id = $2::uuid
-       GROUP BY c.id, p.name
        FOR UPDATE OF c`,
       [principal.organizationId, cycleId]
     );
-    const row = result.rows[0];
-    if (!row) {
+    const base = result.rows[0];
+    if (!base) {
       throw new NotFoundException("Renter billing cycle was not found.");
     }
-    if (row.status !== "FINALIZED") {
+    if (base.status !== "FINALIZED") {
       throw new ConflictException(
         "Invoice notification campaign requires a FINALIZED billing cycle."
       );
     }
 
+    const groups = await client.query<QueryResultRow & { id: string }>(
+      `SELECT operational_group_id::text AS id
+       FROM property_operational_groups
+       WHERE organization_id = $1::uuid
+         AND property_id = $2::uuid
+       ORDER BY operational_group_id`,
+      [principal.organizationId, base.property_id]
+    );
+
+    const row: CycleRow = {
+      ...base,
+      operational_group_ids: groups.rows.map((item) => item.id)
+    };
     const resource = {
       organizationId: principal.organizationId,
       propertyId: row.property_id,
