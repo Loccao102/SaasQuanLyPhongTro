@@ -225,6 +225,8 @@ export class NotificationCampaignService {
         channel,
         provider,
         messageBody,
+        sourceType,
+        sourceId,
         recipients.length,
         input.actor.userId
       ]
