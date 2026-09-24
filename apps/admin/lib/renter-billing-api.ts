@@ -15,6 +15,7 @@ export type RenterBillingCycle = {
 
 export type RenterBillingListResponse = {
   organization: { id: string; name: string };
+  permissions: { paymentProfileRead: boolean };
   cycles: RenterBillingCycle[];
 };
 
@@ -25,6 +26,7 @@ export type RenterBillingDetailResponse = {
     id: string;
     number: string;
     paymentReference: string;
+    publicLinkActive: boolean;
     status: "DRAFT" | "ISSUED" | "VOID";
     room: { id: string; code: string };
     lease: { id: string; code: string };
@@ -115,6 +117,20 @@ export const renterBillingApi = {
     }>("/cycles/" + encodeURIComponent(cycleId) + "/generate-rent", {
       method: "POST"
     }),
+  issuePublicLink: (invoiceId: string) =>
+    request<{
+      invoiceId: string;
+      token: string;
+      tokenHint: string;
+      createdAt: string;
+    }>("/invoices/" + encodeURIComponent(invoiceId) + "/public-link", {
+      method: "POST"
+    }),
+  revokePublicLink: (invoiceId: string) =>
+    request<{ invoiceId: string; revoked: boolean }>(
+      "/invoices/" + encodeURIComponent(invoiceId) + "/public-link/revoke",
+      { method: "POST" }
+    ),
   finalizeCycle: (cycleId: string) =>
     request<{
       cycleId: string;

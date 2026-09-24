@@ -41,6 +41,22 @@ export type RenterPaymentDetailResponse = {
   }>;
 };
 
+export type OrganizationPaymentProfile = {
+  organizationId: string;
+  bankId: string;
+  accountNo: string;
+  accountName: string;
+  vietQrTemplate: string;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type PaymentProfileResponse = {
+  organization: { id: string; name: string };
+  profile: OrganizationPaymentProfile | null;
+  canManage: boolean;
+};
+
 export type ManualAllocationResult = {
   invoice: {
     id: string;
@@ -94,6 +110,19 @@ async function request<T>(
 }
 
 export const renterPaymentsApi = {
+  paymentProfile: () =>
+    request<PaymentProfileResponse>("/payment-profile"),
+  updatePaymentProfile: (input: {
+    bankId: string;
+    accountNo: string;
+    accountName: string;
+    vietQrTemplate: string;
+    isActive: boolean;
+  }) =>
+    request<OrganizationPaymentProfile>("/payment-profile", {
+      method: "PUT",
+      body: input
+    }),
   detail: (invoiceId: string) =>
     request<RenterPaymentDetailResponse>(
       "/invoices/" + encodeURIComponent(invoiceId)

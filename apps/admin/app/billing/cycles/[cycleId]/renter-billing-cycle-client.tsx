@@ -51,6 +51,9 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [data, setData] = useState<RenterBillingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
+  const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
+  const [linkSaving, setLinkSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,6 +75,75 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
     void load();
   }, [load]);
 
+  async function issuePublicLink(invoiceId: string, alreadyActive: boolean) {
+    if (
+      alreadyActive &&
+      !window.confirm(
+        "Tạo link mới sẽ vô hiệu link công khai cũ của hóa đơn này. Tiếp tục?"
+      )
+    ) {
+      return;
+    }
+    setLinkSaving(invoiceId);
+    setError(null);
+    setLinkMessage(null);
+    setIssuedUrl(null);
+    try {
+      const result = await renterBillingApi.issuePublicLink(invoiceId);
+      const base =
+        process.env.NEXT_PUBLIC_PUBLIC_INVOICE_BASE_URL?.replace(/\/$/, "") ??
+        "http://localhost:3002";
+      const url = base + "/i/" + result.token;
+      setIssuedUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setLinkMessage(
+          "Đã tạo link công khai và sao chép vào clipboard. Link cũ (nếu có) đã bị vô hiệu."
+        );
+      } catch {
+        setLinkMessage(
+          "Đã tạo link công khai. Clipboard không khả dụng; hãy sao chép URL hiển thị bên dưới."
+        );
+      }
+      await load();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Không thể tạo link hóa đơn công khai."
+      );
+    } finally {
+      setLinkSaving(null);
+    }
+  }
+
+  async function revokePublicLink(invoiceId: string) {
+    if (
+      !window.confirm(
+        "Thu hồi link công khai sẽ khiến người đang giữ link không thể mở hóa đơn nữa. Tiếp tục?"
+      )
+    ) {
+      return;
+    }
+    setLinkSaving(invoiceId);
+    setError(null);
+    setLinkMessage(null);
+    setIssuedUrl(null);
+    try {
+      await renterBillingApi.revokePublicLink(invoiceId);
+      setLinkMessage("Đã thu hồi link hóa đơn công khai.");
+      await load();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Không thể thu hồi link công khai."
+      );
+    } finally {
+      setLinkSaving(null);
+    }
+  }
+
   return (
     <AdminShell
       title={data?.cycle.code ?? "Chi tiết kỳ hóa đơn"}
@@ -85,7 +157,22 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           <strong>Không thể tải kỳ hóa đơn.</strong>
           <span>{error}</span>
         </div>
-      ) : loading || !data ? (
+      ) : null}
+      {linkMessage ? (
+        <div className="admin-state admin-state--success">
+          <strong>Public invoice đã cập nhật.</strong>
+          <span>{linkMessage}</span>
+          {issuedUrl ? (
+            <input
+              aria-label="Link hóa đơn công khai vừa tạo"
+              readOnly
+              value={issuedUrl}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {loading || !data ? (
         <div className="admin-state">Đang tải invoice snapshots…</div>
       ) : (
         <>
@@ -212,6 +299,31 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                           ? "Ghi nhận thanh toán"
                           : "Xem lịch sử thu tiền"}
                       </a>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={linkSaving === invoice.id}
+                        onClick={() =>
+                          void issuePublicLink(
+                            invoice.id,
+                            invoice.publicLinkActive
+                          )
+                        }
+                      >
+                        {invoice.publicLinkActive
+                          ? "Đổi link công khai"
+                          : "Tạo link công khai"}
+                      </button>
+                      {invoice.publicLinkActive ? (
+                        <button
+                          className="danger-button"
+                          type="button"
+                          disabled={linkSaving === invoice.id}
+                          onClick={() => void revokePublicLink(invoice.id)}
+                        >
+                          Thu hồi link
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
 

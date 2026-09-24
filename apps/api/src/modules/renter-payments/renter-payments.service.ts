@@ -43,6 +43,16 @@ type LockedInvoiceRow = QueryResultRow & {
   due_date: Date | string;
 };
 
+type PaymentProfileRow = QueryResultRow & {
+  organization_id: string;
+  bank_id: string;
+  account_no: string;
+  account_name: string;
+  vietqr_template: string;
+  is_active: boolean;
+  updated_at: Date | string;
+};
+
 type TransactionAllocationRow = QueryResultRow & {
   transaction_id: string;
   source: "MANUAL" | "PROVIDER";
@@ -128,6 +138,171 @@ export class RenterPaymentsService {
       },
       allocations: allocations.rows.map((row) => this.mapAllocation(row))
     };
+  }
+
+  async paymentProfile(principal: TenantPrincipal) {
+    this.requireOrganizationPaymentPermission(principal, "payment.read");
+    const profile = await this.db.query<PaymentProfileRow>(
+      `SELECT
+         organization_id::text,
+         bank_id,
+         account_no,
+         account_name,
+         vietqr_template,
+         is_active,
+         updated_at
+       FROM organization_payment_profiles
+       WHERE organization_id = $1::uuid
+       LIMIT 1`,
+      [principal.organizationId]
+    );
+    return {
+      organization: {
+        id: principal.organizationId,
+        name: principal.organizationName
+      },
+      profile: profile.rows[0] ? this.mapPaymentProfile(profile.rows[0]) : null,
+      canManage: this.accessControl.can(
+        principal.membership,
+        "payment.reconcile",
+        { organizationId: principal.organizationId }
+      )
+    };
+  }
+
+  async updatePaymentProfile(
+    principal: TenantPrincipal,
+    input: {
+      bankId: string;
+      accountNo: string;
+      accountName: string;
+      vietQrTemplate: string;
+      isActive: boolean;
+    }
+  ) {
+    this.requireOrganizationPaymentPermission(principal, "payment.reconcile");
+    const bankId = this.boundedToken(input.bankId, "bankId", 2, 32);
+    const accountNo = this.boundedToken(input.accountNo, "accountNo", 3, 19);
+    const accountName = this.boundedText(
+      input.accountName,
+      "accountName",
+      2,
+      80
+    );
+    const vietQrTemplate = this.boundedToken(
+      input.vietQrTemplate,
+      "vietQrTemplate",
+      1,
+      64
+    );
+
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const previous = await client.query<PaymentProfileRow>(
+        `SELECT
+           organization_id::text,
+           bank_id,
+           account_no,
+           account_name,
+           vietqr_template,
+           is_active,
+           updated_at
+         FROM organization_payment_profiles
+         WHERE organization_id = $1::uuid
+         FOR UPDATE`,
+        [principal.organizationId]
+      );
+
+      const updated = await client.query<PaymentProfileRow>(
+        `INSERT INTO organization_payment_profiles (
+           organization_id,
+           bank_id,
+           account_no,
+           account_name,
+           vietqr_template,
+           is_active,
+           updated_by_user_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (organization_id)
+         DO UPDATE SET
+           bank_id = EXCLUDED.bank_id,
+           account_no = EXCLUDED.account_no,
+           account_name = EXCLUDED.account_name,
+           vietqr_template = EXCLUDED.vietqr_template,
+           is_active = EXCLUDED.is_active,
+           updated_by_user_id = EXCLUDED.updated_by_user_id,
+           updated_at = now()
+         RETURNING
+           organization_id::text,
+           bank_id,
+           account_no,
+           account_name,
+           vietqr_template,
+           is_active,
+           updated_at`,
+        [
+          principal.organizationId,
+          bankId,
+          accountNo,
+          accountName,
+          vietQrTemplate,
+          input.isActive,
+          principal.userId
+        ]
+      );
+
+      await this.audit(
+        client,
+        principal,
+        "RENTER_PAYMENT_PROFILE_UPDATED",
+        "ORGANIZATION_PAYMENT_PROFILE",
+        principal.organizationId,
+        {
+          before: previous.rows[0]
+            ? {
+                bankId: previous.rows[0].bank_id,
+                accountNo: this.maskAccount(previous.rows[0].account_no),
+                accountName: previous.rows[0].account_name,
+                vietQrTemplate: previous.rows[0].vietqr_template,
+                isActive: previous.rows[0].is_active
+              }
+            : null,
+          after: {
+            bankId,
+            accountNo: this.maskAccount(accountNo),
+            accountName,
+            vietQrTemplate,
+            isActive: input.isActive
+          }
+        }
+      );
+
+      return this.mapPaymentProfile(updated.rows[0]!);
+    });
+  }
+
+  async publicPaymentProfile(organizationId: string) {
+    const result = await this.db.query<PaymentProfileRow>(
+      `SELECT
+         organization_id::text,
+         bank_id,
+         account_no,
+         account_name,
+         vietqr_template,
+         is_active,
+         updated_at
+       FROM organization_payment_profiles
+       WHERE organization_id = $1::uuid
+         AND is_active = true
+       LIMIT 1`,
+      [organizationId]
+    );
+    return result.rows[0] ? this.mapPaymentProfile(result.rows[0]) : null;
   }
 
   async createManualAllocation(
@@ -567,6 +742,85 @@ export class RenterPaymentsService {
         status: row.transaction_status
       }
     };
+  }
+
+  private requireOrganizationPaymentPermission(
+    principal: TenantPrincipal,
+    permission: "payment.read" | "payment.reconcile"
+  ) {
+    if (
+      !this.accessControl.can(principal.membership, permission, {
+        organizationId: principal.organizationId
+      })
+    ) {
+      throw new ForbiddenException(
+        "Organization-level payment permission denied."
+      );
+    }
+  }
+
+  private mapPaymentProfile(row: PaymentProfileRow) {
+    return {
+      organizationId: row.organization_id,
+      bankId: row.bank_id,
+      accountNo: row.account_no,
+      accountName: row.account_name,
+      vietQrTemplate: row.vietqr_template,
+      isActive: row.is_active,
+      updatedAt: this.timestamp(row.updated_at)
+    };
+  }
+
+  private boundedToken(
+    value: string,
+    field: string,
+    minLength: number,
+    maxLength: number
+  ) {
+    const normalized = value.trim();
+    if (
+      normalized.length < minLength ||
+      normalized.length > maxLength ||
+      !/^[A-Za-z0-9_-]+$/.test(normalized)
+    ) {
+      throw new ConflictException(
+        field +
+          " must be " +
+          String(minLength) +
+          "-" +
+          String(maxLength) +
+          " letters, numbers, _ or -."
+      );
+    }
+    return normalized;
+  }
+
+  private boundedText(
+    value: string,
+    field: string,
+    minLength: number,
+    maxLength: number
+  ) {
+    const normalized = value.trim();
+    if (
+      normalized.length < minLength ||
+      normalized.length > maxLength
+    ) {
+      throw new ConflictException(
+        field +
+          " must be between " +
+          String(minLength) +
+          " and " +
+          String(maxLength) +
+          " characters."
+      );
+    }
+    return normalized;
+  }
+
+  private maskAccount(accountNo: string) {
+    if (accountNo.length <= 4) return accountNo;
+    return "*".repeat(Math.max(0, accountNo.length - 4)) + accountNo.slice(-4);
   }
 
   private money(value: number, field: string) {

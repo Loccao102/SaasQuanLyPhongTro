@@ -1367,5 +1367,27 @@ Implemented baseline:
 Still required:
 - production SePay ingress/normalizer based on current provider documentation and signature/auth contract;
 - tenant-facing review UI for unmatched/overpaid provider transactions;
-- public invoice token + VietQR/bank deeplink using paymentReference;
-- realtime/polling payment-state refresh on public invoice.
+- payer-bank deeplink selection if pilot usage proves it useful.
+
+
+## Public invoice + VietQR implemented
+
+- zero-login public invoice route using opaque high-entropy bearer tokens;
+- only SHA-256 token hashes are stored in PostgreSQL;
+- Admin issue/rotate/revoke flow with audit events;
+- public links are tenant-scoped and only available for ISSUED invoices;
+- public payload excludes resident name and internal invoice UUID;
+- organization-level payment profile for bank/BIN, account number, beneficiary and VietQR template;
+- payment-profile edits require organization-scope payment.reconcile and explicit Admin review;
+- VietQR Quick Link generated from the current remaining amount + immutable renter payment reference;
+- public invoice handles UNPAID / PARTIALLY_PAID / PAID explicitly;
+- SSE payment-status refresh every few seconds from PostgreSQL source of truth;
+- public invoice sends a no-referrer policy before loading external VietQR image;
+- Admin billing cycle detail can create/rotate/revoke the public link;
+- integration coverage for token storage, rotation, tenant isolation, VietQR data, payment-state refresh and revocation.
+
+Still required:
+- production SePay ingress/normalizer;
+- tenant-facing provider-payment review UI;
+- notification templates should embed freshly issued public invoice links;
+- optional payer-bank deeplink selector can be added after pilot evidence.
