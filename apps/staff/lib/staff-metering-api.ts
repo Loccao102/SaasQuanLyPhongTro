@@ -1,3 +1,8 @@
+import {
+  staffApiFetch,
+  StaffNetworkError
+} from "./staff-api-client";
+
 export type MeterType = "ELECTRICITY" | "WATER";
 
 export type MeterChecklist = {
@@ -71,40 +76,27 @@ export class StaffMeteringApiError extends Error {
   }
 }
 
-const apiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
-const configuredOrganizationId =
-  process.env.NEXT_PUBLIC_STAFF_ORGANIZATION_ID?.trim() ||
-  process.env.NEXT_PUBLIC_ADMIN_ORGANIZATION_ID?.trim() ||
-  "";
-
 async function request<T>(
   path: string,
   init?: { method?: string; body?: unknown }
 ): Promise<T> {
-  const headers = new Headers();
-  if (configuredOrganizationId) {
-    headers.set("x-organization-id", configuredOrganizationId);
-  }
-  if (init?.body !== undefined) {
-    headers.set("content-type", "application/json");
-  }
-
   let response: Response;
+
   try {
-    response = await fetch(apiBase + "/staff/metering" + path, {
-      credentials: "include",
-      method: init?.method ?? "GET",
-      headers,
-      body: init?.body === undefined ? undefined : JSON.stringify(init.body)
-    });
-  } catch {
-    throw new StaffMeteringApiError(
-      "Không thể kết nối máy chủ.",
-      0,
-      "NETWORK_ERROR",
-      null
+    response = await staffApiFetch(
+      "/staff/metering" + path,
+      init
     );
+  } catch (error) {
+    if (error instanceof StaffNetworkError) {
+      throw new StaffMeteringApiError(
+        error.message,
+        0,
+        "NETWORK_ERROR",
+        null
+      );
+    }
+    throw error;
   }
 
   if (!response.ok) {
@@ -114,6 +106,7 @@ async function request<T>(
       code?: string;
       serverReading?: ServerReading;
     } | null = null;
+
     try {
       parsed = JSON.parse(raw) as {
         message?: string;
@@ -123,6 +116,7 @@ async function request<T>(
     } catch {
       parsed = null;
     }
+
     throw new StaffMeteringApiError(
       parsed?.message || raw || "Metering request failed.",
       response.status,
