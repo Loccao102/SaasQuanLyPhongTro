@@ -442,22 +442,24 @@ export class RenterPaymentReviewService {
   }
 
   private scopeParameters(principal: TenantPrincipal) {
-    const scopes = principal.membership.scopes;
+    const propertyIds: string[] = [];
+    const operationalGroupIds: string[] = [];
+    let organizationWide = false;
+
+    for (const scope of principal.membership.scopes) {
+      if (scope.type === "ORGANIZATION") {
+        organizationWide = true;
+      } else if (scope.type === "PROPERTY") {
+        propertyIds.push(scope.propertyId);
+      } else if (scope.type === "OPERATIONAL_GROUP") {
+        operationalGroupIds.push(scope.operationalGroupId);
+      }
+    }
+
     return {
-      organizationWide: scopes.some((scope) => scope.type === "ORGANIZATION"),
-      propertyIds: scopes
-        .filter((scope): scope is Extract<typeof scope, { type: "PROPERTY" }> =>
-          scope.type === "PROPERTY"
-        )
-        .map((scope) => scope.propertyId),
-      operationalGroupIds: scopes
-        .filter(
-          (
-            scope
-          ): scope is Extract<typeof scope, { type: "OPERATIONAL_GROUP" }> =>
-            scope.type === "OPERATIONAL_GROUP"
-        )
-        .map((scope) => scope.operationalGroupId)
+      organizationWide,
+      propertyIds,
+      operationalGroupIds
     };
   }
 
