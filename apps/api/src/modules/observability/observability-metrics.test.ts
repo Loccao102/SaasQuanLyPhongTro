@@ -59,6 +59,26 @@ const snapshot: OperationalSnapshot = {
     staleProcessing: 1,
     processed24h: 40,
     oldestBacklogAgeSeconds: 90
+  },
+  renterPaymentWebhooks: {
+    received: 5,
+    processing: 2,
+    reviewRequired: 3,
+    failed: 1,
+    staleProcessing: 1,
+    processed24h: 22,
+    invalidSignature24h: 4,
+    oldestBacklogAgeSeconds: 120
+  },
+  renterPaymentReconciliation: {
+    streams: [
+      {
+        provider: "SEPAY",
+        scopeKey: "production-company",
+        initialized: true,
+        lastSuccessAgeSeconds: 420
+      }
+    ]
   }
 };
 
@@ -87,5 +107,25 @@ test("renders core operational metrics in Prometheus text format", () => {
   assert.match(
     output,
     /habi_billing_webhook_stale_processing 1/
+  );
+  assert.match(
+    output,
+    /habi_worker_instances\{role="RENTER_PAYMENT_WEBHOOK",status="HEALTHY"\} 0/
+  );
+  assert.match(
+    output,
+    /habi_renter_payment_webhooks\{state="review_required"\} 3/
+  );
+  assert.match(
+    output,
+    /habi_renter_payment_webhook_invalid_signature_24h 4/
+  );
+  assert.match(
+    output,
+    /habi_renter_payment_reconciliation_initialized\{provider="SEPAY",scope="production-company"\} 1/
+  );
+  assert.match(
+    output,
+    /habi_renter_payment_reconciliation_last_success_age_seconds\{provider="SEPAY",scope="production-company"\} 420/
   );
 });

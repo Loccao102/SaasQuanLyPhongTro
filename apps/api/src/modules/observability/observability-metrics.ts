@@ -131,7 +131,8 @@ export function renderPrometheusMetrics(
   const roles: WorkerRole[] = [
     "NOTIFICATION",
     "BILLING",
-    "BILLING_WEBHOOK"
+    "BILLING_WEBHOOK",
+    "RENTER_PAYMENT_WEBHOOK"
   ];
   lines.push("# HELP habi_worker_instances Worker instances by role and health state.");
   lines.push("# TYPE habi_worker_instances gauge");
@@ -238,6 +239,80 @@ export function renderPrometheusMetrics(
       snapshot.billingWebhooks.oldestBacklogAgeSeconds
     )
   );
+
+  lines.push("# HELP habi_renter_payment_webhooks Renter-payment provider inbox entries by state.");
+  lines.push("# TYPE habi_renter_payment_webhooks gauge");
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhooks",
+      snapshot.renterPaymentWebhooks.received,
+      { state: "received" }
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhooks",
+      snapshot.renterPaymentWebhooks.processing,
+      { state: "processing" }
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhooks",
+      snapshot.renterPaymentWebhooks.reviewRequired,
+      { state: "review_required" }
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhooks",
+      snapshot.renterPaymentWebhooks.failed,
+      { state: "failed" }
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhook_stale_processing",
+      snapshot.renterPaymentWebhooks.staleProcessing
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhook_invalid_signature_24h",
+      snapshot.renterPaymentWebhooks.invalidSignature24h
+    )
+  );
+  lines.push(
+    metricLine(
+      "habi_renter_payment_webhook_oldest_backlog_age_seconds",
+      snapshot.renterPaymentWebhooks.oldestBacklogAgeSeconds
+    )
+  );
+
+  lines.push("# HELP habi_renter_payment_reconciliation_initialized Whether a reconciliation stream has completed at least one cursor advance.");
+  lines.push("# TYPE habi_renter_payment_reconciliation_initialized gauge");
+  lines.push("# HELP habi_renter_payment_reconciliation_last_success_age_seconds Age of the last successful reconciliation cursor advance, or cursor creation if not initialized.");
+  lines.push("# TYPE habi_renter_payment_reconciliation_last_success_age_seconds gauge");
+  for (const stream of snapshot.renterPaymentReconciliation.streams) {
+    const labels = {
+      provider: stream.provider,
+      scope: stream.scopeKey
+    };
+    lines.push(
+      metricLine(
+        "habi_renter_payment_reconciliation_initialized",
+        stream.initialized ? 1 : 0,
+        labels
+      )
+    );
+    lines.push(
+      metricLine(
+        "habi_renter_payment_reconciliation_last_success_age_seconds",
+        stream.lastSuccessAgeSeconds,
+        labels
+      )
+    );
+  }
 
   return lines.join("\n") + "\n";
 }
