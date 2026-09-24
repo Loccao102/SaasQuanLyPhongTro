@@ -714,16 +714,22 @@ Later:
 
 ## 5.2 Notification campaign operations
 
+Implemented tenant Admin baseline:
+
+- live campaign list/detail;
+- durable campaign creation through existing quota reservation + jobs;
+- pause/resume;
+- cancel pending QUEUED/RETRY_WAIT jobs without force-stopping RUNNING work;
+- release remaining automation quota on cancellation;
+- bulk retry for FAILED/MANUAL_REVIEW jobs;
+- progress counters and per-recipient job state;
+- audit for pause/resume/cancel/retry;
+- worker claim remains restricted to QUEUED/RUNNING campaigns.
+
 Still useful:
 
-- pause campaign;
-- resume campaign;
-- cancel pending campaign;
-- bulk manual-review actions;
-- bulk retry with safeguards;
-- recipient filtering;
-- campaign detail;
-- progress metrics;
+- recipient filtering/pagination for very large campaigns;
+- explicit manual-review resolution choices beyond retry;
 - export failures;
 - re-send policy;
 - template management.
@@ -1318,4 +1324,4 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Next add provider/webhook ingestion + safe matching on the same PaymentTransaction/PaymentAllocation model, then public invoice payment status/VietQR. After that move to messaging/notification operations and user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Provider/webhook ingestion, public invoice payment status/VietQR, and notification campaign operations are the next active product slices. The Admin notification surface now supports create/list/detail/pause/resume/cancel/retry; next deepen provider/webhook matching and then user-group/member management.
