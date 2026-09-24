@@ -274,6 +274,7 @@ export async function runSePayReconciliationSweepOnce(
   pages: number;
   previousCursor: string | null;
   nextCursor: string | null;
+  truncated: boolean;
 }> {
   const scopeKey = input.scopeKey.trim();
   if (!scopeKey) {
@@ -337,11 +338,7 @@ export async function runSePayReconciliationSweepOnce(
     }
   }
 
-  if (!completed) {
-    throw new Error(
-      "SePay reconciliation page safety limit reached before completion."
-    );
-  }
+  const truncated = !completed;
 
   if (nextCursor && nextCursor !== cursor.cursor) {
     await api.advanceRenterPaymentReconciliationCursor({
@@ -356,6 +353,7 @@ export async function runSePayReconciliationSweepOnce(
     observed,
     pages,
     previousCursor: cursor.cursor,
-    nextCursor
+    nextCursor,
+    truncated
   };
 }
