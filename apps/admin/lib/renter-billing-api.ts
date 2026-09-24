@@ -1,3 +1,5 @@
+import { adminApiRequest } from "./admin-api-client";
+
 export type RenterBillingCycle = {
   id: string;
   property: { id: string; code: string; name: string };
@@ -55,40 +57,12 @@ export type RenterBillingDetailResponse = {
   }>;
 };
 
-const apiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
-const configuredOrganizationId =
-  process.env.NEXT_PUBLIC_ADMIN_ORGANIZATION_ID?.trim() ?? "";
 
 async function request<T>(
   path: string,
   init?: { method?: string; body?: unknown }
 ): Promise<T> {
-  const headers = new Headers();
-  if (configuredOrganizationId) {
-    headers.set("x-organization-id", configuredOrganizationId);
-  }
-  if (init?.body !== undefined) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(apiBase + "/admin/renter-billing" + path, {
-    credentials: "include",
-    method: init?.method ?? "GET",
-    headers,
-    body: init?.body === undefined ? undefined : JSON.stringify(init.body)
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      text ||
-        "Renter billing API request failed with status " +
-          String(response.status)
-    );
-  }
-
-  return response.json() as Promise<T>;
+  return adminApiRequest<T>("/admin/renter-billing" + path, init);
 }
 
 export const renterBillingApi = {
