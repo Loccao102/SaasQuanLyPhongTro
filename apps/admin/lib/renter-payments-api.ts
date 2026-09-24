@@ -21,9 +21,7 @@ export type RenterPaymentDetailResponse = {
     collectionStatus: RenterCollectionStatus;
     dueDate: string;
   };
-  permissions: {
-    reconcile: boolean;
-  };
+  permissions: { reconcile: boolean };
   allocations: Array<{
     id: string;
     amountVnd: number;
@@ -75,6 +73,39 @@ export type ManualAllocationResult = {
   allocations: RenterPaymentDetailResponse["allocations"];
 };
 
+export type ProviderPaymentReviewItem = {
+  id: string;
+  provider: string;
+  providerTransactionId: string;
+  paymentReference: string;
+  amountVnd: number;
+  allocatedVnd: number;
+  unallocatedVnd: number;
+  occurredAt: string;
+  payerName: string | null;
+  note: string | null;
+  reconciliationStatus: "REVIEW_REQUIRED" | "ALLOCATED";
+  reason: { code: string | null; message: string | null };
+  invoice: {
+    id: string;
+    number: string;
+    status: "DRAFT" | "ISSUED" | "VOID";
+    property: { id: string; code: string; name: string };
+    roomCode: string;
+    totalVnd: number;
+    paidVnd: number;
+    remainingVnd: number;
+    collectionStatus: RenterCollectionStatus;
+    dueDate: string;
+  };
+  canReconcile: boolean;
+};
+
+export type ProviderPaymentReviewQueue = {
+  organization: { id: string; name: string };
+  count: number;
+  items: ProviderPaymentReviewItem[];
+};
 
 async function request<T>(
   path: string,
@@ -84,8 +115,7 @@ async function request<T>(
 }
 
 export const renterPaymentsApi = {
-  paymentProfile: () =>
-    request<PaymentProfileResponse>("/payment-profile"),
+  paymentProfile: () => request<PaymentProfileResponse>("/payment-profile"),
   updatePaymentProfile: (input: {
     bankId: string;
     accountNo: string;
@@ -111,6 +141,36 @@ export const renterPaymentsApi = {
     note: string | null;
   }) =>
     request<ManualAllocationResult>("/manual-allocations", {
+      method: "POST",
+      body: input
+    }),
+  reviewQueue: () =>
+    request<ProviderPaymentReviewQueue>("/reviews"),
+  reviewDetail: (transactionId: string) =>
+    request<ProviderPaymentReviewItem>(
+      "/reviews/" + encodeURIComponent(transactionId)
+    ),
+  allocateReview: (
+    transactionId: string,
+    input: { allocationId: string; amountVnd: number; reason: string }
+  ) =>
+    request<{
+      transactionId: string;
+      invoiceId: string;
+      allocationId: string | null;
+      amountVnd: number;
+      transactionAmountVnd: number;
+      allocatedVnd: number;
+      unallocatedVnd: number;
+      reconciliationStatus: "ALLOCATED" | "REVIEW_REQUIRED";
+      invoice: {
+        id: string;
+        number: string;
+        paidVnd: number;
+        remainingVnd: number;
+        collectionStatus: RenterCollectionStatus;
+      };
+    }>("/reviews/" + encodeURIComponent(transactionId) + "/allocations", {
       method: "POST",
       body: input
     })
