@@ -1324,4 +1324,25 @@ Current most immediate unfinished product task:
 Admin Web -> finish lease dependencies, then production notification/payment integrations
 ```
 
-Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Provider/webhook ingestion, public invoice payment status/VietQR, and notification campaign operations are the next active product slices. The Admin notification surface now supports create/list/detail/pause/resume/cancel/retry; next deepen provider/webhook matching and then user-group/member management.
+Property/floor/room management and the live Lease operational workflow are implemented. Manual audited termination-readiness override is available as an interim bridge until Metering + renter Billing/Payment + deposit modules own those readiness updates. Resident reuse, scoped resident search, draft term editing with optimistic version checks, and DRAFT-only CO_TENANT/OCCUPANT management are implemented. Renter billing now snapshots rent + metered electricity/water + fixed service pricing into review-gated DRAFT invoices. Staff offline meter-entry/sync baseline is implemented, and renter payment allocation now supports audited manual partial/full reconciliation. Provider/webhook ingestion, public invoice payment status/VietQR, and notification campaign operations are the next active product slices. The Admin notification surface supports create/list/detail/pause/resume/cancel/retry. Tenant team management now supports invitations, role changes, activation/suspension, ORGANIZATION/OPERATIONAL_GROUP/PROPERTY scopes, operational-group property assignment, OWNER safety invariants, staff quota enforcement on activation, and audit. Next deepen provider/webhook matching and finish real auth/invitation delivery.
+
+
+## Team / membership management implemented
+
+- live Admin team page;
+- invite existing/new global user into an organization as INVITED membership;
+- OWNER/ADMIN/MANAGER/STAFF/ACCOUNTANT/VIEWER role management;
+- organization, operational-group and property scope assignment;
+- membership activate/suspend with existing commercial staff quota checks;
+- last-active-OWNER protection and self-suspend protection;
+- only OWNER may assign, edit, activate or suspend OWNER memberships;
+- operational-group create/edit/deactivate;
+- property assignment to operational groups;
+- group deactivation blocked while ACTIVE/INVITED memberships still reference it;
+- audit events for membership and group mutations.
+
+Still required:
+- real invitation token/email flow once authentication is production-ready;
+- invitation expiry/resend/revoke;
+- custom roles only if product evidence requires them;
+- bulk staff import if pilot onboarding needs it.

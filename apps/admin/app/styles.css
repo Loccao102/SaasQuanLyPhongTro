@@ -315,3 +315,33 @@ body { background: var(--color-bg); }
   .notification-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .notification-campaign-row { display:grid; }
 }
+
+
+/* Team / membership scope management */
+.team-layout { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr); gap:18px; align-items:start; }
+.team-form,.team-inline-editor { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.team-form label,.team-inline-editor label { display:grid; gap:7px; }
+.team-form label>span,.team-inline-editor label>span,.team-form legend,.team-inline-editor legend { color:var(--color-text-muted); font-size:10px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; }
+.team-form input,.team-form select,.team-inline-editor input,.team-inline-editor select { min-height:40px; width:100%; padding:0 11px; border:1px solid var(--color-border); border-radius:9px; background:#fff; color:var(--color-text); }
+.team-form fieldset,.team-inline-editor fieldset { min-width:0; margin:0; padding:12px; border:1px solid var(--color-border); border-radius:10px; }
+.team-form__wide,.team-inline-editor__wide { grid-column:1 / -1; }
+.team-check { display:flex !important; grid-template-columns:auto 1fr; align-items:center; gap:8px !important; min-height:30px; }
+.team-check input { width:auto !important; min-height:auto !important; }
+.team-check span { color:var(--color-text) !important; font-size:11px !important; font-weight:600 !important; letter-spacing:0 !important; text-transform:none !important; }
+.team-member-list,.team-group-list { display:grid; gap:10px; }
+.team-member-card,.team-group-card { display:grid; gap:12px; padding:14px; border:1px solid var(--color-border); border-radius:11px; background:#fff; }
+.team-member-card__header,.team-group-card { grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+.team-member-card__header { display:grid; gap:12px; }
+.team-member-card__header>div:first-child,.team-group-card>div:first-child { display:grid; gap:4px; min-width:0; }
+.team-member-card__header span,.team-group-card span { color:var(--color-text-muted); font-size:10px; }
+.team-scope-pills { display:flex; flex-wrap:wrap; gap:6px; }
+.team-scope-pills span { padding:5px 8px; border-radius:999px; background:var(--color-surface-soft); color:var(--color-text-muted); font-size:9px; font-weight:700; }
+.team-inline-editor { padding-top:12px; border-top:1px solid var(--color-border); }
+.team-inline-editor--group { grid-column:1 / -1; }
+@media (max-width:1000px) {
+  .team-layout { grid-template-columns:1fr; }
+}
+@media (max-width:640px) {
+  .team-form,.team-inline-editor { grid-template-columns:1fr; }
+  .team-form__wide,.team-inline-editor__wide { grid-column:auto; }
+}
