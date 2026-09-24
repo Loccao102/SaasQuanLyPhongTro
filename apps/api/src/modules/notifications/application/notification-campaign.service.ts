@@ -84,6 +84,8 @@ export type CreateNotificationCampaignInput = {
   provider?: string;
   messageBody: string;
   recipients: readonly NotificationRecipientInput[];
+  sourceType?: string | null;
+  sourceId?: string | null;
 };
 
 @Injectable()
@@ -124,6 +126,13 @@ export class NotificationCampaignService {
     const channel = input.channel?.trim() || "ZALO";
     const provider = input.provider?.trim() || "PLAYWRIGHT_ZALO";
     const messageBody = this.message(input.messageBody, "messageBody");
+    const sourceType = input.sourceType?.trim() || null;
+    const sourceId = input.sourceId?.trim() || null;
+    if ((sourceType === null) !== (sourceId === null)) {
+      throw new InvalidNotificationCampaignError(
+        "sourceType and sourceId must be supplied together."
+      );
+    }
     const recipients = this.normalizeRecipients(input.recipients);
     if (recipients.length === 0 || recipients.length > 5000) {
       throw new InvalidNotificationCampaignError(
@@ -132,7 +141,16 @@ export class NotificationCampaignService {
     }
 
     const requestFingerprint = createHash("sha256")
-      .update(JSON.stringify({ channel, provider, messageBody, recipients }))
+      .update(
+        JSON.stringify({
+          channel,
+          provider,
+          messageBody,
+          recipients,
+          sourceType,
+          sourceId
+        })
+      )
       .digest("hex");
 
     const organization = await client.query(
@@ -189,12 +207,14 @@ export class NotificationCampaignService {
          channel,
          provider,
          message_body,
+         source_type,
+         source_id,
          status,
          total_recipients,
          created_by_user_id
        )
        VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, 'QUEUED', $9, $10
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'QUEUED', $11, $12
        )`,
       [
         campaignId,
@@ -264,6 +284,59 @@ export class NotificationCampaignService {
     );
 
     return this.getSummary(client, input.organizationId, campaignId);
+  }
+
+  async replaySourceInTransaction(
+    client: PoolClient,
+    input: {
+      organizationId: string;
+      idempotencyKey: string;
+      sourceType: string;
+      sourceId: string;
+    }
+  ): Promise<NotificationCampaignSummary | null> {
+    const idempotencyKey = input.idempotencyKey.trim();
+    if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+      throw new InvalidNotificationCampaignError(
+        "idempotencyKey must be between 8 and 200 characters."
+      );
+    }
+
+    const organization = await client.query(
+      "SELECT id FROM organizations WHERE id = $1 FOR UPDATE",
+      [input.organizationId]
+    );
+    if (organization.rowCount !== 1) {
+      throw new InvalidNotificationCampaignError(
+        "Organization was not found."
+      );
+    }
+
+    const result = await client.query<
+      QueryResultRow & {
+        id: string;
+        source_type: string | null;
+        source_id: string | null;
+      }
+    >(
+      `SELECT id::text, source_type, source_id::text
+       FROM notification_campaigns
+       WHERE organization_id = $1
+         AND idempotency_key = $2
+       LIMIT 1`,
+      [input.organizationId, idempotencyKey]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    if (
+      row.source_type !== input.sourceType ||
+      row.source_id !== input.sourceId
+    ) {
+      throw new NotificationCampaignIdempotencyConflictError();
+    }
+
+    return this.getSummary(client, input.organizationId, row.id);
   }
 
   private normalizeRecipients(
