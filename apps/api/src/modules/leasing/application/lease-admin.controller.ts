@@ -171,6 +171,35 @@ export class LeaseAdminController {
     );
   }
 
+  @Post(":leaseId/renew")
+  renew(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    const newBaseRentVnd =
+      input.newBaseRentVnd !== undefined && input.newBaseRentVnd !== null
+        ? requiredInteger(input, "newBaseRentVnd")
+        : undefined;
+    const expectedVersion =
+      input.expectedVersion !== undefined && input.expectedVersion !== null
+        ? requiredInteger(input, "expectedVersion")
+        : undefined;
+
+    return this.transition(() =>
+      this.lifecycle.renew({
+        actor: this.actor(request),
+        organizationId: this.principal(request).organizationId,
+        leaseId,
+        idempotencyKey: requiredString(input, "idempotencyKey"),
+        newPlannedEndDate: requiredString(input, "newPlannedEndDate"),
+        expectedVersion,
+        newBaseRentVnd,
+        note: optionalString(input, "note")
+      })
+    );
+  }
+
   @Post(":leaseId/termination")
   scheduleTermination(
     @Req() request: TenantRequest,

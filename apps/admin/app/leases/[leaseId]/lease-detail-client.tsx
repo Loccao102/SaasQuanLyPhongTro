@@ -87,8 +87,40 @@ function auditLabel(action: string): string {
       return "Thu tiền cọc";
     case "LEASE_DEPOSIT_SETTLED":
       return "Quyết toán tiền cọc";
+    case "LEASE_RENEWED":
+      return "Gia hạn hợp đồng";
     default:
       return action;
+  }
+}
+
+function pricingItemTypeLabel(type: string): string {
+  switch (type) {
+    case "ELECTRICITY_PER_KWH":
+      return "Điện (theo kWh)";
+    case "WATER_PER_M3":
+      return "Nước (theo m³)";
+    case "INTERNET":
+      return "Internet / Wifi";
+    case "PARKING":
+      return "Phí gửi xe";
+    case "TRASH":
+      return "Rác / Vệ sinh";
+    case "CUSTOM":
+      return "Dịch vụ khác";
+    default:
+      return type;
+  }
+}
+
+function pricingItemUnit(type: string): string {
+  switch (type) {
+    case "ELECTRICITY_PER_KWH":
+      return " / kWh";
+    case "WATER_PER_M3":
+      return " / m³";
+    default:
+      return " / tháng";
   }
 }
 
@@ -120,6 +152,9 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [collectConfirmed, setCollectConfirmed] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleConfirmed, setSettleConfirmed] = useState(false);
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [renewConfirmed, setRenewConfirmed] = useState(false);
+  const [renewEndDate, setRenewEndDate] = useState("");
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -439,6 +474,42 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     }
   }
 
+  async function handleRenewLease(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    const newPlannedEndDate = String(form.get("newPlannedEndDate") ?? "");
+    const rawRent = form.get("newBaseRentVnd");
+    const newBaseRentVnd = rawRent ? Number(rawRent) : undefined;
+    const note = String(form.get("note") ?? "");
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.renewLease(leaseId, {
+        idempotencyKey: keyFor("renew"),
+        expectedVersion: data.lease.version,
+        newPlannedEndDate,
+        newBaseRentVnd,
+        note: note ? note : null
+      });
+      clearKey("renew");
+      setRenewOpen(false);
+      setRenewConfirmed(false);
+      setActionSuccess("Đã gia hạn hợp đồng thành công.");
+      await load();
+    } catch (renewError) {
+      setActionError(
+        renewError instanceof Error
+          ? renewError.message
+          : "Không thể gia hạn hợp đồng."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (error) {
     return (
       <AdminShell title="Chi tiết hợp đồng" activeNav="Hợp đồng">
@@ -476,6 +547,19 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         action={
           <div className="button-row">
             <a className="secondary-link-button" href="/leases">← Danh sách</a>
+            {data.permissions.manage && lease.status === "ACTIVE" ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setRenewOpen((prev) => !prev);
+                  setCollectOpen(false);
+                  setSettleOpen(false);
+                }}
+              >
+                {renewOpen ? "Đóng gia hạn" : "Gia hạn hợp đồng"}
+              </button>
+            ) : null}
             {data.permissions.terminate &&
             (lease.status === "ACTIVE" || lease.status === "TERMINATION_SCHEDULED") ? (
               <a className="danger-link-button" href={"/leases/" + lease.id + "/terminate"}>
@@ -565,6 +649,158 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
           </div>
         </article>
       </section>
+
+      {data.pricingPolicy ? (
+        <section className="panel" style={{ marginTop: "1rem" }}>
+          <SectionHeader
+            title="Bảng giá dịch vụ áp dụng"
+            action={
+              <span className="scope-label">
+                {data.pricingPolicy.name} · Hiệu lực từ {data.pricingPolicy.effectiveFrom}
+              </span>
+            }
+          />
+          <dl className="detail-list">
+            {data.pricingPolicy.items.map((item) => (
+              <div key={item.id}>
+                <dt>{item.description} ({pricingItemTypeLabel(item.itemType)})</dt>
+                <dd>
+                  <MoneyDisplay amountVnd={item.unitPriceVnd} />
+                  {pricingItemUnit(item.itemType)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : (
+        <section className="panel" style={{ marginTop: "1rem" }}>
+          <SectionHeader
+            title="Bảng giá dịch vụ áp dụng"
+            action={<StatusBadge tone="warning">CHƯA CẤU HÌNH</StatusBadge>}
+          />
+          <p className="inline-note">
+            Cơ sở này chưa thiết lập bảng giá dịch vụ (điện, nước, internet...). Hóa đơn hàng tháng sẽ không tự động tính tiền dịch vụ cho đến khi bạn tạo bảng giá.
+          </p>
+          <div className="button-row" style={{ marginTop: "10px" }}>
+            <a
+              className="secondary-link-button secondary-button--compact"
+              href={"/billing/pricing"}
+            >
+              Thiết lập bảng giá dịch vụ →
+            </a>
+          </div>
+        </section>
+      )}
+
+      {renewOpen && lease.status === "ACTIVE" ? (
+        <section className="panel review-panel" style={{ marginTop: "1rem" }}>
+          <SectionHeader
+            title="Gia hạn thời hạn hợp đồng"
+            action={<span className="scope-label">Hạn hiện tại: {lease.plannedEndDate ?? "Không thời hạn"}</span>}
+          />
+          <form className="asset-form" onSubmit={(event) => void handleRenewLease(event)}>
+            <div className="inline-note asset-form__wide">
+              Gia hạn hợp đồng sẽ cập nhật ngày kết thúc dự kiến và có thể điều chỉnh giá phòng cho chu kỳ mới. Lịch sử hợp đồng, tiền cọc và cư dân hiện tại được giữ nguyên.
+            </div>
+
+            <div className="asset-form__wide" style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Gia hạn nhanh:</span>
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => {
+                  const base = lease.plannedEndDate ? new Date(lease.plannedEndDate) : new Date();
+                  base.setMonth(base.getMonth() + 3);
+                  setRenewEndDate(base.toISOString().slice(0, 10));
+                }}
+              >
+                +3 tháng
+              </button>
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => {
+                  const base = lease.plannedEndDate ? new Date(lease.plannedEndDate) : new Date();
+                  base.setMonth(base.getMonth() + 6);
+                  setRenewEndDate(base.toISOString().slice(0, 10));
+                }}
+              >
+                +6 tháng
+              </button>
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => {
+                  const base = lease.plannedEndDate ? new Date(lease.plannedEndDate) : new Date();
+                  base.setMonth(base.getMonth() + 12);
+                  setRenewEndDate(base.toISOString().slice(0, 10));
+                }}
+              >
+                +12 tháng (1 năm)
+              </button>
+            </div>
+
+            <label>
+              <span>Ngày kết thúc mới (YYYY-MM-DD)</span>
+              <input
+                name="newPlannedEndDate"
+                type="date"
+                value={renewEndDate}
+                onChange={(e) => setRenewEndDate(e.target.value)}
+                min={lease.plannedEndDate ?? lease.startDate}
+                required
+              />
+            </label>
+
+            <label>
+              <span>Tiền phòng chu kỳ mới (VND)</span>
+              <input
+                name="newBaseRentVnd"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={lease.baseRentVnd}
+                required
+              />
+            </label>
+
+            <label className="asset-form__wide">
+              <span>Ghi chú gia hạn / điều khoản thay đổi</span>
+              <input
+                name="note"
+                placeholder="Ví dụ: Gia hạn thêm 6 tháng, giữ nguyên giá thuê..."
+              />
+            </label>
+
+            <label className="confirm-check asset-form__wide">
+              <input
+                type="checkbox"
+                checked={renewConfirmed}
+                onChange={(event) => setRenewConfirmed(event.target.checked)}
+              />
+              <span>Tôi xác nhận các điều khoản gia hạn và gia hạn thời hạn hợp đồng này.</span>
+            </label>
+
+            <div className="button-row asset-form__wide">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setRenewOpen(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={saving || !renewConfirmed || !renewEndDate}
+              >
+                Xác nhận gia hạn
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
 
       {collectOpen && lease.status !== "CANCELLED" && lease.status !== "TERMINATED" ? (
         <section className="panel" style={{ marginTop: "1rem" }}>

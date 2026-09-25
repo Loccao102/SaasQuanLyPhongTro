@@ -4,9 +4,17 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import type { PoolClient, QueryResultRow } from "pg";
+import type { PoolClient, QueryResult, QueryResultRow } from "pg";
 import { CommercialPolicyService } from "../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../database/database.service.js";
+
+export interface SqlQueryable {
+  query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: readonly unknown[]
+  ): Promise<QueryResult<T>>;
+}
+
 import { AccessControlService } from "../identity/access-control.service.js";
 import { roleHasPermission } from "../identity/domain/access-control.js";
 import type { TenantPrincipal } from "../identity/tenant-principal.js";
@@ -298,7 +306,7 @@ export class PricingService {
   }
 
   async resolvePolicy(
-    client: PoolClient,
+    client: SqlQueryable,
     organizationId: string,
     propertyId: string,
     periodStart: string,
@@ -328,6 +336,70 @@ export class PricingService {
     }
 
     const policy = policies.rows[0]!;
+    const items = await client.query<ItemRow>(
+      `SELECT
+         id::text,
+         policy_id::text,
+         item_type,
+         description,
+         unit_price_vnd::text,
+         fixed_quantity::text,
+         sort_order
+       FROM pricing_policy_items
+       WHERE organization_id = $1::uuid
+         AND policy_id = $2::uuid
+       ORDER BY sort_order, id`,
+      [organizationId, policy.id]
+    );
+
+    return this.mapPolicy(policy, items.rows.map((row) => this.mapItem(row)));
+  }
+
+  async resolvePolicyAsOf(
+    client: SqlQueryable,
+    organizationId: string,
+    propertyId: string,
+    asOfDate: string
+  ): Promise<ResolvedPricingPolicy | null> {
+    const policies = await client.query<PolicyRow>(
+      `SELECT
+         id::text,
+         property_id::text,
+         name,
+         effective_from,
+         effective_to
+       FROM pricing_policies
+       WHERE organization_id = $1::uuid
+         AND property_id = $2::uuid
+         AND effective_from <= $3::date
+         AND (effective_to IS NULL OR effective_to >= $3::date)
+       ORDER BY effective_from DESC, id
+       LIMIT 1`,
+      [organizationId, propertyId, asOfDate]
+    );
+
+    let policy = policies.rows[0];
+    if (!policy) {
+      const fallback = await client.query<PolicyRow>(
+        `SELECT
+           id::text,
+           property_id::text,
+           name,
+           effective_from,
+           effective_to
+         FROM pricing_policies
+         WHERE organization_id = $1::uuid
+           AND property_id = $2::uuid
+         ORDER BY effective_from DESC, id
+         LIMIT 1`,
+        [organizationId, propertyId]
+      );
+      if (fallback.rows.length === 0) {
+        return null;
+      }
+      policy = fallback.rows[0]!;
+    }
+
     const items = await client.query<ItemRow>(
       `SELECT
          id::text,

@@ -9,6 +9,7 @@ import {
   InvalidLeaseTransitionError,
   leaseOccupiesRoom,
   LeaseTerminationNotReadyError,
+  renewLease,
   scheduleLeaseTermination,
   type LeaseState
 } from "./lease-lifecycle.js";
@@ -142,3 +143,35 @@ test("only active and scheduled leases occupy a room", () => {
   assert.equal(leaseOccupiesRoom("TERMINATED"), false);
   assert.equal(leaseOccupiesRoom("CANCELLED"), false);
 });
+
+test("active lease can be renewed with a later planned end date", () => {
+  const active = activateLease(draft({ plannedEndDate: "2027-03-31" })).lease;
+  const result = renewLease(active, { newPlannedEndDate: "2027-09-30" });
+
+  assert.equal(result.lease.status, "ACTIVE");
+  assert.equal(result.lease.plannedEndDate, "2027-09-30");
+  assert.equal(result.lease.version, 3);
+  assert.equal(result.events[0]?.type, "LEASE_RENEWED");
+  assert.equal(result.events[0]?.payload.newPlannedEndDate, "2027-09-30");
+});
+
+test("renewal rejects non-active lease", () => {
+  assert.throws(
+    () => renewLease(draft(), { newPlannedEndDate: "2027-12-31" }),
+    InvalidLeaseTransitionError
+  );
+});
+
+test("renewal rejects newPlannedEndDate earlier than or equal to current plannedEndDate", () => {
+  const active = activateLease(draft({ plannedEndDate: "2027-03-31" })).lease;
+
+  assert.throws(
+    () => renewLease(active, { newPlannedEndDate: "2027-03-31" }),
+    InvalidLeaseDateError
+  );
+  assert.throws(
+    () => renewLease(active, { newPlannedEndDate: "2027-01-01" }),
+    InvalidLeaseDateError
+  );
+});
+

@@ -326,15 +326,25 @@ Implemented live operational slice:
   - safe deposit settlement validating deduction + refund against remaining held balance;
   - automatic synchronization of `deposit_readiness` in `lease_terminations` to READY once settlement concludes;
   - live deposit balance, interactive collection form, settlement form, and movement history timeline in Admin Web;
-  - termination workflow surfaces remaining held deposit and direct settlement navigation.
+  - termination workflow surfaces remaining held deposit and direct settlement navigation;
+- utility pricing snapshot and reference on lease:
+  - resolve property-level pricing policy and items as of the lease start/effective period;
+  - include `pricingPolicy` snapshot in `LeaseDetailResponse`;
+  - Admin Web surfaces active electricity/water and recurring service rates (Internet, trash, parking) directly on lease detail;
+  - contextual guidance and navigation to `/billing/pricing` when a property has unconfigured utility pricing;
+- contract renewal workflow (Gia hạn hợp đồng):
+  - pure domain function `renewLease` updating `plannedEndDate`, enforcing later calendar date and ACTIVE status;
+  - `POST /api/admin/leases/:leaseId/renew` with property-level `lease.manage` authorization;
+  - optional adjustment of base rent (`newBaseRentVnd`) upon renewal cycle;
+  - optimistic version concurrency check (`expectedVersion`) and idempotency key persistence;
+  - append-only `LEASE_RENEWED` audit logging;
+  - Admin Web interactive renewal panel with quick extension shortcuts (+3, +6, +12 months), rent modification, and confirmation check.
 
 Still required:
 
-- utility pricing snapshot/reference;
 - attachments;
 - contract PDF/document output;
 - amendment workflow;
-- renewal workflow;
 - final meter reading integration;
 - final invoice/debt integration;
 - create replacement/new contract directly from terminated lease/room.

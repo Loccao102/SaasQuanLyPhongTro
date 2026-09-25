@@ -94,14 +94,20 @@ export class PostgresLeaseRepository {
   async updateLease(
     lease: LeaseState,
     expectedVersion: number,
-    actorUserId: string
+    actorUserId: string,
+    baseRentVnd?: number
   ): Promise<void> {
     const result = await this.client.query(
       `UPDATE leases
        SET status = $3,
-           termination_effective_date = $4,
-           termination_reason = $5,
-           version = $6,
+           planned_end_date = $4,
+           termination_effective_date = $5,
+           termination_reason = $6,
+           base_rent_vnd = CASE
+             WHEN $7::bigint IS NOT NULL THEN $7::bigint
+             ELSE base_rent_vnd
+           END,
+           version = $8,
            activated_at = CASE
              WHEN $3 = 'ACTIVE' AND activated_at IS NULL THEN now()
              ELSE activated_at
@@ -110,17 +116,19 @@ export class PostgresLeaseRepository {
              WHEN $3 = 'TERMINATED' THEN now()
              ELSE terminated_at
            END,
-           updated_by_user_id = $7,
+           updated_by_user_id = $9,
            updated_at = now()
        WHERE organization_id = $1
          AND id = $2
-         AND version = $8`,
+         AND version = $10`,
       [
         lease.organizationId,
         lease.id,
         lease.status,
+        lease.plannedEndDate,
         lease.terminationEffectiveDate,
         lease.terminationReason,
+        baseRentVnd !== undefined ? baseRentVnd : null,
         lease.version,
         actorUserId,
         expectedVersion

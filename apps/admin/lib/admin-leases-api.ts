@@ -65,6 +65,32 @@ export type DepositSummary = {
   movements: DepositMovement[];
 };
 
+export type PricingItemType =
+  | "ELECTRICITY_PER_KWH"
+  | "WATER_PER_M3"
+  | "INTERNET"
+  | "PARKING"
+  | "TRASH"
+  | "CUSTOM";
+
+export type ResolvedPricingItem = {
+  id: string;
+  itemType: PricingItemType;
+  description: string;
+  unitPriceVnd: number;
+  fixedQuantity: string;
+  sortOrder: number;
+};
+
+export type ResolvedPricingPolicy = {
+  id: string;
+  name: string;
+  propertyId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  items: ResolvedPricingItem[];
+};
+
 export type LeaseDetailResponse = {
   organization: { id: string; name: string };
   lease: LeaseSummary & {
@@ -87,6 +113,7 @@ export type LeaseDetailResponse = {
     leftOn: string | null;
   }>;
   deposit: DepositSummary;
+  pricingPolicy: ResolvedPricingPolicy | null;
   termination: {
     id: string;
     status: string;
@@ -313,6 +340,20 @@ export const adminLeasesApi = {
   ) =>
     request<DepositSummary>(
       "/" + encodeURIComponent(leaseId) + "/deposit/settle",
+      { method: "POST", body: input }
+    ),
+  renewLease: (
+    leaseId: string,
+    input: {
+      idempotencyKey: string;
+      newPlannedEndDate: string;
+      expectedVersion?: number;
+      newBaseRentVnd?: number;
+      note?: string | null;
+    }
+  ) =>
+    request<{ lease: LeaseDetailResponse["lease"] }>(
+      "/" + encodeURIComponent(leaseId) + "/renew",
       { method: "POST", body: input }
     )
 };

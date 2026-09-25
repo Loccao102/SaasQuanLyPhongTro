@@ -31,7 +31,9 @@ export interface LeaseDomainEvent {
     | "LEASE_DRAFT_CANCELLED"
     | "LEASE_TERMINATION_SCHEDULED"
     | "LEASE_TERMINATION_CANCELLED"
-    | "LEASE_TERMINATED";
+    | "LEASE_TERMINATED"
+    | "LEASE_RENEWED";
+
   organizationId: string;
   leaseId: string;
   roomId: string;
@@ -244,6 +246,42 @@ export function finalizeLeaseTermination(
   };
 }
 
+export function renewLease(
+  lease: LeaseState,
+  input: { newPlannedEndDate: string }
+): LeaseTransitionResult {
+  if (lease.status !== "ACTIVE") {
+    throw new InvalidLeaseTransitionError(lease.status, "renew");
+  }
+
+  assertIsoDate(input.newPlannedEndDate, "newPlannedEndDate");
+
+  if (input.newPlannedEndDate <= lease.startDate) {
+    throw new InvalidLeaseDateError(
+      "newPlannedEndDate must be later than startDate."
+    );
+  }
+
+  if (lease.plannedEndDate !== null && input.newPlannedEndDate <= lease.plannedEndDate) {
+    throw new InvalidLeaseDateError(
+      "newPlannedEndDate must be later than current plannedEndDate."
+    );
+  }
+
+  const next = bump(lease, { plannedEndDate: input.newPlannedEndDate });
+
+  return {
+    lease: next,
+    events: [
+      event(next, "LEASE_RENEWED", {
+        previousPlannedEndDate: lease.plannedEndDate,
+        newPlannedEndDate: input.newPlannedEndDate
+      })
+    ]
+  };
+}
+
 export function leaseOccupiesRoom(status: LeaseStatus): boolean {
   return status === "ACTIVE" || status === "TERMINATION_SCHEDULED";
 }
+

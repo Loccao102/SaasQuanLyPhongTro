@@ -16,6 +16,11 @@ import {
 } from "./idempotent-command.js";
 import { PostgresLeaseRepository } from "../infrastructure/postgres-lease-repository.js";
 import { LeaseDepositService, type DepositSummaryDto } from "./lease-deposit.service.js";
+import {
+  PricingService,
+  type ResolvedPricingPolicy
+} from "../../pricing/pricing.service.js";
+
 
 type LeaseListRow = QueryResultRow & {
   id: string;
@@ -101,16 +106,21 @@ export interface CreateLeaseDraftInput {
 @Injectable()
 export class LeaseAdminService {
   private readonly depositService: LeaseDepositService;
+  private readonly pricingService: PricingService;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
     private readonly commercialPolicy: CommercialPolicyService,
-    depositService?: LeaseDepositService
+    depositService?: LeaseDepositService,
+    pricingService?: PricingService
   ) {
     this.depositService =
       depositService ??
       new LeaseDepositService(db, accessControl, commercialPolicy);
+    this.pricingService =
+      pricingService ??
+      new PricingService(db, accessControl, commercialPolicy);
   }
 
   async list(principal: TenantPrincipal) {
@@ -293,7 +303,7 @@ export class LeaseAdminService {
       throw new ForbiddenException("Lease scope denied.");
     }
 
-    const [partyResult, terminationResult, auditResult, deposit] =
+    const [partyResult, terminationResult, auditResult, deposit, pricingPolicy] =
       await Promise.all([
         this.db.query<PartyRow>(
           `SELECT
@@ -350,6 +360,12 @@ export class LeaseAdminService {
           principal.organizationId,
           leaseId,
           Number(row.deposit_required_vnd)
+        ),
+        this.pricingService.resolvePolicyAsOf(
+          this.db,
+          principal.organizationId,
+          row.property_id,
+          this.dateOnly(row.start_date) ?? new Date().toISOString().slice(0, 10)
         )
       ]);
 
@@ -387,6 +403,7 @@ export class LeaseAdminService {
         leftOn: this.dateOnly(party.left_on)
       })),
       deposit,
+      pricingPolicy,
       termination: terminationResult.rows[0]
         ? this.mapTermination(terminationResult.rows[0])
         : null,

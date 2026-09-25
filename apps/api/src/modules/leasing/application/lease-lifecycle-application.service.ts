@@ -12,6 +12,8 @@ import {
   cancelDraftLease,
   cancelLeaseTermination,
   finalizeLeaseTermination,
+  InvalidLeaseDateError,
+  renewLease,
   scheduleLeaseTermination,
   type LeaseState,
   type LeaseTransitionResult
@@ -184,6 +186,61 @@ export class LeaseLifecycleApplicationService {
     );
   }
 
+  async renew(
+    input: LeaseCommandInput & {
+      newPlannedEndDate: string;
+      expectedVersion?: number;
+      newBaseRentVnd?: number;
+      note?: string | null;
+    }
+  ): Promise<LeaseCommandResponse> {
+    if (input.newBaseRentVnd !== undefined) {
+      if (
+        !Number.isSafeInteger(input.newBaseRentVnd) ||
+        input.newBaseRentVnd < 0
+      ) {
+        throw new InvalidLeaseDateError(
+          "newBaseRentVnd must be a non-negative integer VND amount."
+        );
+      }
+    }
+
+    return this.runCommand(
+      input,
+      "LEASE_RENEW",
+      "lease.manage",
+      async (_repository, context) => {
+        if (
+          input.expectedVersion !== undefined &&
+          context.lease.version !== input.expectedVersion
+        ) {
+          throw new InvalidLeaseDateError(
+            `Lease version mismatch: expected ${input.expectedVersion}, got ${context.lease.version}.`
+          );
+        }
+
+        const transition = renewLease(context.lease, {
+          newPlannedEndDate: input.newPlannedEndDate
+        });
+
+        const enrichedEvents = transition.events.map((e) => ({
+          ...e,
+          payload: {
+            ...e.payload,
+            newBaseRentVnd: input.newBaseRentVnd ?? null,
+            note: input.note ?? null
+          }
+        }));
+
+        return {
+          lease: transition.lease,
+          events: enrichedEvents
+        };
+      },
+      input.newBaseRentVnd
+    );
+  }
+
   private async runCommand(
     input: LeaseCommandInput,
     commandType: string,
@@ -191,7 +248,8 @@ export class LeaseLifecycleApplicationService {
     operation: (
       repository: PostgresLeaseRepository,
       context: LeaseResourceContext
-    ) => Promise<LeaseTransitionResult>
+    ) => Promise<LeaseTransitionResult>,
+    baseRentVnd?: number
   ): Promise<LeaseCommandResponse> {
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
 
@@ -246,7 +304,8 @@ export class LeaseLifecycleApplicationService {
         await repository.updateLease(
           transition.lease,
           previousVersion,
-          input.actor.userId
+          input.actor.userId,
+          baseRentVnd
         );
       } catch (error) {
         if (
