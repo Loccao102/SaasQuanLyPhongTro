@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -23,12 +24,15 @@ type RoomOption = {
 };
 
 export function LeaseCreateClient() {
+  const searchParams = useSearchParams();
+  const requestedRoomId = searchParams.get("roomId") ?? "";
   const [properties, setProperties] = useState<AdminPropertyDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedRoomId, setSelectedRoomId] = useState(requestedRoomId);
+
   const [residentQuery, setResidentQuery] = useState("");
   const [residentResults, setResidentResults] = useState<ResidentSearchResult[]>([]);
   const [selectedResident, setSelectedResident] =

@@ -184,12 +184,16 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 <StatusBadge tone="warning">PHÒNG TRỐNG</StatusBadge>
                 <h2>Phòng chưa có hợp đồng hiện tại</h2>
                 <p>
-                  Phòng có thể được chỉnh sửa hoặc ngưng hoạt động. Lịch sử không bị xoá.
-                  Bước tiếp theo sẽ nối trực tiếp workflow tạo hợp đồng mới.
+                  Phòng hiện đang sẵn sàng để đón người thuê mới. Bạn có thể tạo hợp đồng mới ngay cho phòng này.
                 </p>
-                <a className="secondary-button secondary-button--link" href="/leases">
-                  Xem danh sách hợp đồng
-                </a>
+                <div className="button-row">
+                  <a className="primary-button" href={"/leases/new?roomId=" + data.room.id} style={{ textDecoration: "none" }}>
+                    + Tạo hợp đồng cho phòng này
+                  </a>
+                  <a className="secondary-button secondary-button--link" href="/leases">
+                    Xem danh sách hợp đồng
+                  </a>
+                </div>
               </div>
             </section>
           )}

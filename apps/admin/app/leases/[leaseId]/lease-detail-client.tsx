@@ -547,6 +547,23 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         action={
           <div className="button-row">
             <a className="secondary-link-button" href="/leases">← Danh sách</a>
+            <a
+              className="secondary-link-button"
+              href={"/leases/" + lease.id + "/contract"}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Văn bản hợp đồng ↗
+            </a>
+            {data.permissions.manage &&
+            (lease.status === "TERMINATED" || lease.status === "CANCELLED") ? (
+              <a
+                className="primary-link-button"
+                href={"/leases/new?roomId=" + lease.room.id}
+              >
+                + Ký hợp đồng mới cho phòng {lease.room.code}
+              </a>
+            ) : null}
             {data.permissions.manage && lease.status === "ACTIVE" ? (
               <button
                 className="secondary-button"
@@ -1352,7 +1369,19 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
 
       {data.termination ? (
         <section className="panel">
-          <SectionHeader title="Quy trình trả phòng gần nhất" />
+          <SectionHeader
+            title="Quy trình trả phòng gần nhất"
+            action={
+              data.permissions.manage && lease.status === "TERMINATED" ? (
+                <a
+                  className="primary-link-button primary-button--compact"
+                  href={"/leases/new?roomId=" + lease.room.id}
+                >
+                  + Ký hợp đồng mới cho phòng {lease.room.code}
+                </a>
+              ) : undefined
+            }
+          />
           <dl className="detail-list">
             <div><dt>Trạng thái</dt><dd>{data.termination.status}</dd></div>
             <div><dt>Ngày hiệu lực</dt><dd>{data.termination.effectiveDate ?? "—"}</dd></div>
@@ -1361,6 +1390,11 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             <div><dt>Công nợ</dt><dd>{data.termination.readiness.financial}</dd></div>
             <div><dt>Tiền cọc</dt><dd>{data.termination.readiness.deposit}</dd></div>
           </dl>
+          {lease.status === "TERMINATED" ? (
+            <div className="inline-note" style={{ marginTop: "1rem" }}>
+              Hợp đồng này đã kết thúc. Phòng <strong>{lease.room.code}</strong> hiện đã trống và sẵn sàng để ký hợp đồng mới.
+            </div>
+          ) : null}
         </section>
       ) : null}
 

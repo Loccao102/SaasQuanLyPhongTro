@@ -338,16 +338,22 @@ Implemented live operational slice:
   - optional adjustment of base rent (`newBaseRentVnd`) upon renewal cycle;
   - optimistic version concurrency check (`expectedVersion`) and idempotency key persistence;
   - append-only `LEASE_RENEWED` audit logging;
-  - Admin Web interactive renewal panel with quick extension shortcuts (+3, +6, +12 months), rent modification, and confirmation check.
+  - Admin Web interactive renewal panel with quick extension shortcuts (+3, +6, +12 months), rent modification, and confirmation check;
+- printable Vietnamese residential lease contract output (`/leases/:leaseId/contract`):
+  - standard Vietnamese legal header ("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), party A (Landlord / Org), party B (Tenant / Primary & Co-residents);
+  - room specifications, term dates, rent amount in words/numbers, deposit amount, and active utility service pricing breakdown;
+  - print CSS media rules (`@page { size: A4; margin: 20mm 15mm; }`) and sticky action bar with one-click print/PDF export;
+- direct contract creation from vacant room and terminated lease:
+  - `GET /leases/new?roomId=:roomId` preselects target room with property synchronization;
+  - vacant room detail action button "+ Tạo hợp đồng cho phòng này";
+  - terminated lease detail action button "+ Ký hợp đồng mới cho phòng".
 
 Still required:
 
 - attachments;
-- contract PDF/document output;
 - amendment workflow;
 - final meter reading integration;
-- final invoice/debt integration;
-- create replacement/new contract directly from terminated lease/room.
+- final invoice/debt integration.
 
 Important invariant:
 
