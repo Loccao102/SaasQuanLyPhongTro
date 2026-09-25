@@ -1,0 +1,6 @@
+BEGIN;
+
+DROP TABLE IF EXISTS lease_attachments CASCADE;
+DROP TABLE IF EXISTS lease_amendments CASCADE;
+
+COMMIT;

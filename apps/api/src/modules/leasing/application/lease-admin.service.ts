@@ -125,6 +125,70 @@ type MeterSummaryRow = QueryResultRow & {
   reading_value: string | null;
 };
 
+export type LeaseAmendmentType =
+  | "RENT_ADJUSTMENT"
+  | "TERM_EXTENSION"
+  | "RESIDENT_CHANGE"
+  | "TERMS_UPDATE"
+  | "OTHER";
+
+export type LeaseAmendmentDto = {
+  id: string;
+  amendmentNumber: string;
+  amendmentType: LeaseAmendmentType;
+  title: string;
+  effectiveDate: string;
+  description: string | null;
+  newBaseRentVnd: number | null;
+  newPlannedEndDate: string | null;
+  status: "DRAFT" | "APPLIED" | "CANCELLED";
+  appliedAt: string | null;
+  createdAt: string;
+};
+
+export type LeaseAttachmentType =
+  | "ID_CARD"
+  | "SIGNED_CONTRACT"
+  | "HANDOVER_MINUTES"
+  | "ROOM_CONDITION"
+  | "OTHER";
+
+export type LeaseAttachmentDto = {
+  id: string;
+  attachmentType: LeaseAttachmentType;
+  fileName: string;
+  fileUrl: string;
+  fileSizeBytes: number;
+  mimeType: string;
+  description: string | null;
+  createdAt: string;
+};
+
+type AmendmentRow = QueryResultRow & {
+  id: string;
+  amendment_number: string;
+  amendment_type: string;
+  title: string;
+  effective_date: Date | string;
+  description: string | null;
+  new_base_rent_vnd: string | null;
+  new_planned_end_date: Date | string | null;
+  status: string;
+  applied_at: Date | string | null;
+  created_at: Date | string;
+};
+
+type AttachmentRow = QueryResultRow & {
+  id: string;
+  attachment_type: string;
+  file_name: string;
+  file_url: string;
+  file_size_bytes: string;
+  mime_type: string;
+  description: string | null;
+  created_at: Date | string;
+};
+
 type RoomContextRow = QueryResultRow & {
   room_id: string;
   property_id: string;
@@ -356,7 +420,9 @@ export class LeaseAdminService {
       deposit,
       pricingPolicy,
       invoicesResult,
-      metersResult
+      metersResult,
+      amendmentsResult,
+      attachmentsResult
     ] = await Promise.all([
         this.db.query<PartyRow>(
           `SELECT
@@ -460,6 +526,41 @@ export class LeaseAdminService {
              AND m.is_active = true
            ORDER BY m.meter_type, m.created_at`,
           [principal.organizationId, row.room_id]
+        ),
+        this.db.query<AmendmentRow>(
+          `SELECT
+             id::text,
+             amendment_number,
+             amendment_type,
+             title,
+             effective_date,
+             description,
+             new_base_rent_vnd::text,
+             new_planned_end_date,
+             status,
+             applied_at,
+             created_at
+           FROM lease_amendments
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+           ORDER BY amendment_number ASC, created_at ASC`,
+          [principal.organizationId, leaseId]
+        ),
+        this.db.query<AttachmentRow>(
+          `SELECT
+             id::text,
+             attachment_type,
+             file_name,
+             file_url,
+             file_size_bytes::text,
+             mime_type,
+             description,
+             created_at
+           FROM lease_attachments
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+           ORDER BY created_at DESC`,
+          [principal.organizationId, leaseId]
         )
       ]);
 
@@ -536,6 +637,29 @@ export class LeaseAdminService {
       pricingPolicy,
       financial: financialSummary,
       meters: meterSummary,
+      amendments: amendmentsResult.rows.map((r) => ({
+        id: r.id,
+        amendmentNumber: r.amendment_number,
+        amendmentType: r.amendment_type as LeaseAmendmentType,
+        title: r.title,
+        effectiveDate: this.dateOnly(r.effective_date) ?? "",
+        description: r.description,
+        newBaseRentVnd: r.new_base_rent_vnd !== null ? Number(r.new_base_rent_vnd) : null,
+        newPlannedEndDate: this.dateOnly(r.new_planned_end_date),
+        status: r.status as "DRAFT" | "APPLIED" | "CANCELLED",
+        appliedAt: r.applied_at ? this.isoTimestamp(r.applied_at) : null,
+        createdAt: this.isoTimestamp(r.created_at)
+      })),
+      attachments: attachmentsResult.rows.map((r) => ({
+        id: r.id,
+        attachmentType: r.attachment_type as LeaseAttachmentType,
+        fileName: r.file_name,
+        fileUrl: r.file_url,
+        fileSizeBytes: Number(r.file_size_bytes),
+        mimeType: r.mime_type,
+        description: r.description,
+        createdAt: this.isoTimestamp(r.created_at)
+      })),
       termination: terminationResult.rows[0]
         ? this.mapTermination(terminationResult.rows[0])
         : null,
@@ -931,5 +1055,390 @@ export class LeaseAdminService {
 
   private isoTimestamp(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  }
+
+  async createAmendment(
+    principal: TenantPrincipal,
+    leaseId: string,
+    input: {
+      amendmentNumber: string;
+      amendmentType: LeaseAmendmentType;
+      title: string;
+      effectiveDate: string;
+      description?: string | null;
+      newBaseRentVnd?: number | null;
+      newPlannedEndDate?: string | null;
+      applyImmediately?: boolean;
+    }
+  ): Promise<LeaseAmendmentDto> {
+    const amendmentNumber = this.required(input.amendmentNumber, "amendmentNumber");
+    const title = this.required(input.title, "title");
+    const effectiveDate = this.isoDate(input.effectiveDate, "effectiveDate");
+    const description = this.optionalText(input.description);
+    const applyImmediately = input.applyImmediately ?? true;
+
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const leaseResult = await client.query<{
+        id: string;
+        status: string;
+        property_id: string;
+        base_rent_vnd: string;
+        planned_end_date: string | null;
+        version: number;
+        operational_group_ids: string[];
+      }>(
+        `SELECT
+           l.id::text,
+           l.status,
+           r.property_id::text,
+           l.base_rent_vnd::text,
+           l.planned_end_date::text,
+           l.version,
+           COALESCE(
+             array_agg(DISTINCT pog.operational_group_id::text)
+               FILTER (WHERE pog.operational_group_id IS NOT NULL),
+             '{}'::text[]
+           ) AS operational_group_ids
+         FROM leases l
+         JOIN rooms r
+           ON r.organization_id = l.organization_id
+          AND r.id = l.room_id
+         JOIN properties p
+           ON p.organization_id = r.organization_id
+          AND p.id = r.property_id
+         LEFT JOIN property_operational_groups pog
+           ON pog.organization_id = p.organization_id
+          AND pog.property_id = p.id
+         WHERE l.organization_id = $1::uuid
+           AND l.id = $2::uuid
+         GROUP BY l.id, l.status, r.property_id, l.base_rent_vnd, l.planned_end_date, l.version
+         LIMIT 1`,
+        [principal.organizationId, leaseId]
+      );
+
+      const lease = leaseResult.rows[0];
+      if (!lease) {
+        throw new NotFoundException("Lease was not found.");
+      }
+      if (
+        !this.accessControl.can(principal.membership, "lease.manage", {
+          organizationId: principal.organizationId,
+          propertyId: lease.property_id,
+          operationalGroupIds: lease.operational_group_ids
+        })
+      ) {
+        throw new ForbiddenException("Lease manage permission denied.");
+      }
+      if (lease.status !== "ACTIVE") {
+        throw new ConflictException("Amendments can only be created for ACTIVE leases.");
+      }
+
+      const amendmentId = crypto.randomUUID();
+      const status = applyImmediately ? "APPLIED" : "DRAFT";
+      const appliedAt = applyImmediately ? new Date().toISOString() : null;
+
+      const newBaseRentVnd =
+        input.newBaseRentVnd !== undefined && input.newBaseRentVnd !== null
+          ? this.money(input.newBaseRentVnd, "newBaseRentVnd")
+          : null;
+      const newPlannedEndDate =
+        input.newPlannedEndDate !== undefined && input.newPlannedEndDate !== null && input.newPlannedEndDate !== ""
+          ? this.isoDate(input.newPlannedEndDate, "newPlannedEndDate")
+          : null;
+
+      await client.query(
+        `INSERT INTO lease_amendments (
+           id, organization_id, lease_id, amendment_number, amendment_type, title,
+           effective_date, description, new_base_rent_vnd, new_planned_end_date,
+           status, applied_at, created_by_user_id
+         )
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::date, $8, $9, $10::date, $11, $12::timestamptz, $13::uuid)`,
+        [
+          amendmentId,
+          principal.organizationId,
+          leaseId,
+          amendmentNumber,
+          input.amendmentType,
+          title,
+          effectiveDate,
+          description,
+          newBaseRentVnd,
+          newPlannedEndDate,
+          status,
+          appliedAt,
+          principal.userId
+        ]
+      );
+
+      if (applyImmediately) {
+        const updateClauses: string[] = ["version = version + 1", "updated_at = now()"];
+        const updateParams: unknown[] = [principal.organizationId, leaseId];
+        let pIndex = 3;
+
+        if (newBaseRentVnd !== null) {
+          updateClauses.push(`base_rent_vnd = $${pIndex}::bigint`);
+          updateParams.push(newBaseRentVnd);
+          pIndex++;
+        }
+        if (newPlannedEndDate !== null) {
+          updateClauses.push(`planned_end_date = $${pIndex}::date`);
+          updateParams.push(newPlannedEndDate);
+          pIndex++;
+        }
+
+        await client.query(
+          `UPDATE leases
+           SET ${updateClauses.join(", ")}
+           WHERE organization_id = $1::uuid
+             AND id = $2::uuid`,
+          updateParams
+        );
+      }
+
+      await client.query(
+        `INSERT INTO audit_events (
+           organization_id, actor_user_id, action, resource_type, resource_id, metadata
+         )
+         VALUES ($1, $2, 'LEASE_AMENDMENT_CREATED', 'LEASE', $3, $4::jsonb)`,
+        [
+          principal.organizationId,
+          principal.userId,
+          leaseId,
+          JSON.stringify({
+            amendmentId,
+            amendmentNumber,
+            amendmentType: input.amendmentType,
+            title,
+            effectiveDate,
+            applyImmediately,
+            newBaseRentVnd,
+            newPlannedEndDate
+          })
+        ]
+      );
+
+      return {
+        id: amendmentId,
+        amendmentNumber,
+        amendmentType: input.amendmentType,
+        title,
+        effectiveDate,
+        description,
+        newBaseRentVnd,
+        newPlannedEndDate,
+        status,
+        appliedAt,
+        createdAt: new Date().toISOString()
+      };
+    });
+  }
+
+  async addAttachment(
+    principal: TenantPrincipal,
+    leaseId: string,
+    input: {
+      attachmentType: LeaseAttachmentType;
+      fileName: string;
+      fileUrl: string;
+      fileSizeBytes?: number;
+      mimeType?: string;
+      description?: string | null;
+    }
+  ): Promise<LeaseAttachmentDto> {
+    const fileName = this.required(input.fileName, "fileName");
+    const fileUrl = this.required(input.fileUrl, "fileUrl");
+    const fileSizeBytes = input.fileSizeBytes ?? 0;
+    const mimeType = input.mimeType ?? "application/octet-stream";
+    const description = this.optionalText(input.description);
+
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const leaseResult = await client.query<{
+        id: string;
+        property_id: string;
+        operational_group_ids: string[];
+      }>(
+        `SELECT
+           l.id::text,
+           r.property_id::text,
+           COALESCE(
+             array_agg(DISTINCT pog.operational_group_id::text)
+               FILTER (WHERE pog.operational_group_id IS NOT NULL),
+             '{}'::text[]
+           ) AS operational_group_ids
+         FROM leases l
+         JOIN rooms r
+           ON r.organization_id = l.organization_id
+          AND r.id = l.room_id
+         JOIN properties p
+           ON p.organization_id = r.organization_id
+          AND p.id = r.property_id
+         LEFT JOIN property_operational_groups pog
+           ON pog.organization_id = p.organization_id
+          AND pog.property_id = p.id
+         WHERE l.organization_id = $1::uuid
+           AND l.id = $2::uuid
+         GROUP BY l.id, r.property_id
+         LIMIT 1`,
+        [principal.organizationId, leaseId]
+      );
+
+      const lease = leaseResult.rows[0];
+      if (!lease) {
+        throw new NotFoundException("Lease was not found.");
+      }
+      if (
+        !this.accessControl.can(principal.membership, "lease.manage", {
+          organizationId: principal.organizationId,
+          propertyId: lease.property_id,
+          operationalGroupIds: lease.operational_group_ids
+        })
+      ) {
+        throw new ForbiddenException("Lease manage permission denied.");
+      }
+
+      const attachmentId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO lease_attachments (
+           id, organization_id, lease_id, attachment_type, file_name, file_url,
+           file_size_bytes, mime_type, description, uploaded_by_user_id
+         )
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::bigint, $8, $9, $10::uuid)`,
+        [
+          attachmentId,
+          principal.organizationId,
+          leaseId,
+          input.attachmentType,
+          fileName,
+          fileUrl,
+          fileSizeBytes,
+          mimeType,
+          description,
+          principal.userId
+        ]
+      );
+
+      await client.query(
+        `INSERT INTO audit_events (
+           organization_id, actor_user_id, action, resource_type, resource_id, metadata
+         )
+         VALUES ($1, $2, 'LEASE_ATTACHMENT_ADDED', 'LEASE', $3, $4::jsonb)`,
+        [
+          principal.organizationId,
+          principal.userId,
+          leaseId,
+          JSON.stringify({
+            attachmentId,
+            attachmentType: input.attachmentType,
+            fileName,
+            fileSizeBytes
+          })
+        ]
+      );
+
+      return {
+        id: attachmentId,
+        attachmentType: input.attachmentType,
+        fileName,
+        fileUrl,
+        fileSizeBytes,
+        mimeType,
+        description,
+        createdAt: new Date().toISOString()
+      };
+    });
+  }
+
+  async deleteAttachment(
+    principal: TenantPrincipal,
+    leaseId: string,
+    attachmentId: string
+  ): Promise<{ success: boolean; attachmentId: string }> {
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const leaseResult = await client.query<{
+        id: string;
+        property_id: string;
+        operational_group_ids: string[];
+      }>(
+        `SELECT
+           l.id::text,
+           r.property_id::text,
+           COALESCE(
+             array_agg(DISTINCT pog.operational_group_id::text)
+               FILTER (WHERE pog.operational_group_id IS NOT NULL),
+             '{}'::text[]
+           ) AS operational_group_ids
+         FROM leases l
+         JOIN rooms r
+           ON r.organization_id = l.organization_id
+          AND r.id = l.room_id
+         JOIN properties p
+           ON p.organization_id = r.organization_id
+          AND p.id = r.property_id
+         LEFT JOIN property_operational_groups pog
+           ON pog.organization_id = p.organization_id
+          AND pog.property_id = p.id
+         WHERE l.organization_id = $1::uuid
+           AND l.id = $2::uuid
+         GROUP BY l.id, r.property_id
+         LIMIT 1`,
+        [principal.organizationId, leaseId]
+      );
+
+      const lease = leaseResult.rows[0];
+      if (!lease) {
+        throw new NotFoundException("Lease was not found.");
+      }
+      if (
+        !this.accessControl.can(principal.membership, "lease.manage", {
+          organizationId: principal.organizationId,
+          propertyId: lease.property_id,
+          operationalGroupIds: lease.operational_group_ids
+        })
+      ) {
+        throw new ForbiddenException("Lease manage permission denied.");
+      }
+
+      const deleted = await client.query(
+        `DELETE FROM lease_attachments
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND id = $3::uuid`,
+        [principal.organizationId, leaseId, attachmentId]
+      );
+
+      if (deleted.rowCount === 0) {
+        throw new NotFoundException("Attachment was not found.");
+      }
+
+      await client.query(
+        `INSERT INTO audit_events (
+           organization_id, actor_user_id, action, resource_type, resource_id, metadata
+         )
+         VALUES ($1, $2, 'LEASE_ATTACHMENT_REMOVED', 'LEASE', $3, $4::jsonb)`,
+        [
+          principal.organizationId,
+          principal.userId,
+          leaseId,
+          JSON.stringify({ attachmentId })
+        ]
+      );
+
+      return { success: true, attachmentId };
+    });
   }
 }

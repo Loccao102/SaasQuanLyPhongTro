@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   NotFoundException,
@@ -247,6 +248,74 @@ export class LeaseAdminController {
         leaseId,
         idempotencyKey: requiredString(input, "idempotencyKey")
       })
+    );
+  }
+
+  @Post(":leaseId/amendments")
+  createAmendment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    const amendmentNumber = requiredString(input, "amendmentNumber");
+    const amendmentType = requiredString(input, "amendmentType");
+    const title = requiredString(input, "title");
+    const effectiveDate = requiredString(input, "effectiveDate");
+    const description = optionalString(input, "description");
+    const newBaseRentVnd =
+      input.newBaseRentVnd !== undefined && input.newBaseRentVnd !== null
+        ? Number(input.newBaseRentVnd)
+        : null;
+    const newPlannedEndDate = optionalString(input, "newPlannedEndDate");
+    const applyImmediately =
+      input.applyImmediately !== undefined ? Boolean(input.applyImmediately) : true;
+
+    return this.adminService.createAmendment(this.principal(request), leaseId, {
+      amendmentNumber,
+      amendmentType: amendmentType as any,
+      title,
+      effectiveDate,
+      description,
+      newBaseRentVnd,
+      newPlannedEndDate,
+      applyImmediately
+    });
+  }
+
+  @Post(":leaseId/attachments")
+  addAttachment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    const attachmentType = requiredString(input, "attachmentType");
+    const fileName = requiredString(input, "fileName");
+    const fileUrl = requiredString(input, "fileUrl");
+    const fileSizeBytes =
+      input.fileSizeBytes !== undefined ? Number(input.fileSizeBytes) : 0;
+    const mimeType = optionalString(input, "mimeType") ?? undefined;
+    const description = optionalString(input, "description");
+
+    return this.adminService.addAttachment(this.principal(request), leaseId, {
+      attachmentType: attachmentType as any,
+      fileName,
+      fileUrl,
+      fileSizeBytes,
+      mimeType,
+      description
+    });
+  }
+
+  @Delete(":leaseId/attachments/:attachmentId")
+  deleteAttachment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Param("attachmentId", new ParseUUIDPipe({ version: "4" })) attachmentId: string
+  ) {
+    return this.adminService.deleteAttachment(
+      this.principal(request),
+      leaseId,
+      attachmentId
     );
   }
 
