@@ -346,14 +346,18 @@ Implemented live operational slice:
 - direct contract creation from vacant room and terminated lease:
   - `GET /leases/new?roomId=:roomId` preselects target room with property synchronization;
   - vacant room detail action button "+ Tạo hợp đồng cho phòng này";
-  - terminated lease detail action button "+ Ký hợp đồng mới cho phòng".
+  - terminated lease detail action button "+ Ký hợp đồng mới cho phòng";
+- final meter reading & final invoice/debt integration for lease termination:
+  - `LeaseDetailResponse` surfaces `financial` (total invoices, unpaid invoices count, total debt VND, itemized unpaid invoices with links) and `meters` (active meters and their latest readings);
+  - `LeaseTerminationReadinessService.syncReadinessFromSystem` automatically inspects real held deposit balance, outstanding invoice debt, and room meter reading recency against termination effective date;
+  - `POST /api/admin/leases/:leaseId/termination/readiness/sync` for one-click system readiness verification;
+  - `POST /api/admin/leases/:leaseId/termination/record-meter-reading` enables fast inline meter reading recording directly during the checkout flow;
+  - Admin Web termination interface displays active meters, latest reading values, direct inline meter recording, live invoice debt warnings with clickable invoice links, and one-click "Xác nhận sạch nợ" when financial balance is 0.
 
 Still required:
 
 - attachments;
-- amendment workflow;
-- final meter reading integration;
-- final invoice/debt integration.
+- amendment workflow.
 
 Important invariant:
 

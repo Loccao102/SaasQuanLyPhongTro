@@ -22,6 +22,10 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
   const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
   const [finalizeConfirmed, setFinalizeConfirmed] = useState(false);
   const [cancelConfirmed, setCancelConfirmed] = useState(false);
+  const [meterFormOpen, setMeterFormOpen] = useState(false);
+  const [selectedMeterId, setSelectedMeterId] = useState("");
+  const [meterReadingValue, setMeterReadingValue] = useState("");
+  const [meterReadingDate, setMeterReadingDate] = useState("");
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -135,6 +139,54 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
         action instanceof Error
           ? action.message
           : "Không thể cập nhật readiness."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function syncSystemReadiness() {
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const res = await adminLeasesApi.syncTerminationReadiness(leaseId);
+      setActionSuccess(
+        `Đã đồng bộ kiểm tra từ hệ thống (Điện/nước: ${res.meter}, Công nợ: ${res.financial}, Tiền cọc: ${res.deposit}).`
+      );
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể đồng bộ readiness từ hệ thống."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRecordMeterReading(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedMeterId || !meterReadingValue || !meterReadingDate) return;
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.recordTerminationMeterReading(leaseId, {
+        meterId: selectedMeterId,
+        readingDate: meterReadingDate,
+        readingValue: Number(meterReadingValue)
+      });
+      setActionSuccess("Đã lưu chỉ số chốt ngày trả phòng và cập nhật tiến trình.");
+      setMeterFormOpen(false);
+      setMeterReadingValue("");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể lưu chỉ số đồng hồ."
       );
     } finally {
       setSaving(false);
@@ -348,44 +400,226 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
             </article>
 
             <article className="panel">
-              <SectionHeader title="2–4. Readiness từ module liên quan" />
+              <SectionHeader
+                title="2–4. Readiness từ module liên quan"
+                action={
+                  data.permissions.terminate ? (
+                    <button
+                      className="secondary-button secondary-button--compact"
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void syncSystemReadiness()}
+                    >
+                      🔄 Đồng bộ kiểm tra từ hệ thống
+                    </button>
+                  ) : undefined
+                }
+              />
               <div className="readiness-list">
                 <div className="readiness-row">
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong>Chỉ số điện / nước cuối</strong>
-                    <span>Metering giữ reading source-of-truth.</span>
+                    <span>Chốt số điện, nước tại thời điểm trả phòng để tính tiền lần cuối.</span>
+                    {data.meters && data.meters.length > 0 ? (
+                      <div style={{ marginTop: "8px", display: "grid", gap: "6px" }}>
+                        {data.meters.map((m) => (
+                          <div
+                            key={m.meterId}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              fontSize: "12px",
+                              padding: "4px 8px",
+                              background: "var(--color-bg-subtle, #f9fafb)",
+                              borderRadius: "4px"
+                            }}
+                          >
+                            <span>
+                              {m.meterType === "ELECTRICITY" ? "⚡ Điện" : "💧 Nước"} ({m.label ?? m.unit}):
+                            </span>
+                            {m.latestReading ? (
+                              <strong>
+                                {m.latestReading.readingValue} {m.unit} (ngày {m.latestReading.readingDate})
+                              </strong>
+                            ) : (
+                              <span style={{ color: "var(--color-warning)" }}>Chưa có chỉ số</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--color-text-muted)" }}>
+                        Phòng này chưa có đồng hồ điện/nước nào được cấu hình.
+                      </p>
+                    )}
+
+                    {meterFormOpen ? (
+                      <form
+                        onSubmit={(e) => void handleRecordMeterReading(e)}
+                        style={{
+                          marginTop: "10px",
+                          padding: "12px",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: "6px",
+                          background: "var(--color-bg, white)",
+                          display: "grid",
+                          gap: "8px"
+                        }}
+                      >
+                        <strong style={{ fontSize: "13px" }}>Ghi chỉ số chốt ngày trả phòng</strong>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <div>
+                            <label style={{ fontSize: "11px", display: "block", marginBottom: "2px" }}>
+                              Chọn đồng hồ
+                            </label>
+                            <select
+                              value={selectedMeterId}
+                              onChange={(e) => setSelectedMeterId(e.target.value)}
+                              required
+                              style={{ width: "100%", padding: "6px", fontSize: "12px" }}
+                            >
+                              <option value="">-- Chọn đồng hồ --</option>
+                              {data.meters?.map((m) => (
+                                <option key={m.meterId} value={m.meterId}>
+                                  {m.meterType === "ELECTRICITY" ? "Điện" : "Nước"} ({m.label ?? m.unit})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "11px", display: "block", marginBottom: "2px" }}>
+                              Chỉ số chốt mới
+                            </label>
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              placeholder="vd: 150.5"
+                              value={meterReadingValue}
+                              onChange={(e) => setMeterReadingValue(e.target.value)}
+                              required
+                              style={{ width: "100%", padding: "6px", fontSize: "12px" }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: "11px", display: "block", marginBottom: "2px" }}>
+                            Ngày ghi chỉ số
+                          </label>
+                          <input
+                            type="date"
+                            value={meterReadingDate}
+                            onChange={(e) => setMeterReadingDate(e.target.value)}
+                            required
+                            style={{ width: "100%", padding: "6px", fontSize: "12px" }}
+                          />
+                        </div>
+                        <div className="button-row" style={{ marginTop: "4px" }}>
+                          <button
+                            className="primary-button primary-button--compact"
+                            type="submit"
+                            disabled={saving}
+                          >
+                            Lưu chỉ số chốt
+                          </button>
+                          <button
+                            className="secondary-button secondary-button--compact"
+                            type="button"
+                            onClick={() => setMeterFormOpen(false)}
+                          >
+                            Đóng
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
                   </div>
-                  <div className="button-row">
+                  <div className="button-row" style={{ alignItems: "flex-start" }}>
                     <StatusBadge tone={readinessTone(readiness!.meter)}>
                       {readiness!.meter}
                     </StatusBadge>
                     {data.permissions.terminate ? (
                       <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "READY")}>Ready</button>
+                        {data.meters && data.meters.length > 0 && !meterFormOpen ? (
+                          <button
+                            className="secondary-button secondary-button--compact"
+                            type="button"
+                            onClick={() => {
+                              setSelectedMeterId(data.meters?.[0]?.meterId ?? "");
+                              setMeterReadingDate(termination.effectiveDate ?? new Date().toISOString().slice(0, 10));
+                              setMeterFormOpen(true);
+                            }}
+                          >
+                            + Ghi số chốt
+                          </button>
+                        ) : null}
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "READY")}>Ghi đè Ready</button>
                         <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "NOT_REQUIRED")}>N/A</button>
                       </>
                     ) : null}
                   </div>
                 </div>
+
                 <div className="readiness-row">
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong>Công nợ cuối</strong>
-                    <span>Billing/Payment giữ invoice và settlement source-of-truth.</span>
+                    <span>Kiểm tra các hóa đơn tiền phòng và dịch vụ chưa thanh toán.</span>
+                    {data.financial ? (
+                      <div style={{ marginTop: "6px" }}>
+                        {data.financial.unpaidInvoicesCount === 0 ? (
+                          <div style={{ fontSize: "12px", color: "var(--color-success)", fontWeight: 600 }}>
+                            ✓ Sạch công nợ: Không có hóa đơn chưa thanh toán (tổng {data.financial.totalInvoicesCount} hóa đơn).
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "4px" }}>
+                            <div style={{ fontSize: "12px", color: "var(--color-danger)", fontWeight: 700 }}>
+                              ⚠️ Còn nợ <MoneyDisplay amountVnd={data.financial.totalDebtVnd} /> trên {data.financial.unpaidInvoicesCount} hóa đơn:
+                            </div>
+                            <ul style={{ margin: "2px 0 0 16px", padding: 0, fontSize: "12px" }}>
+                              {data.financial.unpaidInvoices.map((inv) => (
+                                <li key={inv.id}>
+                                  <a
+                                    href={`/billing/invoices/${inv.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ textDecoration: "underline" }}
+                                  >
+                                    {inv.invoiceNumber}
+                                  </a>
+                                  : hạn {inv.dueDate} — còn nợ <MoneyDisplay amountVnd={inv.remainingVnd} />
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="button-row">
+                  <div className="button-row" style={{ alignItems: "flex-start" }}>
                     <StatusBadge tone={readinessTone(readiness!.financial)}>
                       {readiness!.financial}
                     </StatusBadge>
                     {data.permissions.terminate ? (
                       <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "READY")}>Ready</button>
+                        {data.financial && data.financial.unpaidInvoicesCount === 0 && readiness!.financial === "PENDING" ? (
+                          <button
+                            className="primary-button primary-button--compact"
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void syncSystemReadiness()}
+                          >
+                            Xác nhận sạch nợ
+                          </button>
+                        ) : null}
+                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "READY")}>Ghi đè Ready</button>
                         <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "NOT_REQUIRED")}>N/A</button>
                       </>
                     ) : null}
                   </div>
                 </div>
+
                 <div className="readiness-row">
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong>Tiền cọc</strong>
                     <span>
                       {data.deposit ? (
@@ -404,7 +638,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                       )}
                     </span>
                   </div>
-                  <div className="button-row">
+                  <div className="button-row" style={{ alignItems: "flex-start" }}>
                     <StatusBadge tone={readinessTone(readiness!.deposit)}>
                       {readiness!.deposit}
                     </StatusBadge>

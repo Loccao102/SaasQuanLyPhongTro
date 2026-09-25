@@ -79,6 +79,52 @@ type AuditRow = QueryResultRow & {
   occurred_at: Date | string;
 };
 
+export type LeaseFinancialSummary = {
+  totalInvoicesCount: number;
+  unpaidInvoicesCount: number;
+  totalDebtVnd: number;
+  unpaidInvoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    totalVnd: number;
+    remainingVnd: number;
+    dueDate: string;
+  }>;
+};
+
+export type LeaseMeterSummaryItem = {
+  meterId: string;
+  meterType: "ELECTRICITY" | "WATER";
+  unit: "KWH" | "M3";
+  label: string | null;
+  latestReading: {
+    id: string;
+    readingDate: string;
+    readingValue: string;
+  } | null;
+};
+
+type InvoiceRow = QueryResultRow & {
+  id: string;
+  invoice_number: string;
+  status: string;
+  collection_status: string;
+  total_vnd: string;
+  paid_vnd: string;
+  remaining_vnd: string;
+  due_date: Date | string;
+};
+
+type MeterSummaryRow = QueryResultRow & {
+  meter_id: string;
+  meter_type: string;
+  unit: string;
+  label: string | null;
+  reading_id: string | null;
+  reading_date: Date | string | null;
+  reading_value: string | null;
+};
+
 type RoomContextRow = QueryResultRow & {
   room_id: string;
   property_id: string;
@@ -303,8 +349,15 @@ export class LeaseAdminService {
       throw new ForbiddenException("Lease scope denied.");
     }
 
-    const [partyResult, terminationResult, auditResult, deposit, pricingPolicy] =
-      await Promise.all([
+    const [
+      partyResult,
+      terminationResult,
+      auditResult,
+      deposit,
+      pricingPolicy,
+      invoicesResult,
+      metersResult
+    ] = await Promise.all([
         this.db.query<PartyRow>(
           `SELECT
              res.id::text AS resident_id,
@@ -366,8 +419,85 @@ export class LeaseAdminService {
           principal.organizationId,
           row.property_id,
           this.dateOnly(row.start_date) ?? new Date().toISOString().slice(0, 10)
+        ),
+        this.db.query<InvoiceRow>(
+          `SELECT
+             id::text,
+             invoice_number,
+             status,
+             collection_status,
+             total_vnd::text,
+             paid_vnd::text,
+             remaining_vnd::text,
+             due_date
+           FROM renter_invoices
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+           ORDER BY due_date DESC, id DESC
+           LIMIT 50`,
+          [principal.organizationId, leaseId]
+        ),
+        this.db.query<MeterSummaryRow>(
+          `SELECT
+             m.id::text AS meter_id,
+             m.meter_type,
+             m.unit,
+             m.label,
+             mr.id::text AS reading_id,
+             mr.reading_date,
+             mr.reading_value::text
+           FROM meters m
+           LEFT JOIN LATERAL (
+             SELECT id, reading_date, reading_value
+             FROM meter_readings
+             WHERE organization_id = m.organization_id
+               AND meter_id = m.id
+             ORDER BY reading_date DESC, id DESC
+             LIMIT 1
+           ) mr ON true
+           WHERE m.organization_id = $1::uuid
+             AND m.room_id = $2::uuid
+             AND m.is_active = true
+           ORDER BY m.meter_type, m.created_at`,
+          [principal.organizationId, row.room_id]
         )
       ]);
+
+    const unpaidInvoices = invoicesResult.rows.filter(
+      (inv) =>
+        inv.status === "ISSUED" &&
+        (inv.collection_status === "UNPAID" || inv.collection_status === "PARTIALLY_PAID")
+    );
+    const totalDebtVnd = unpaidInvoices.reduce(
+      (sum, inv) => sum + Number(inv.remaining_vnd),
+      0
+    );
+    const financialSummary: LeaseFinancialSummary = {
+      totalInvoicesCount: invoicesResult.rows.length,
+      unpaidInvoicesCount: unpaidInvoices.length,
+      totalDebtVnd,
+      unpaidInvoices: unpaidInvoices.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        totalVnd: Number(inv.total_vnd),
+        remainingVnd: Number(inv.remaining_vnd),
+        dueDate: this.dateOnly(inv.due_date) ?? ""
+      }))
+    };
+
+    const meterSummary: LeaseMeterSummaryItem[] = metersResult.rows.map((m) => ({
+      meterId: m.meter_id,
+      meterType: m.meter_type as "ELECTRICITY" | "WATER",
+      unit: m.unit as "KWH" | "M3",
+      label: m.label,
+      latestReading: m.reading_id
+        ? {
+            id: m.reading_id,
+            readingDate: this.dateOnly(m.reading_date) ?? "",
+            readingValue: m.reading_value ?? "0"
+          }
+        : null
+    }));
 
     return {
       organization: {
@@ -404,6 +534,8 @@ export class LeaseAdminService {
       })),
       deposit,
       pricingPolicy,
+      financial: financialSummary,
+      meters: meterSummary,
       termination: terminationResult.rows[0]
         ? this.mapTermination(terminationResult.rows[0])
         : null,

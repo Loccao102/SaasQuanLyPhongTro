@@ -114,6 +114,8 @@ export type LeaseDetailResponse = {
   }>;
   deposit: DepositSummary;
   pricingPolicy: ResolvedPricingPolicy | null;
+  financial?: LeaseFinancialSummary;
+  meters?: LeaseMeterSummaryItem[];
   termination: {
     id: string;
     status: string;
@@ -133,6 +135,31 @@ export type LeaseDetailResponse = {
     metadata: unknown;
     occurredAt: string;
   }>;
+};
+
+export type LeaseFinancialSummary = {
+  totalInvoicesCount: number;
+  unpaidInvoicesCount: number;
+  totalDebtVnd: number;
+  unpaidInvoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    totalVnd: number;
+    remainingVnd: number;
+    dueDate: string;
+  }>;
+};
+
+export type LeaseMeterSummaryItem = {
+  meterId: string;
+  meterType: "ELECTRICITY" | "WATER";
+  unit: "KWH" | "M3";
+  label: string | null;
+  latestReading: {
+    id: string;
+    readingDate: string;
+    readingValue: string;
+  } | null;
 };
 
 export type ResidentSearchResult = {
@@ -354,6 +381,38 @@ export const adminLeasesApi = {
   ) =>
     request<{ lease: LeaseDetailResponse["lease"] }>(
       "/" + encodeURIComponent(leaseId) + "/renew",
+      { method: "POST", body: input }
+    ),
+  syncTerminationReadiness: (leaseId: string) =>
+    request<{
+      meter: "PENDING" | "READY" | "NOT_REQUIRED";
+      financial: "PENDING" | "READY" | "NOT_REQUIRED";
+      deposit: "PENDING" | "READY" | "NOT_REQUIRED";
+      status: string;
+    }>(
+      "/" + encodeURIComponent(leaseId) + "/termination/readiness/sync",
+      { method: "POST" }
+    ),
+  recordTerminationMeterReading: (
+    leaseId: string,
+    input: {
+      meterId: string;
+      readingDate: string;
+      readingValue: number;
+    }
+  ) =>
+    request<{
+      meter: "PENDING" | "READY" | "NOT_REQUIRED";
+      financial: "PENDING" | "READY" | "NOT_REQUIRED";
+      deposit: "PENDING" | "READY" | "NOT_REQUIRED";
+      status: string;
+      reading: {
+        meterId: string;
+        readingDate: string;
+        readingValue: string;
+      };
+    }>(
+      "/" + encodeURIComponent(leaseId) + "/termination/record-meter-reading",
       { method: "POST", body: input }
     )
 };
