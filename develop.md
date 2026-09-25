@@ -1428,7 +1428,8 @@ Still required before production cutover:
 - run a low-value real Live payment smoke test;
 - deployed Test-mode verification of the API-v2 reconciliation sweep;
 - low-value Live smoke test covering webhook + API-v2 cross-channel replay;
-- secret rotation runbook and alerting for invalid-signature/API-auth spikes.
+- deployed Test-mode verification of webhook secret overlap and API-token rotation;
+- low-value Live smoke test after production credentials are installed.
 
 Implemented follow-up:
 - canonical SePay transaction identity across webhook numeric IDs and API-v2 UUID aliases;
@@ -1440,3 +1441,18 @@ Implemented follow-up:
 - tenant Admin REVIEW_REQUIRED queue for attributable overpayment/account-mismatch cases;
 - safe partial manual allocation preserves any excess as REVIEW_REQUIRED;
 - retry-safe allocation UUID + financial audit trail.
+
+
+## SePay secret rotation hardening
+
+Implemented:
+- webhook HMAC current + previous secret overlap;
+- fail-closed validation for short/equal secrets;
+- timing-safe verification against every configured overlap secret;
+- previous-secret removal rejects the old secret immediately;
+- deployment/runbook variables for rotation;
+- independent API-v2 bearer-token rotation runbook.
+
+Still operational:
+- execute the rotation procedure once in SePay Test mode;
+- execute a low-value Live verification with production credentials.

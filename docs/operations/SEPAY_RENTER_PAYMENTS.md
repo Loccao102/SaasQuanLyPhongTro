@@ -129,3 +129,57 @@ operator explicitly resolves it.
 - simulate worker interruption before cursor advance and confirm replay is harmless;
 - alert on REVIEW_REQUIRED growth and repeated API authentication/rate failures;
 - rotate the API token independently from the webhook HMAC secret.
+
+
+## Webhook HMAC secret rotation
+
+Habi supports a short overlap window so the webhook HMAC secret can be rotated
+without intentionally dropping valid deliveries.
+
+Runtime variables:
+
+```text
+SEPAY_RENTER_WEBHOOK_SECRET=<current>
+SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS=<previous-or-empty>
+```
+
+Rules:
+
+- the current secret is always required and must contain at least 16 characters;
+- the previous secret is optional;
+- when present, the previous secret must also contain at least 16 characters;
+- current and previous must differ;
+- both are checked with timing-safe HMAC comparison;
+- Habi never persists which secret matched;
+- signatures/secrets are never written to safe headers, audit metadata or logs.
+
+Recommended cutover:
+
+1. generate a new high-entropy secret;
+2. deploy Habi with the new secret in `SEPAY_RENTER_WEBHOOK_SECRET` and the
+   existing secret in `SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS`;
+3. update the SePay webhook configuration to the new secret;
+4. verify valid deliveries and watch invalid-signature metrics;
+5. keep the overlap only long enough to cover delivery/retry uncertainty and
+   at least the 300-second request replay window;
+6. clear `SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS` and redeploy;
+7. verify a request signed with the old secret is rejected.
+
+Do not leave the previous secret configured indefinitely. A rotation is not
+complete until the previous value is removed.
+
+### API-v2 bearer-token rotation
+
+The reconciliation bearer token is independent from the webhook HMAC secret.
+
+To rotate `SEPAY_API_TOKEN`:
+
+1. create a replacement API token in SePay;
+2. update the worker deployment secret and restart/redeploy the renter-payment
+   worker;
+3. verify reconciliation heartbeat and
+   `habi_renter_payment_reconciliation_last_success_age_seconds`;
+4. revoke the previous API token after the new token is confirmed.
+
+The durable reconciliation cursor means a short worker restart does not lose
+bank transactions; the next sweep catches up from the stored cursor.
