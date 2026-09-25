@@ -15,6 +15,7 @@ import type {
 import { roles } from "../domain/access-control.js";
 import { AccessControlService } from "../access-control.service.js";
 import { MembershipApplicationService } from "./membership-application.service.js";
+import { MembershipInvitationService } from "./membership-invitation.service.js";
 
 type MemberRow = QueryResultRow & {
   id: string;
@@ -53,6 +54,14 @@ type PropertyRow = QueryResultRow & {
   is_active: boolean;
 };
 
+type InvitationSummaryRow = QueryResultRow & {
+  membership_id: string;
+  expires_at: Date;
+  accepted_at: Date | null;
+  revoked_at: Date | null;
+  created_at: Date;
+};
+
 export type TeamScopeInput =
   | { type: "ORGANIZATION" }
   | { type: "OPERATIONAL_GROUP"; operationalGroupId: string }
@@ -64,14 +73,20 @@ export class TeamManagementService {
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
     private readonly commercialPolicy: CommercialPolicyService,
-    private readonly memberships: MembershipApplicationService
+    private readonly memberships: MembershipApplicationService,
+    private readonly invitations: MembershipInvitationService
   ) {}
 
   async overview(principal: TenantPrincipal) {
     this.requireManage(principal);
 
-    const [memberResult, scopeResult, groupResult, propertyResult] =
-      await Promise.all([
+    const [
+      memberResult,
+      scopeResult,
+      groupResult,
+      propertyResult,
+      invitationResult
+    ] = await Promise.all([
         this.db.query<MemberRow>(
           `SELECT
              om.id::text,
@@ -146,6 +161,18 @@ export class TeamManagementService {
            WHERE organization_id = $1::uuid
            ORDER BY is_active DESC, name, code`,
           [principal.organizationId]
+        ),
+        this.db.query<InvitationSummaryRow>(
+          `SELECT DISTINCT ON (membership_id)
+             membership_id::text,
+             expires_at,
+             accepted_at,
+             revoked_at,
+             created_at
+           FROM membership_invitations
+           WHERE organization_id = $1::uuid
+           ORDER BY membership_id, created_at DESC, id DESC`,
+          [principal.organizationId]
         )
       ]);
 
@@ -164,6 +191,10 @@ export class TeamManagementService {
       scopesByMembership.set(row.membership_id, current);
     }
 
+    const invitationByMembership = new Map(
+      invitationResult.rows.map((row) => [row.membership_id, row] as const)
+    );
+
     return {
       organization: {
         id: principal.organizationId,
@@ -179,6 +210,9 @@ export class TeamManagementService {
         role: row.role,
         status: row.status,
         scopes: scopesByMembership.get(row.id) ?? [],
+        invitation: this.invitationSummary(
+          invitationByMembership.get(row.id)
+        ),
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString()
       })),
@@ -284,21 +318,121 @@ export class TeamManagementService {
         membershipId,
         scopes
       );
+      const invitation = await this.invitations.issueInTransaction(client, {
+        organizationId: principal.organizationId,
+        membershipId,
+        createdByUserId: principal.userId
+      });
 
       await this.audit(client, principal, "MEMBERSHIP_INVITED", membershipId, {
         email,
         displayName,
         role: input.role,
         scopes,
-        reusedUser
+        reusedUser,
+        invitationExpiresAt: invitation.expiresAt
       });
 
       return {
         membershipId,
         userId,
         role: input.role,
-        status: "INVITED" as const
+        status: "INVITED" as const,
+        invitation: {
+          token: invitation.token,
+          expiresAt: invitation.expiresAt
+        }
       };
+    });
+  }
+
+  async resendInvitation(
+    principal: TenantPrincipal,
+    membershipId: string
+  ) {
+    this.requireManage(principal);
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+      const current = await this.memberForUpdate(
+        client,
+        principal.organizationId,
+        membershipId
+      );
+      if (current.status !== "INVITED") {
+        throw new ConflictException(
+          "Only an INVITED membership can receive a new invitation."
+        );
+      }
+      if (current.role === "OWNER" && principal.role !== "OWNER") {
+        throw new ForbiddenException(
+          "Only an OWNER can resend another OWNER invitation."
+        );
+      }
+
+      const invitation = await this.invitations.issueInTransaction(client, {
+        organizationId: principal.organizationId,
+        membershipId,
+        createdByUserId: principal.userId
+      });
+      await this.audit(
+        client,
+        principal,
+        "MEMBERSHIP_INVITATION_RESENT",
+        membershipId,
+        { invitationExpiresAt: invitation.expiresAt }
+      );
+      return {
+        membershipId,
+        status: "INVITED" as const,
+        invitation: {
+          token: invitation.token,
+          expiresAt: invitation.expiresAt
+        }
+      };
+    });
+  }
+
+  async revokeInvitation(
+    principal: TenantPrincipal,
+    membershipId: string
+  ) {
+    this.requireManage(principal);
+    return this.db.withTransaction(async (client) => {
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+      const current = await this.memberForUpdate(
+        client,
+        principal.organizationId,
+        membershipId
+      );
+      if (current.status !== "INVITED") {
+        throw new ConflictException(
+          "Only an INVITED membership can have its invitation revoked."
+        );
+      }
+      if (current.role === "OWNER" && principal.role !== "OWNER") {
+        throw new ForbiddenException(
+          "Only an OWNER can revoke another OWNER invitation."
+        );
+      }
+
+      const revoked = await this.invitations.revokeInTransaction(client, {
+        organizationId: principal.organizationId,
+        membershipId
+      });
+      await this.audit(
+        client,
+        principal,
+        "MEMBERSHIP_INVITATION_REVOKED",
+        membershipId,
+        { invitationRevoked: revoked }
+      );
+      return { membershipId, status: "INVITED" as const, revoked };
     });
   }
 
@@ -360,8 +494,10 @@ export class TeamManagementService {
 
   async activate(principal: TenantPrincipal, membershipId: string) {
     this.requireManage(principal);
-    const target = await this.db.query<QueryResultRow & { role: Role }>(
-      `SELECT role
+    const target = await this.db.query<
+      QueryResultRow & { role: Role; status: MembershipStatus }
+    >(
+      `SELECT role, status
        FROM organization_memberships
        WHERE organization_id = $1::uuid
          AND id = $2::uuid
@@ -370,6 +506,11 @@ export class TeamManagementService {
     );
     if (!target.rows[0]) {
       throw new NotFoundException("Membership was not found.");
+    }
+    if (target.rows[0].status === "INVITED") {
+      throw new ConflictException(
+        "INVITED membership must accept its invitation before activation."
+      );
     }
     if (target.rows[0].role === "OWNER" && principal.role !== "OWNER") {
       throw new ForbiddenException("Only an OWNER can activate another OWNER.");
@@ -806,6 +947,23 @@ export class TeamManagementService {
         [organizationId, propertyId, groupId]
       );
     }
+  }
+
+  private invitationSummary(row: InvitationSummaryRow | undefined) {
+    if (!row) return null;
+    const state =
+      row.accepted_at !== null
+        ? "ACCEPTED"
+        : row.revoked_at !== null
+          ? "REVOKED"
+          : row.expires_at.getTime() <= Date.now()
+            ? "EXPIRED"
+            : "PENDING";
+    return {
+      state,
+      expiresAt: row.expires_at.toISOString(),
+      createdAt: row.created_at.toISOString()
+    };
   }
 
   private mapScope(row: ScopeRow) {

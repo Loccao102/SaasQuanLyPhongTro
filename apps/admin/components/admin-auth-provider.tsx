@@ -60,6 +60,10 @@ function resolveOrganization(
   return session.memberships[0]?.organizationId ?? null;
 }
 
+function isPublicAuthPath(pathname: string): boolean {
+  return pathname === "/login" || pathname.startsWith("/invitations/");
+}
+
 function loginPath(pathname: string): string {
   const next =
     pathname.startsWith("/") && pathname !== "/login"
@@ -140,7 +144,7 @@ export function AdminAuthProvider({
   useEffect(() => {
     if (
       status === "unauthenticated" &&
-      pathname !== "/login"
+      !isPublicAuthPath(pathname)
     ) {
       router.replace(loginPath(pathname));
     }

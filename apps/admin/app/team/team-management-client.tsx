@@ -5,6 +5,7 @@ import { StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminTeamApi,
+  type InvitationMutationResult,
   type TeamOverview,
   type TeamRole,
   type TeamScopeInput
@@ -49,6 +50,11 @@ export function TeamManagementClient() {
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showGroup, setShowGroup] = useState(false);
+  const [invitationLink, setInvitationLink] = useState<{
+    email: string;
+    url: string;
+    expiresAt: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,17 +72,39 @@ export function TeamManagementClient() {
     void load();
   }, [load]);
 
-  async function run(action: () => Promise<unknown>) {
+  async function run<T,>(action: () => Promise<T>): Promise<T | null> {
     setSaving(true);
     setError(null);
     try {
-      await action();
+      const result = await action();
       await load();
+      return result;
     } catch (mutation) {
-      setError(mutation instanceof Error ? mutation.message : "Không thể cập nhật đội ngũ.");
+      setError(
+        mutation instanceof Error
+          ? mutation.message
+          : "Không thể cập nhật đội ngũ."
+      );
+      return null;
     } finally {
       setSaving(false);
     }
+  }
+
+  function revealInvitation(
+    email: string,
+    result: InvitationMutationResult
+  ) {
+    const relative =
+      "/invitations/" + encodeURIComponent(result.invitation.token);
+    setInvitationLink({
+      email,
+      url:
+        typeof window === "undefined"
+          ? relative
+          : window.location.origin + relative,
+      expiresAt: result.invitation.expiresAt
+    });
   }
 
   async function invite(event: FormEvent<HTMLFormElement>) {
@@ -88,15 +116,19 @@ export function TeamManagementClient() {
       setError("Hãy chọn ít nhất một phạm vi.");
       return;
     }
-    await run(() =>
+    const email = String(form.get("email") ?? "");
+    const result = await run(() =>
       adminTeamApi.invite({
-        email: String(form.get("email") ?? ""),
+        email,
         displayName: String(form.get("displayName") ?? ""),
         role,
         scopes
       })
     );
-    setShowInvite(false);
+    if (result) {
+      revealInvitation(email, result);
+      setShowInvite(false);
+    }
   }
 
   async function createGroup(event: FormEvent<HTMLFormElement>) {
@@ -141,6 +173,50 @@ export function TeamManagementClient() {
         </div>
       </section>
 
+      {invitationLink ? (
+        <section className="panel">
+          <div className="asset-section-heading">
+            <div>
+              <span className="eyebrow">INVITATION LINK</span>
+              <h2>Link mời chỉ hiển thị trong lần tạo này</h2>
+            </div>
+          </div>
+          <div className="team-form">
+            <label className="team-form__wide">
+              <span>{invitationLink.email}</span>
+              <input
+                readOnly
+                value={invitationLink.url}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            </label>
+            <p className="inline-note team-form__wide">
+              Hết hạn:{" "}
+              {new Date(invitationLink.expiresAt).toLocaleString("vi-VN")}.
+              Sao chép và gửi link này cho đúng người nhận. Habi chỉ lưu hash token.
+            </p>
+            <div className="button-row team-form__wide">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(invitationLink.url)
+                }
+              >
+                Sao chép link
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setInvitationLink(null)}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {showInvite ? (
         <section className="panel">
           <div className="asset-section-heading"><div><span className="eyebrow">INVITE</span><h2>Thêm thành viên</h2></div></div>
@@ -183,7 +259,10 @@ export function TeamManagementClient() {
               <button className="primary-button" type="submit" disabled={saving}>Tạo lời mời</button>
             </div>
           </form>
-          <p className="inline-note">Membership được tạo ở trạng thái INVITED. Việc gửi email/token mời sẽ được nối vào auth/session flow sau.</p>
+          <p className="inline-note">
+            Membership được tạo ở trạng thái INVITED. Link token chỉ hiển thị
+            sau khi tạo hoặc resend; email provider có thể nối vào cùng flow này sau.
+          </p>
         </section>
       ) : null}
 
@@ -222,6 +301,15 @@ export function TeamManagementClient() {
                 data={data}
                 saving={saving}
                 onRun={run}
+                onResend={async () => {
+                  const result = await run(() =>
+                    adminTeamApi.resendInvitation(member.id)
+                  );
+                  if (result) revealInvitation(member.email, result);
+                }}
+                onRevoke={async () => {
+                  await run(() => adminTeamApi.revokeInvitation(member.id));
+                }}
               />
             ))}
           </div>
@@ -246,12 +334,16 @@ function MemberEditor({
   member,
   data,
   saving,
-  onRun
+  onRun,
+  onResend,
+  onRevoke
 }: {
   member: TeamOverview["members"][number];
   data: TeamOverview;
   saving: boolean;
-  onRun: (action: () => Promise<unknown>) => Promise<void>;
+  onRun: <T,>(action: () => Promise<T>) => Promise<T | null>;
+  onResend: () => Promise<void>;
+  onRevoke: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const existingOrg = member.scopes.some((scope) => scope.type === "ORGANIZATION");
@@ -280,14 +372,48 @@ function MemberEditor({
           <StatusBadge tone={member.role === "OWNER" ? "info" : "neutral"}>{member.role}</StatusBadge>
         </div>
       </div>
+      {member.status === "INVITED" && member.invitation ? (
+        <p className="inline-note">
+          Lời mời: {member.invitation.state} · hết hạn{" "}
+          {new Date(member.invitation.expiresAt).toLocaleString("vi-VN")}
+        </p>
+      ) : null}
       <div className="team-scope-pills">
         {member.scopes.map((scope, index) => <span key={scope.type + index}>{scope.label}</span>)}
       </div>
       {!editing ? (
         <div className="button-row">
           <button className="secondary-button secondary-button--compact" type="button" onClick={() => setEditing(true)}>Sửa quyền</button>
-          {member.status !== "ACTIVE" ? (
-            <button className="primary-button" type="button" disabled={saving} onClick={() => void onRun(() => adminTeamApi.activate(member.id))}>Kích hoạt</button>
+          {member.status === "INVITED" ? (
+            <>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={saving}
+                onClick={() => void onResend()}
+              >
+                Tạo lại link mời
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={saving}
+                onClick={() => void onRevoke()}
+              >
+                Thu hồi lời mời
+              </button>
+            </>
+          ) : member.status === "SUSPENDED" ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                void onRun(() => adminTeamApi.activate(member.id))
+              }
+            >
+              Kích hoạt
+            </button>
           ) : member.id !== data.currentMembershipId ? (
             <button className="danger-button" type="button" disabled={saving} onClick={() => void onRun(() => adminTeamApi.suspend(member.id))}>Tạm khóa</button>
           ) : null}
@@ -330,7 +456,7 @@ function GroupEditor({
   group: TeamOverview["groups"][number];
   data: TeamOverview;
   saving: boolean;
-  onRun: (action: () => Promise<unknown>) => Promise<void>;
+  onRun: <T,>(action: () => Promise<T>) => Promise<T | null>;
 }) {
   const [editing, setEditing] = useState(false);
 
