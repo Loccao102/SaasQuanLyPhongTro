@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "db:setup": "tsx scripts/db-setup.ts",
     "auth:bootstrap-owner": "tsx scripts/bootstrap-owner.ts",
+    "sepay:preflight": "tsx scripts/sepay-production-preflight.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:integration": "tsx --test --test-concurrency=1 \"src/**/*.integration.ts\""
