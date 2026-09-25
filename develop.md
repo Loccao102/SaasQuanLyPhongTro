@@ -1456,3 +1456,22 @@ Implemented:
 Still operational:
 - execute the rotation procedure once in SePay Test mode;
 - execute a low-value Live verification with production credentials.
+
+
+## Zalo delivery reliability hardening
+
+Implemented:
+- durable notification provider identity standardized on `PLAYWRIGHT_ZALO`;
+- worker adapter selector remains compatible with `ZALO_PLAYWRIGHT`;
+- legacy provider alias jobs can still be drained;
+- stale `RUNNING` attempts are recovered after a bounded API-side timeout;
+- stale attempts are closed as durable `UNKNOWN` evidence before replacement;
+- retry limit is respected; exhausted stale attempts move to manual review;
+- unresolved delivery history propagates a replay-check requirement across retries;
+- Playwright checks for an exact existing message before re-sending an uncertain delivery;
+- post-send Playwright timeout is `UNKNOWN`, never a blind transient retry;
+- notification claim index now includes `RUNNING` recovery candidates.
+
+Still operational:
+- validate the replay check against the exact production Zalo DOM/account;
+- run crash-after-send and API-completion-failure drills before pilot.

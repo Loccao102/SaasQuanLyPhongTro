@@ -90,6 +90,7 @@ services:
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
       OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:-replace-with-a-separate-long-random-metrics-token}
+      NOTIFICATION_RUNNING_TIMEOUT_SECONDS: ${NOTIFICATION_RUNNING_TIMEOUT_SECONDS:-600}
       DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET:-replace-with-at-least-16-random-characters}
       SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
       SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS: ${SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS:-}

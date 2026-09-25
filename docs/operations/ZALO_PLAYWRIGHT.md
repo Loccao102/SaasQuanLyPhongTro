@@ -28,6 +28,8 @@ WORKER_PROVIDER=ZALO_PLAYWRIGHT
 
 The worker package pins Playwright to `1.63.0`. The dedicated Dockerfile uses the matching Microsoft Playwright `v1.63.0-noble` image. Keep these versions aligned.
 
+`WORKER_PROVIDER=ZALO_PLAYWRIGHT` is the adapter selector. The durable provider identity stored on notification jobs and heartbeats is `PLAYWRIGHT_ZALO`. The worker also drains the legacy `ZALO_PLAYWRIGHT` job alias so an older queued job is not stranded.
+
 ## Session encryption
 
 Browser storage state is encrypted with AES-256-GCM before being written to disk.
@@ -104,6 +106,32 @@ After send it requires:
 Only then does it return `SENT_CONFIRMED`.
 
 Ambiguous post-send state returns `UNKNOWN`. It must never be blindly retried as if no send occurred.
+
+### Crash/retry recovery
+
+The API treats a `RUNNING` notification attempt as stale after
+`NOTIFICATION_RUNNING_TIMEOUT_SECONDS` (default 600 seconds).
+
+When a stale attempt is recovered:
+
+1. the abandoned attempt is closed as `UNKNOWN` with
+   `STALE_ATTEMPT_RECLAIMED`;
+2. quota consumption remains idempotent for the notification job;
+3. a replacement attempt is created only when automatic attempts remain;
+4. the replacement claim carries `deliveryReplayCheckRequired=true`;
+5. Zalo opens and verifies the intended conversation, then checks for an exact
+   visible copy of the message before typing or clicking Send;
+6. if that exact message already exists, the job is confirmed `SENT` without
+   sending another copy;
+7. if the stale attempt already consumed the retry limit, the job moves to
+   `MANUAL_REVIEW` instead of silently exceeding the configured limit.
+
+The replay requirement is derived from durable `UNKNOWN` attempt history, so
+it survives additional safe transient failures such as session-lock
+contention.
+
+A Playwright timeout after a send action has been attempted is classified as
+`UNKNOWN / POST_SEND_TIMEOUT`, not a transient auto-retry.
 
 ## Provider pause behavior
 

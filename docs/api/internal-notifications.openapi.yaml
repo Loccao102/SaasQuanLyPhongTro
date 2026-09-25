@@ -42,7 +42,8 @@ paths:
               properties:
                 provider: { type: string }
       responses:
-        "200": { description: Claimed job or null when no eligible work exists }
+        "200":
+          description: Claimed job or null when no eligible work exists. Claimed jobs include deliveryReplayCheckRequired when previous delivery is unresolved.
         "401": { description: Invalid/missing internal worker token }
   /{jobId}/complete:
     post:
