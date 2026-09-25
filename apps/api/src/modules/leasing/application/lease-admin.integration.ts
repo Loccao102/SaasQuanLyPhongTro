@@ -18,6 +18,7 @@ const leaseId = "51000000-0000-4000-8000-000000000001";
 const leaseId2 = "51000000-0000-4000-8000-000000000002";
 const residentId = "61000000-0000-4000-8000-000000000001";
 const partyResidentId = "61000000-0000-4000-8000-000000000002";
+const replacementResidentId = "61000000-0000-4000-8000-000000000003";
 
 function principal(
   scopes: TenantPrincipal["membership"]["scopes"] = [
@@ -187,12 +188,84 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     });
     assert.equal(addedParty.version, 3);
 
+    await assert.rejects(
+      () =>
+        draftService.replacePrimaryTenant(
+          principal(),
+          leaseId,
+          {
+            expectedVersion: 2,
+            idempotencyKey: "replace-primary-stale",
+            residentId: partyResidentId,
+            previousPrimaryDisposition: "CO_TENANT",
+            resident: null
+          }
+        ),
+      /changed since it was loaded/
+    );
+
+    const replaced = await draftService.replacePrimaryTenant(
+      principal(),
+      leaseId,
+      {
+        expectedVersion: 3,
+        idempotencyKey: "replace-primary-1",
+        residentId: partyResidentId,
+        previousPrimaryDisposition: "CO_TENANT",
+        resident: null
+      }
+    );
+    const replaceRetry = await draftService.replacePrimaryTenant(
+      principal(),
+      leaseId,
+      {
+        expectedVersion: 3,
+        idempotencyKey: "replace-primary-1",
+        residentId: partyResidentId,
+        previousPrimaryDisposition: "CO_TENANT",
+        resident: null
+      }
+    );
+    assert.deepEqual(replaceRetry, replaced);
+    assert.equal(replaced.previousPrimaryResidentId, residentId);
+    assert.equal(replaced.primaryResidentId, partyResidentId);
+    assert.equal(replaced.version, 4);
+
     const removedParty = await draftService.removeParty(
       principal(),
       leaseId,
-      partyResidentId
+      residentId
     );
-    assert.equal(removedParty.version, 4);
+    assert.equal(removedParty.version, 5);
+
+    const replacedWithNew =
+      await draftService.replacePrimaryTenant(
+        principal(),
+        leaseId2,
+        {
+          expectedVersion: 1,
+          idempotencyKey: "replace-primary-2",
+          residentId: replacementResidentId,
+          previousPrimaryDisposition: "REMOVE",
+          resident: {
+            fullName: "Le Thi Replacement",
+            phone: "0922222222"
+          }
+        }
+      );
+    assert.equal(replacedWithNew.primaryResidentId, replacementResidentId);
+    assert.equal(replacedWithNew.previousPrimaryDisposition, "REMOVE");
+    assert.equal(replacedWithNew.version, 2);
+
+    const lease2OldPrimary = await fixturePool.query(
+      `SELECT count(*)::int AS count
+       FROM lease_residents
+       WHERE organization_id = $1::uuid
+         AND lease_id = $2::uuid
+         AND resident_id = $3::uuid`,
+      [organizationId, leaseId2, residentId]
+    );
+    assert.equal(lease2OldPrimary.rows[0]?.count, 0);
 
     const counts = await fixturePool.query(
       `SELECT
@@ -200,15 +273,18 @@ test("admin leasing creates a draft idempotently and filters reads by property s
          (SELECT count(*)::int FROM residents WHERE organization_id = $1) AS residents,
          (SELECT count(*)::int FROM lease_command_receipts WHERE organization_id = $1) AS receipts,
          (SELECT count(*)::int FROM audit_events
-            WHERE organization_id = $1 AND action = 'LEASE_DRAFT_CREATED') AS audits`,
+            WHERE organization_id = $1 AND action = 'LEASE_DRAFT_CREATED') AS audits,
+         (SELECT count(*)::int FROM audit_events
+            WHERE organization_id = $1 AND action = 'LEASE_PRIMARY_TENANT_REPLACED') AS primary_replacements`,
       [organizationId]
     );
 
     assert.deepEqual(counts.rows[0], {
       leases: 2,
-      residents: 2,
-      receipts: 2,
-      audits: 2
+      residents: 3,
+      receipts: 4,
+      audits: 2,
+      primary_replacements: 2
     });
 
     const allowed = await service.list(
@@ -227,12 +303,13 @@ test("admin leasing creates a draft idempotently and filters reads by property s
       principal([{ type: "PROPERTY", propertyId }]),
       leaseId
     );
-    assert.equal(detail.lease.primaryResident?.fullName, "Nguyen Van Test");
+    assert.equal(detail.lease.primaryResident?.fullName, "Tran Thi Occupant");
     assert.equal(detail.permissions.manage, true);
     assert.equal(detail.parties.length, 1);
+    assert.equal(detail.parties[0]?.role, "PRIMARY_TENANT");
     assert.equal(detail.lease.baseRentVnd, 3700000);
     assert.equal(detail.lease.billingDay, 7);
-    assert.equal(detail.lease.version, 4);
+    assert.equal(detail.lease.version, 5);
     assert.ok(
       detail.audit.some((item) => item.action === "LEASE_DRAFT_UPDATED")
     );
@@ -241,6 +318,12 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     );
     assert.ok(
       detail.audit.some((item) => item.action === "LEASE_PARTY_REMOVED")
+    );
+    assert.ok(
+      detail.audit.some(
+        (item) =>
+          item.action === "LEASE_PRIMARY_TENANT_REPLACED"
+      )
     );
   } finally {
     await database.onModuleDestroy();

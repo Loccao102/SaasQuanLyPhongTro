@@ -9,8 +9,17 @@ import { CommercialPolicyService } from "../../commercial/application/commercial
 import { DatabaseService } from "../../database/database.service.js";
 import { AccessControlService } from "../../identity/access-control.service.js";
 import type { TenantPrincipal } from "../../identity/tenant-principal.js";
+import {
+  assertReceiptMatches,
+  normalizeIdempotencyKey
+} from "./idempotent-command.js";
+import { PostgresLeaseRepository } from "../infrastructure/postgres-lease-repository.js";
 
 export type LeasePartyRole = "CO_TENANT" | "OCCUPANT";
+export type PreviousPrimaryDisposition =
+  | "REMOVE"
+  | "CO_TENANT"
+  | "OCCUPANT";
 
 type DraftRow = QueryResultRow & {
   lease_id: string;
@@ -49,6 +58,18 @@ export interface UpdateLeaseDraftInput {
 export interface AddLeaseDraftPartyInput {
   residentId: string;
   partyRole: LeasePartyRole;
+  resident?: {
+    fullName: string;
+    phone?: string | null;
+    email?: string | null;
+  } | null;
+}
+
+export interface ReplaceLeaseDraftPrimaryTenantInput {
+  expectedVersion: number;
+  idempotencyKey: string;
+  residentId: string;
+  previousPrimaryDisposition: PreviousPrimaryDisposition;
   resident?: {
     fullName: string;
     phone?: string | null;
@@ -252,6 +273,288 @@ export class LeaseDraftManagementService {
       });
 
       return { leaseId, status: "DRAFT" as const, version: updated.rows[0]!.version };
+    });
+  }
+
+  async replacePrimaryTenant(
+    principal: TenantPrincipal,
+    leaseId: string,
+    input: ReplaceLeaseDraftPrimaryTenantInput
+  ) {
+    if (
+      !Number.isInteger(input.expectedVersion) ||
+      input.expectedVersion < 1
+    ) {
+      throw new ConflictException(
+        "expectedVersion must be a positive integer."
+      );
+    }
+    if (
+      input.previousPrimaryDisposition !== "REMOVE" &&
+      input.previousPrimaryDisposition !== "CO_TENANT" &&
+      input.previousPrimaryDisposition !== "OCCUPANT"
+    ) {
+      throw new ConflictException(
+        "previousPrimaryDisposition must be REMOVE, CO_TENANT or OCCUPANT."
+      );
+    }
+
+    const idempotencyKey = normalizeIdempotencyKey(
+      input.idempotencyKey
+    );
+
+    return this.db.withTransaction(async (client) => {
+      const context = await this.requireDraft(
+        client,
+        principal,
+        leaseId
+      );
+      const repository = new PostgresLeaseRepository(client);
+      const receipt = await repository.findCommandReceipt(
+        principal.organizationId,
+        idempotencyKey
+      );
+
+      if (receipt) {
+        assertReceiptMatches(receipt, {
+          commandType: "LEASE_PRIMARY_TENANT_REPLACE",
+          leaseId
+        });
+        return receipt.response as {
+          leaseId: string;
+          previousPrimaryResidentId: string;
+          primaryResidentId: string;
+          previousPrimaryDisposition: PreviousPrimaryDisposition;
+          version: number;
+        };
+      }
+
+      if (context.version !== input.expectedVersion) {
+        throw new ConflictException(
+          "Lease draft changed since it was loaded. Refresh and try again."
+        );
+      }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const currentPrimary = await client.query<
+        QueryResultRow & {
+          resident_id: string;
+        }
+      >(
+        `SELECT resident_id::text
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND party_role = 'PRIMARY_TENANT'
+           AND left_on IS NULL
+         LIMIT 1`,
+        [principal.organizationId, leaseId]
+      );
+      const previousPrimaryResidentId =
+        currentPrimary.rows[0]?.resident_id;
+      if (!previousPrimaryResidentId) {
+        throw new ConflictException(
+          "Lease draft does not have a current primary tenant."
+        );
+      }
+      if (previousPrimaryResidentId === input.residentId) {
+        throw new ConflictException(
+          "Selected resident is already the primary tenant."
+        );
+      }
+
+      const existingResident = await client.query<ResidentRow>(
+        `SELECT id::text, full_name, phone, email, is_active
+         FROM residents
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         LIMIT 1`,
+        [principal.organizationId, input.residentId]
+      );
+
+      let resident = existingResident.rows[0];
+      if (!resident) {
+        if (!input.resident) {
+          throw new NotFoundException(
+            "Resident was not found and resident profile was not supplied."
+          );
+        }
+        const fullName = this.required(
+          input.resident.fullName,
+          "resident.fullName"
+        );
+        const phone = this.optionalText(input.resident.phone);
+        const email = this.optionalText(input.resident.email);
+        const inserted = await client.query<ResidentRow>(
+          `INSERT INTO residents (
+             id, organization_id, full_name, phone, email
+           )
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id::text, full_name, phone, email, is_active`,
+          [
+            input.residentId,
+            principal.organizationId,
+            fullName,
+            phone,
+            email
+          ]
+        );
+        resident = inserted.rows[0]!;
+      } else {
+        if (!resident.is_active) {
+          throw new ConflictException("Resident is inactive.");
+        }
+        await this.assertExistingResidentVisible(
+          client,
+          principal,
+          context.property_id,
+          resident.id
+        );
+      }
+
+      const targetParty = await client.query<
+        QueryResultRow & { party_role: string }
+      >(
+        `SELECT party_role
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND resident_id = $3::uuid
+           AND left_on IS NULL
+         LIMIT 1`,
+        [principal.organizationId, leaseId, resident.id]
+      );
+
+      if (input.previousPrimaryDisposition === "REMOVE") {
+        await client.query(
+          `DELETE FROM lease_residents
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+             AND resident_id = $3::uuid
+             AND party_role = 'PRIMARY_TENANT'
+             AND left_on IS NULL`,
+          [
+            principal.organizationId,
+            leaseId,
+            previousPrimaryResidentId
+          ]
+        );
+      } else {
+        await client.query(
+          `UPDATE lease_residents
+           SET party_role = $4
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+             AND resident_id = $3::uuid
+             AND party_role = 'PRIMARY_TENANT'
+             AND left_on IS NULL`,
+          [
+            principal.organizationId,
+            leaseId,
+            previousPrimaryResidentId,
+            input.previousPrimaryDisposition
+          ]
+        );
+      }
+
+      if (targetParty.rows[0]) {
+        await client.query(
+          `UPDATE lease_residents
+           SET party_role = 'PRIMARY_TENANT',
+               joined_on = $4,
+               left_on = NULL
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+             AND resident_id = $3::uuid`,
+          [
+            principal.organizationId,
+            leaseId,
+            resident.id,
+            this.dateOnly(context.start_date)
+          ]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO lease_residents (
+             organization_id,
+             lease_id,
+             resident_id,
+             party_role,
+             joined_on
+           )
+           VALUES ($1, $2, $3, 'PRIMARY_TENANT', $4)`,
+          [
+            principal.organizationId,
+            leaseId,
+            resident.id,
+            this.dateOnly(context.start_date)
+          ]
+        );
+      }
+
+      const versionResult = await client.query<
+        QueryResultRow & { version: number }
+      >(
+        `UPDATE leases
+         SET version = version + 1,
+             updated_by_user_id = $3,
+             updated_at = now()
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+           AND status = 'DRAFT'
+           AND version = $4
+         RETURNING version`,
+        [
+          principal.organizationId,
+          leaseId,
+          principal.userId,
+          input.expectedVersion
+        ]
+      );
+
+      if (versionResult.rowCount !== 1) {
+        throw new ConflictException(
+          "Lease draft changed concurrently. Refresh and try again."
+        );
+      }
+
+      const response = {
+        leaseId,
+        previousPrimaryResidentId,
+        primaryResidentId: resident.id,
+        previousPrimaryDisposition:
+          input.previousPrimaryDisposition,
+        version: versionResult.rows[0]!.version
+      };
+
+      await this.audit(
+        client,
+        principal,
+        leaseId,
+        "LEASE_PRIMARY_TENANT_REPLACED",
+        {
+          previousPrimaryResidentId,
+          primaryResidentId: resident.id,
+          previousPrimaryDisposition:
+            input.previousPrimaryDisposition,
+          promotedExistingParty: Boolean(targetParty.rows[0]),
+          version: response.version
+        }
+      );
+
+      await repository.saveCommandReceipt({
+        organizationId: principal.organizationId,
+        idempotencyKey,
+        commandType: "LEASE_PRIMARY_TENANT_REPLACE",
+        leaseId,
+        response
+      });
+
+      return response;
     });
   }
 
