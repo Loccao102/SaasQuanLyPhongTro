@@ -15,6 +15,7 @@ import {
   normalizeIdempotencyKey
 } from "./idempotent-command.js";
 import { PostgresLeaseRepository } from "../infrastructure/postgres-lease-repository.js";
+import { LeaseDepositService, type DepositSummaryDto } from "./lease-deposit.service.js";
 
 type LeaseListRow = QueryResultRow & {
   id: string;
@@ -99,11 +100,18 @@ export interface CreateLeaseDraftInput {
 
 @Injectable()
 export class LeaseAdminService {
+  private readonly depositService: LeaseDepositService;
+
   constructor(
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
-    private readonly commercialPolicy: CommercialPolicyService
-  ) {}
+    private readonly commercialPolicy: CommercialPolicyService,
+    depositService?: LeaseDepositService
+  ) {
+    this.depositService =
+      depositService ??
+      new LeaseDepositService(db, accessControl, commercialPolicy);
+  }
 
   async list(principal: TenantPrincipal) {
     if (!roleHasPermission(principal.role, "lease.read")) {
@@ -285,58 +293,65 @@ export class LeaseAdminService {
       throw new ForbiddenException("Lease scope denied.");
     }
 
-    const [partyResult, terminationResult, auditResult] = await Promise.all([
-      this.db.query<PartyRow>(
-        `SELECT
-           res.id::text AS resident_id,
-           res.full_name,
-           res.phone,
-           res.email,
-           lr.party_role,
-           lr.joined_on,
-           lr.left_on
-         FROM lease_residents lr
-         JOIN residents res
-           ON res.organization_id = lr.organization_id
-          AND res.id = lr.resident_id
-         WHERE lr.organization_id = $1::uuid
-           AND lr.lease_id = $2::uuid
-         ORDER BY
-           CASE lr.party_role WHEN 'PRIMARY_TENANT' THEN 0 WHEN 'CO_TENANT' THEN 1 ELSE 2 END,
-           lr.joined_on,
-           res.full_name`,
-        [principal.organizationId, leaseId]
-      ),
-      this.db.query<TerminationRow>(
-        `SELECT
-           id::text,
-           status,
-           effective_date,
-           reason,
-           meter_readiness,
-           financial_readiness,
-           deposit_readiness,
-           created_at,
-           completed_at,
-           cancelled_at
-         FROM lease_terminations
-         WHERE organization_id = $1::uuid
-           AND lease_id = $2::uuid
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [principal.organizationId, leaseId]
-      ),
-      this.db.query<AuditRow>(
-        `SELECT action, metadata, occurred_at
-         FROM audit_events
-         WHERE organization_id = $1::uuid
-           AND resource_type = 'LEASE'
-           AND resource_id = $2::uuid
-         ORDER BY occurred_at DESC, id DESC
-         LIMIT 50`,
-        [principal.organizationId, leaseId]
-      )
-    ]);
+    const [partyResult, terminationResult, auditResult, deposit] =
+      await Promise.all([
+        this.db.query<PartyRow>(
+          `SELECT
+             res.id::text AS resident_id,
+             res.full_name,
+             res.phone,
+             res.email,
+             lr.party_role,
+             lr.joined_on,
+             lr.left_on
+           FROM lease_residents lr
+           JOIN residents res
+             ON res.organization_id = lr.organization_id
+            AND res.id = lr.resident_id
+           WHERE lr.organization_id = $1::uuid
+             AND lr.lease_id = $2::uuid
+           ORDER BY
+             CASE lr.party_role WHEN 'PRIMARY_TENANT' THEN 0 WHEN 'CO_TENANT' THEN 1 ELSE 2 END,
+             lr.joined_on,
+             res.full_name`,
+          [principal.organizationId, leaseId]
+        ),
+        this.db.query<TerminationRow>(
+          `SELECT
+             id::text,
+             status,
+             effective_date,
+             reason,
+             meter_readiness,
+             financial_readiness,
+             deposit_readiness,
+             created_at,
+             completed_at,
+             cancelled_at
+           FROM lease_terminations
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [principal.organizationId, leaseId]
+        ),
+        this.db.query<AuditRow>(
+          `SELECT action, metadata, occurred_at
+           FROM audit_events
+           WHERE organization_id = $1::uuid
+             AND resource_type = 'LEASE'
+             AND resource_id = $2::uuid
+           ORDER BY occurred_at DESC, id DESC
+           LIMIT 50`,
+          [principal.organizationId, leaseId]
+        ),
+        this.depositService.getDepositSummary(
+          this.db,
+          principal.organizationId,
+          leaseId,
+          Number(row.deposit_required_vnd)
+        )
+      ]);
 
     return {
       organization: {
@@ -371,6 +386,7 @@ export class LeaseAdminService {
         joinedOn: this.dateOnly(party.joined_on),
         leftOn: this.dateOnly(party.left_on)
       })),
+      deposit,
       termination: terminationResult.rows[0]
         ? this.mapTermination(terminationResult.rows[0])
         : null,

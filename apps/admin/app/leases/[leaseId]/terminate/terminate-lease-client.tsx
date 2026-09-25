@@ -387,16 +387,54 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                 <div className="readiness-row">
                   <div>
                     <strong>Tiền cọc</strong>
-                    <span>Yêu cầu theo HĐ: <MoneyDisplay amountVnd={lease.depositRequiredVnd} /></span>
+                    <span>
+                      {data.deposit ? (
+                        <>
+                          Đang giữ thực tế: <MoneyDisplay amountVnd={data.deposit.remainingHeldVnd} />
+                          {data.deposit.remainingHeldVnd > 0
+                            ? " · Cần quyết toán hoàn trả / khấu trừ trước khi trả phòng."
+                            : data.deposit.status === "SETTLED"
+                              ? " · Đã hoàn tất quyết toán cọc."
+                              : data.deposit.status === "NOT_REQUIRED"
+                                ? " · Hợp đồng không yêu cầu tiền cọc."
+                                : " · Chưa ghi nhận số dư cọc."}
+                        </>
+                      ) : (
+                        <>Yêu cầu theo HĐ: <MoneyDisplay amountVnd={lease.depositRequiredVnd} /></>
+                      )}
+                    </span>
                   </div>
                   <div className="button-row">
                     <StatusBadge tone={readinessTone(readiness!.deposit)}>
                       {readiness!.deposit}
                     </StatusBadge>
+                    {data.deposit && data.deposit.remainingHeldVnd > 0 ? (
+                      <a
+                        href={"/leases/" + lease.id}
+                        className="secondary-button secondary-button--compact"
+                        style={{ textDecoration: "none" }}
+                      >
+                        Quyết toán cọc
+                      </a>
+                    ) : null}
                     {data.permissions.terminate ? (
                       <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "READY")}>Ready</button>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "NOT_REQUIRED")}>N/A</button>
+                        <button
+                          className="secondary-button secondary-button--compact"
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void setReadiness("deposit", "READY")}
+                        >
+                          Ghi đè Ready
+                        </button>
+                        <button
+                          className="secondary-button secondary-button--compact"
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void setReadiness("deposit", "NOT_REQUIRED")}
+                        >
+                          N/A
+                        </button>
                       </>
                     ) : null}
                   </div>

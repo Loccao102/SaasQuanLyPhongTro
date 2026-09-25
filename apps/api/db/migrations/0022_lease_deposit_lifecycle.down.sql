@@ -1,0 +1,6 @@
+BEGIN;
+
+DROP TABLE IF EXISTS lease_deposit_movements CASCADE;
+DROP TABLE IF EXISTS lease_deposits CASCADE;
+
+COMMIT;

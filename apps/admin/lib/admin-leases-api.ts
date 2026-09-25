@@ -36,6 +36,35 @@ export type LeaseListResponse = {
   leases: LeaseSummary[];
 };
 
+export type DepositStatus =
+  | "NOT_REQUIRED"
+  | "UNPAID"
+  | "PARTIALLY_PAID"
+  | "HELD"
+  | "PARTIALLY_SETTLED"
+  | "SETTLED";
+
+export type DepositMovement = {
+  id: string;
+  movementType: "COLLECTION" | "DEDUCTION" | "REFUND" | "FORFEITURE";
+  amountVnd: number;
+  paymentMethod: "BANK_TRANSFER" | "CASH" | "OTHER";
+  reference: string | null;
+  notes: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
+export type DepositSummary = {
+  status: DepositStatus;
+  depositRequiredVnd: number;
+  totalCollectedVnd: number;
+  totalDeductedVnd: number;
+  totalRefundedVnd: number;
+  remainingHeldVnd: number;
+  movements: DepositMovement[];
+};
+
 export type LeaseDetailResponse = {
   organization: { id: string; name: string };
   lease: LeaseSummary & {
@@ -57,6 +86,7 @@ export type LeaseDetailResponse = {
     joinedOn: string | null;
     leftOn: string | null;
   }>;
+  deposit: DepositSummary;
   termination: {
     id: string;
     status: string;
@@ -252,6 +282,37 @@ export const adminLeasesApi = {
       deposit: "PENDING" | "READY" | "NOT_REQUIRED";
     }>(
       "/" + encodeURIComponent(leaseId) + "/termination/readiness",
+      { method: "POST", body: input }
+    ),
+  collectDeposit: (
+    leaseId: string,
+    input: {
+      idempotencyKey: string;
+      amountVnd: number;
+      paymentMethod?: "BANK_TRANSFER" | "CASH" | "OTHER";
+      reference?: string | null;
+      notes?: string | null;
+      occurredAt?: string | null;
+    }
+  ) =>
+    request<DepositSummary>(
+      "/" + encodeURIComponent(leaseId) + "/deposit/collect",
+      { method: "POST", body: input }
+    ),
+  settleDeposit: (
+    leaseId: string,
+    input: {
+      idempotencyKey: string;
+      deductionAmountVnd: number;
+      refundAmountVnd: number;
+      deductionReason?: string | null;
+      refundReference?: string | null;
+      notes?: string | null;
+      occurredAt?: string | null;
+    }
+  ) =>
+    request<DepositSummary>(
+      "/" + encodeURIComponent(leaseId) + "/deposit/settle",
       { method: "POST", body: input }
     )
 };

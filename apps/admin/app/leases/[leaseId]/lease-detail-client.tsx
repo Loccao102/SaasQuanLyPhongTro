@@ -5,6 +5,8 @@ import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/u
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminLeasesApi,
+  type DepositMovement,
+  type DepositStatus,
   type LeaseDetailResponse,
   type LeaseStatus,
   type ResidentSearchResult
@@ -22,6 +24,38 @@ function statusMeta(status: LeaseStatus) {
       return { label: "ĐÃ KẾT THÚC", tone: "neutral" as const };
     case "CANCELLED":
       return { label: "ĐÃ HỦY", tone: "neutral" as const };
+  }
+}
+
+function depositStatusMeta(status: DepositStatus) {
+  switch (status) {
+    case "SETTLED":
+      return { label: "ĐÃ QUYẾT TOÁN", tone: "success" as const };
+    case "HELD":
+      return { label: "ĐÃ THU ĐỦ", tone: "success" as const };
+    case "PARTIALLY_SETTLED":
+      return { label: "QUYẾT TOÁN MỘT PHẦN", tone: "warning" as const };
+    case "PARTIALLY_PAID":
+      return { label: "THU MỘT PHẦN", tone: "warning" as const };
+    case "UNPAID":
+      return { label: "CHƯA THU", tone: "neutral" as const };
+    case "NOT_REQUIRED":
+      return { label: "KHÔNG YÊU CẦU CỌC", tone: "neutral" as const };
+  }
+}
+
+function depositMovementLabel(type: string): string {
+  switch (type) {
+    case "COLLECTION":
+      return "Thu tiền cọc";
+    case "DEDUCTION":
+      return "Khấu trừ cọc";
+    case "REFUND":
+      return "Hoàn trả cọc";
+    case "FORFEITURE":
+      return "Tịch thu cọc";
+    default:
+      return type;
   }
 }
 
@@ -49,6 +83,10 @@ function auditLabel(action: string): string {
       return "Đổi người thuê chính";
     case "LEASE_TERMINATION_READINESS_OVERRIDE":
       return "Cập nhật readiness thủ công";
+    case "LEASE_DEPOSIT_COLLECTED":
+      return "Thu tiền cọc";
+    case "LEASE_DEPOSIT_SETTLED":
+      return "Quyết toán tiền cọc";
     default:
       return action;
   }
@@ -78,6 +116,10 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     useState(false);
   const [primaryReplacementConfirmed, setPrimaryReplacementConfirmed] =
     useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
+  const [collectConfirmed, setCollectConfirmed] = useState(false);
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [settleConfirmed, setSettleConfirmed] = useState(false);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -320,6 +362,83 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     }
   }
 
+  async function handleCollectDeposit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const amountVnd = Number(form.get("amountVnd") ?? 0);
+      const paymentMethod = String(form.get("paymentMethod") ?? "BANK_TRANSFER") as
+        | "BANK_TRANSFER"
+        | "CASH"
+        | "OTHER";
+      const reference = String(form.get("reference") ?? "").trim() || null;
+      const notes = String(form.get("notes") ?? "").trim() || null;
+      const occurredAt = String(form.get("occurredAt") ?? "").trim() || null;
+
+      await adminLeasesApi.collectDeposit(leaseId, {
+        idempotencyKey: keyFor("collect-deposit"),
+        amountVnd,
+        paymentMethod,
+        reference,
+        notes,
+        occurredAt
+      });
+      clearKey("collect-deposit");
+      setCollectOpen(false);
+      setCollectConfirmed(false);
+      setActionSuccess("Đã ghi nhận thu tiền cọc thành công.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể ghi nhận thu tiền cọc."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSettleDeposit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const deductionAmountVnd = Number(form.get("deductionAmountVnd") ?? 0);
+      const refundAmountVnd = Number(form.get("refundAmountVnd") ?? 0);
+      const deductionReason = String(form.get("deductionReason") ?? "").trim() || null;
+      const refundReference = String(form.get("refundReference") ?? "").trim() || null;
+      const notes = String(form.get("notes") ?? "").trim() || null;
+      const occurredAt = String(form.get("occurredAt") ?? "").trim() || null;
+
+      await adminLeasesApi.settleDeposit(leaseId, {
+        idempotencyKey: keyFor("settle-deposit"),
+        deductionAmountVnd,
+        refundAmountVnd,
+        deductionReason,
+        refundReference,
+        notes,
+        occurredAt
+      });
+      clearKey("settle-deposit");
+      setSettleOpen(false);
+      setSettleConfirmed(false);
+      setActionSuccess("Đã hoàn tất quyết toán tiền cọc thành công.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error ? action.message : "Không thể quyết toán tiền cọc."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (error) {
     return (
       <AdminShell title="Chi tiết hợp đồng" activeNav="Hợp đồng">
@@ -345,6 +464,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
 
   const lease = data.lease;
   const meta = statusMeta(lease.status);
+  const deposit = data.deposit;
+  const depositMeta = depositStatusMeta(deposit.status);
 
   return (
     <AdminShell title={"Hợp đồng " + lease.code} activeNav="Hợp đồng">
@@ -396,17 +517,205 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         </article>
 
         <article className="panel">
-          <SectionHeader title="Điều khoản tiền" />
+          <SectionHeader
+            title="Tiền phòng & Tiền cọc"
+            action={<StatusBadge tone={depositMeta.tone}>{depositMeta.label}</StatusBadge>}
+          />
           <dl className="detail-list">
             <div><dt>Tiền phòng cơ bản</dt><dd><MoneyDisplay amountVnd={lease.baseRentVnd} /> / tháng</dd></div>
             <div><dt>Tiền cọc yêu cầu</dt><dd><MoneyDisplay amountVnd={lease.depositRequiredVnd} /></dd></div>
-            <div><dt>Trạng thái cọc thực tế</dt><dd><StatusBadge tone="neutral">CHỜ PAYMENT/SETTLEMENT</StatusBadge></dd></div>
+            <div><dt>Đã thu cọc</dt><dd><MoneyDisplay amountVnd={deposit.totalCollectedVnd} /></dd></div>
+            <div><dt>Đang giữ thực tế</dt><dd><MoneyDisplay amountVnd={deposit.remainingHeldVnd} /></dd></div>
+            {deposit.totalDeductedVnd > 0 || deposit.totalRefundedVnd > 0 ? (
+              <>
+                <div><dt>Đã khấu trừ</dt><dd><MoneyDisplay amountVnd={deposit.totalDeductedVnd} /></dd></div>
+                <div><dt>Đã hoàn trả</dt><dd><MoneyDisplay amountVnd={deposit.totalRefundedVnd} /></dd></div>
+              </>
+            ) : null}
           </dl>
-          <p className="inline-note">
-            Lease chỉ lưu điều khoản. Thu/hoàn/khấu trừ tiền cọc sẽ thuộc Payment/Settlement và có audit riêng.
-          </p>
+          <div className="button-row" style={{ marginTop: "1rem" }}>
+            {data.permissions.manage &&
+            lease.status !== "CANCELLED" &&
+            lease.status !== "TERMINATED" ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setCollectOpen((prev) => !prev);
+                  setSettleOpen(false);
+                }}
+              >
+                {collectOpen ? "Đóng form thu cọc" : "Thu tiền cọc"}
+              </button>
+            ) : null}
+            {(data.permissions.terminate || data.permissions.manage) &&
+            deposit.remainingHeldVnd > 0 &&
+            (lease.status === "ACTIVE" || lease.status === "TERMINATION_SCHEDULED") ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setSettleOpen((prev) => !prev);
+                  setCollectOpen(false);
+                }}
+              >
+                {settleOpen ? "Đóng form quyết toán" : "Quyết toán cọc"}
+              </button>
+            ) : null}
+          </div>
         </article>
       </section>
+
+      {collectOpen && lease.status !== "CANCELLED" && lease.status !== "TERMINATED" ? (
+        <section className="panel" style={{ marginTop: "1rem" }}>
+          <SectionHeader
+            title="Ghi nhận thu tiền cọc"
+            action={<span className="scope-label">lease.manage · property scope</span>}
+          />
+          <form className="asset-form" onSubmit={(event) => void handleCollectDeposit(event)}>
+            <label>
+              <span>Số tiền thu (VND)</span>
+              <input
+                name="amountVnd"
+                type="number"
+                min="1"
+                step="1"
+                defaultValue={
+                  deposit.depositRequiredVnd - deposit.totalCollectedVnd > 0
+                    ? deposit.depositRequiredVnd - deposit.totalCollectedVnd
+                    : ""
+                }
+                required
+              />
+            </label>
+            <label>
+              <span>Phương thức thanh toán</span>
+              <select name="paymentMethod" defaultValue="BANK_TRANSFER">
+                <option value="BANK_TRANSFER">Chuyển khoản</option>
+                <option value="CASH">Tiền mặt</option>
+                <option value="OTHER">Khác</option>
+              </select>
+            </label>
+            <label>
+              <span>Ngày thu</span>
+              <input
+                name="occurredAt"
+                type="date"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                required
+              />
+            </label>
+            <label>
+              <span>Mã tham chiếu giao dịch</span>
+              <input name="reference" placeholder="Mã giao dịch ngân hàng / biên nhận" />
+            </label>
+            <label className="asset-form__wide">
+              <span>Ghi chú</span>
+              <input name="notes" placeholder="Ghi chú đợt thu cọc (tùy chọn)" />
+            </label>
+            <label className="confirm-check asset-form__wide">
+              <input
+                type="checkbox"
+                checked={collectConfirmed}
+                onChange={(event) => setCollectConfirmed(event.target.checked)}
+              />
+              <span>Tôi xác nhận đã nhận số tiền cọc này từ khách thuê.</span>
+            </label>
+            <div className="button-row asset-form__wide">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setCollectOpen(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={saving || !collectConfirmed}
+              >
+                Xác nhận thu cọc
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {settleOpen && deposit.remainingHeldVnd > 0 ? (
+        <section className="panel" style={{ marginTop: "1rem" }}>
+          <SectionHeader
+            title="Quyết toán tiền cọc"
+            action={<span className="scope-label">Đang giữ: <MoneyDisplay amountVnd={deposit.remainingHeldVnd} /></span>}
+          />
+          <form className="asset-form" onSubmit={(event) => void handleSettleDeposit(event)}>
+            <div className="inline-note asset-form__wide">
+              Tổng tiền cọc đang giữ là <strong><MoneyDisplay amountVnd={deposit.remainingHeldVnd} /></strong>.
+              Tổng số tiền (Khấu trừ + Hoàn trả) không được vượt quá số tiền đang giữ.
+              Nếu số tiền còn lại sau quyết toán bằng 0, cọc sẽ chuyển sang trạng thái ĐÃ QUYẾT TOÁN và tự động kích hoạt readiness cọc cho quy trình trả phòng.
+            </div>
+            <label>
+              <span>Số tiền khấu trừ (hư hại / nợ phí)</span>
+              <input name="deductionAmountVnd" type="number" min="0" step="1" defaultValue="0" required />
+            </label>
+            <label>
+              <span>Lý do khấu trừ</span>
+              <input name="deductionReason" placeholder="Hư hỏng thiết bị, tiền điện chưa đóng..." />
+            </label>
+            <label>
+              <span>Số tiền hoàn trả cho khách</span>
+              <input
+                name="refundAmountVnd"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={deposit.remainingHeldVnd}
+                required
+              />
+            </label>
+            <label>
+              <span>Mã chuyển khoản hoàn cọc</span>
+              <input name="refundReference" placeholder="Mã FT chuyển khoản trả khách..." />
+            </label>
+            <label>
+              <span>Ngày quyết toán</span>
+              <input
+                name="occurredAt"
+                type="date"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                required
+              />
+            </label>
+            <label>
+              <span>Ghi chú quyết toán</span>
+              <input name="notes" placeholder="Ghi chú thêm nếu có..." />
+            </label>
+            <label className="confirm-check asset-form__wide">
+              <input
+                type="checkbox"
+                checked={settleConfirmed}
+                onChange={(event) => setSettleConfirmed(event.target.checked)}
+              />
+              <span>Tôi xác nhận số tiền khấu trừ và hoàn trả cọc trên là chính xác.</span>
+            </label>
+            <div className="button-row asset-form__wide">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setSettleOpen(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={saving || !settleConfirmed}
+              >
+                Hoàn tất quyết toán cọc
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
 
       {lease.status === "DRAFT" && data.permissions.manage ? (
         <section className="lease-draft-edit-grid">
@@ -816,6 +1125,73 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             <div><dt>Công nợ</dt><dd>{data.termination.readiness.financial}</dd></div>
             <div><dt>Tiền cọc</dt><dd>{data.termination.readiness.deposit}</dd></div>
           </dl>
+        </section>
+      ) : null}
+
+      {deposit && deposit.movements.length > 0 ? (
+        <section className="panel">
+          <SectionHeader
+            title="Lịch sử biến động tiền cọc"
+            action={<span className="scope-label">{deposit.movements.length} giao dịch</span>}
+          />
+          <div style={{ display: "grid", gap: "10px" }}>
+            {deposit.movements.map((movement) => (
+              <div
+                key={movement.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  padding: "10px 0",
+                  borderTop: "1px solid var(--color-border)",
+                }}
+              >
+                <div style={{ display: "grid", gap: "3px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <StatusBadge
+                      tone={
+                        movement.movementType === "COLLECTION"
+                          ? "success"
+                          : movement.movementType === "REFUND"
+                            ? "info"
+                            : "warning"
+                      }
+                    >
+                      {depositMovementLabel(movement.movementType)}
+                    </StatusBadge>
+                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                      {new Date(movement.occurredAt).toLocaleString("vi-VN")}
+                    </span>
+                  </div>
+                  {movement.notes ? (
+                    <span style={{ fontSize: "12px", color: "var(--color-text)" }}>
+                      {movement.notes}
+                    </span>
+                  ) : null}
+                  {movement.reference ? (
+                    <small style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
+                      Mã tham chiếu: {movement.reference}
+                    </small>
+                  ) : null}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <strong
+                    style={{
+                      fontSize: "13px",
+                      color:
+                        movement.movementType === "COLLECTION"
+                          ? "var(--color-success)"
+                          : "var(--color-text)",
+                    }}
+                  >
+                    {movement.movementType === "COLLECTION" ? "+" : "-"}
+                    <MoneyDisplay amountVnd={movement.amountVnd} />
+                  </strong>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 

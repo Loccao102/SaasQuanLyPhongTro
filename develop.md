@@ -318,11 +318,18 @@ Implemented live operational slice:
 - edit DRAFT contractual terms with optimistic version checks;
 - explicit DRAFT primary-tenant replacement;
 - primary replacement can remove the previous primary or retain them as CO_TENANT/OCCUPANT;
-- retry-safe primary replacement with persisted idempotency receipt and audit trail.
+- retry-safe primary replacement with persisted idempotency receipt and audit trail;
+- deposit payment and settlement integration:
+  - aggregate `lease_deposits` and append-only `lease_deposit_movements`;
+  - pure domain status calculation (NOT_REQUIRED, UNPAID, PARTIALLY_PAID, HELD, PARTIALLY_SETTLED, SETTLED);
+  - tenant-scoped, idempotent deposit collection with audit logging;
+  - safe deposit settlement validating deduction + refund against remaining held balance;
+  - automatic synchronization of `deposit_readiness` in `lease_terminations` to READY once settlement concludes;
+  - live deposit balance, interactive collection form, settlement form, and movement history timeline in Admin Web;
+  - termination workflow surfaces remaining held deposit and direct settlement navigation.
 
 Still required:
 
-- deposit payment/settlement integration;
 - utility pricing snapshot/reference;
 - attachments;
 - contract PDF/document output;
@@ -330,7 +337,6 @@ Still required:
 - renewal workflow;
 - final meter reading integration;
 - final invoice/debt integration;
-- deposit settlement integration;
 - create replacement/new contract directly from terminated lease/room.
 
 Important invariant:
@@ -1492,3 +1498,34 @@ Implemented:
 
 Remaining operational validation still requires real SePay Test/Live
 credentials and cannot be completed purely in repository code.
+
+
+## Lease deposit lifecycle and settlement integration
+
+Implemented:
+
+- PostgreSQL schema migration `0022_lease_deposit_lifecycle.sql` and `0022_lease_deposit_lifecycle.down.sql`:
+  - `lease_deposits` aggregate table scoped by `organization_id` with integer VND tracking (`deposit_required_vnd`, `total_collected_vnd`, `total_deducted_vnd`, `total_refunded_vnd`, `remaining_held_vnd`);
+  - `lease_deposit_movements` append-only audit ledger (`COLLECTION`, `DEDUCTION`, `REFUND`, `FORFEITURE`);
+  - foreign keys with cascade delete on organization, lease, and tenant-scoped query index;
+- Pure domain logic in `deposit-lifecycle.ts`:
+  - `DepositStatus`: `NOT_REQUIRED`, `UNPAID`, `PARTIALLY_PAID`, `HELD`, `PARTIALLY_SETTLED`, `SETTLED`;
+  - strict integer VND invariants;
+  - settlement deduction and refund bounds verification against current `remaining_held_vnd`;
+  - automatic readiness mapping `deriveDepositTerminationReadiness`;
+  - 12 unit tests verifying all status transitions and error cases;
+- Application services and controllers:
+  - `LeaseDepositService` and `LeaseDepositController`: `POST /api/admin/leases/:leaseId/deposit/collect` and `POST /api/admin/leases/:leaseId/deposit/settle`;
+  - idempotent command execution with stored receipts;
+  - commercial policy enforcement for tenant write access;
+  - audit logs: `LEASE_DEPOSIT_COLLECTED` and `LEASE_DEPOSIT_SETTLED`;
+  - automatic updates to `lease_terminations.deposit_readiness` upon settlement completion;
+  - comprehensive integration test suite `lease-deposit.integration.ts`;
+- Admin Web UX:
+  - `adminLeasesApi.collectDeposit` and `adminLeasesApi.settleDeposit`;
+  - live deposit summary and balance cards in `lease-detail-client.tsx`;
+  - interactive collect deposit modal with payment method selection and receipt notes;
+  - interactive deposit settlement form with deduction reasons and refund references;
+  - deposit movements history timeline;
+  - termination workflow in `terminate-lease-client.tsx` reflects actual remaining held balance and provides direct settlement shortcuts.
+
