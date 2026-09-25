@@ -183,3 +183,29 @@ To rotate `SEPAY_API_TOKEN`:
 
 The durable reconciliation cursor means a short worker restart does not lose
 bank transactions; the next sweep catches up from the stored cursor.
+
+
+## Production cutover self-check
+
+Before switching SePay to Live mode, run the readiness command inside the same
+deployment environment that will receive webhooks:
+
+```bash
+pnpm --filter @propops/api sepay:readiness
+```
+
+The command exits non-zero when production-critical configuration is unsafe.
+It validates the SePay provider selection, webhook HMAC secret/rotation overlap,
+API token when reconciliation is enabled, production HTTPS API endpoint,
+explicit reconciliation scope, and positive interval/lookback values.
+
+The report never prints secret or token values. A configured previous webhook
+secret is exposed only as a boolean/warning.
+
+Recommended gate:
+
+1. require `sepay:readiness` to return `status=ready`;
+2. run SePay Test mode deliveries;
+3. verify renter-payment worker and reconciliation metrics;
+4. execute one low-value Live payment;
+5. confirm webhook + later API-v2 replay create one financial effect.
