@@ -270,7 +270,7 @@ export class LeaseAdminController {
     const applyImmediately =
       input.applyImmediately !== undefined ? Boolean(input.applyImmediately) : true;
 
-    return this.adminService.createAmendment(this.principal(request), leaseId, {
+    return this.admin.createAmendment(this.principal(request), leaseId, {
       amendmentNumber,
       amendmentType: amendmentType as any,
       title,
@@ -296,7 +296,7 @@ export class LeaseAdminController {
     const mimeType = optionalString(input, "mimeType") ?? undefined;
     const description = optionalString(input, "description");
 
-    return this.adminService.addAttachment(this.principal(request), leaseId, {
+    return this.admin.addAttachment(this.principal(request), leaseId, {
       attachmentType: attachmentType as any,
       fileName,
       fileUrl,
@@ -312,7 +312,7 @@ export class LeaseAdminController {
     @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
     @Param("attachmentId", new ParseUUIDPipe({ version: "4" })) attachmentId: string
   ) {
-    return this.adminService.deleteAttachment(
+    return this.admin.deleteAttachment(
       this.principal(request),
       leaseId,
       attachmentId

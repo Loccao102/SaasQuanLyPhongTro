@@ -8,6 +8,7 @@ const navItems = [
   { label: "Tổng quan", href: "/" },
   { label: "Tài sản", href: "/assets" },
   { label: "Hợp đồng", href: "/leases" },
+  { label: "Cư dân", href: "/residents" },
   { label: "Chốt số", href: "/metering" },
   { label: "Hóa đơn", href: "/billing" },
   { label: "Thu tiền", href: "/payments" },

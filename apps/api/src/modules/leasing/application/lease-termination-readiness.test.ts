@@ -25,19 +25,16 @@ function createMockDb(queries: Record<string, (sql: string, params: unknown[]) =
 function mockPrincipal() {
   return {
     userId: "00000000-0000-0000-0000-000000000001",
+    membershipId: "00000000-0000-0000-0000-000000000099",
     organizationId: "00000000-0000-0000-0000-000000000010",
+    organizationName: "Test Org",
     role: "OWNER" as const,
     membership: {
-      id: "mem-1",
+      organizationId: "00000000-0000-0000-0000-000000000010",
       role: "OWNER" as const,
       status: "ACTIVE" as const,
-      organizationScope: true,
-      propertyScopes: [],
-      operationalGroupScopes: []
-    },
-    email: "owner@example.com",
-    fullName: "Owner User",
-    organizationName: "Test Org"
+      scopes: [{ type: "ORGANIZATION" as const }]
+    }
   };
 }
 
