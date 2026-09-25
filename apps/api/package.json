@@ -11,7 +11,8 @@
     "sepay:preflight": "tsx scripts/sepay-production-preflight.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "test:integration": "tsx --test --test-concurrency=1 \"src/**/*.integration.ts\""
+    "test:integration": "tsx --test --test-concurrency=1 \"src/**/*.integration.ts\"",
+    "sepay:readiness": "tsx scripts/sepay-readiness.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.0.3",
