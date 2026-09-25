@@ -57,6 +57,13 @@ jobs:
 
           DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime             pnpm --filter @propops/api db:setup
 
+      - name: SePay production preflight smoke test
+        env:
+          DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops_runtime
+          SEPAY_RENTER_WEBHOOK_SECRET: ci-sepay-webhook-secret-0123456789
+          SEPAY_RECONCILIATION_ENABLED: "false"
+        run: pnpm --filter @propops/api sepay:preflight
+
       - name: Migration smoke test
         run: |
           run_psql() {
