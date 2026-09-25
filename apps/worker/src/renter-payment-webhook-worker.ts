@@ -9,6 +9,10 @@ import {
   runSePayReconciliationSweepOnce,
   SePayApiV2Client
 } from "./sepay-api-v2-reconciliation.js";
+import {
+  evaluateSePayWorkerReadiness,
+  failedSePayWorkerReadinessCodes
+} from "./sepay-worker-readiness.js";
 
 export async function processRenterPaymentWebhookOnce(
   api: Pick<
@@ -52,13 +56,16 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
   const workerId =
     process.env.WORKER_ID?.trim() ||
     hostname() + "-renter-payment-webhook-" + String(process.pid);
-  const reconciliationEnabled =
-    process.env.SEPAY_RECONCILIATION_ENABLED?.trim().toLowerCase() === "true";
-  if (reconciliationEnabled && adapter.provider !== "SEPAY") {
+  const readiness = evaluateSePayWorkerReadiness({
+    provider: adapter.provider
+  });
+  if (!readiness.ready) {
     throw new Error(
-      "SePay reconciliation can only run with RENTER_PAYMENT_WEBHOOK_PROVIDER=SEPAY."
+      "SePay worker readiness failed: " +
+        failedSePayWorkerReadinessCodes(readiness).join(",")
     );
   }
+  const reconciliationEnabled = readiness.reconciliationEnabled;
   const reconciliationIntervalMs = positiveInteger(
     process.env.SEPAY_RECONCILIATION_INTERVAL_MS,
     900000,
@@ -121,6 +128,19 @@ export async function runRenterPaymentWebhookWorker(): Promise<void> {
   };
 
   await reportHeartbeat("STARTING");
+  if (adapter.provider === "SEPAY") {
+    process.stdout.write(
+      "[sepay-readiness] ready=" +
+        String(readiness.ready) +
+        " reconciliationEnabled=" +
+        String(readiness.reconciliationEnabled) +
+        " warnings=" +
+        String(
+          readiness.checks.filter((check) => check.status === "WARN").length
+        ) +
+        "\n"
+    );
+  }
   process.stdout.write(
     "[renter-payment-webhook-worker] id=" +
       workerId +
