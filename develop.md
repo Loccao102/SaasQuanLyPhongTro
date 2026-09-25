@@ -312,13 +312,16 @@ Implemented live operational slice:
 - audit timeline surfaced in Admin;
 - live termination readiness display;
 - explicit confirmation UI for activation, draft cancellation and termination;
-- retry-safe command keys preserved across recoverable frontend failures.
+- retry-safe command keys preserved across recoverable frontend failures;
+- search/reuse an existing Resident with property-scope enforcement;
+- multiple lease parties (PRIMARY_TENANT / CO_TENANT / OCCUPANT);
+- edit DRAFT contractual terms with optimistic version checks;
+- explicit DRAFT primary-tenant replacement;
+- primary replacement can remove the previous primary or retain them as CO_TENANT/OCCUPANT;
+- retry-safe primary replacement with persisted idempotency receipt and audit trail.
 
 Still required:
 
-- select/reuse an existing Resident instead of always creating a new Resident;
-- multiple lease parties;
-- edit DRAFT contractual terms before activation;
 - deposit payment/settlement integration;
 - utility pricing snapshot/reference;
 - attachments;

@@ -181,6 +181,38 @@ export const adminLeasesApi = {
       "/" + encodeURIComponent(leaseId) + "/draft",
       { method: "PATCH", body: input }
     ),
+  replaceDraftPrimaryTenant: (
+    leaseId: string,
+    input: {
+      expectedVersion: number;
+      idempotencyKey: string;
+      residentId: string;
+      previousPrimaryDisposition:
+        | "REMOVE"
+        | "CO_TENANT"
+        | "OCCUPANT";
+      resident?: {
+        fullName: string;
+        phone?: string | null;
+        email?: string | null;
+      } | null;
+    }
+  ) =>
+    request<{
+      leaseId: string;
+      previousPrimaryResidentId: string;
+      primaryResidentId: string;
+      previousPrimaryDisposition:
+        | "REMOVE"
+        | "CO_TENANT"
+        | "OCCUPANT";
+      version: number;
+    }>(
+      "/" +
+        encodeURIComponent(leaseId) +
+        "/draft/primary-tenant",
+      { method: "PATCH", body: input }
+    ),
   addDraftParty: (
     leaseId: string,
     input: {

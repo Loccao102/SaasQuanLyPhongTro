@@ -18,7 +18,8 @@ import type {
 } from "../../identity/tenant-principal.js";
 import {
   LeaseDraftManagementService,
-  type LeasePartyRole
+  type LeasePartyRole,
+  type PreviousPrimaryDisposition
 } from "./lease-draft-management.service.js";
 
 type BodyInput = Record<string, unknown>;
@@ -107,6 +108,67 @@ export class LeaseDraftManagementController {
       depositRequiredVnd: requiredInteger(input, "depositRequiredVnd"),
       billingDay: requiredInteger(input, "billingDay")
     });
+  }
+
+  @Patch(":leaseId/draft/primary-tenant")
+  replacePrimaryTenant(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" }))
+    leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    const disposition = requiredString(
+      input,
+      "previousPrimaryDisposition"
+    );
+    if (
+      disposition !== "REMOVE" &&
+      disposition !== "CO_TENANT" &&
+      disposition !== "OCCUPANT"
+    ) {
+      throw new BadRequestException(
+        "previousPrimaryDisposition must be REMOVE, CO_TENANT or OCCUPANT."
+      );
+    }
+
+    let resident: {
+      fullName: string;
+      phone?: string | null;
+      email?: string | null;
+    } | null = null;
+    if (input.resident !== undefined && input.resident !== null) {
+      if (
+        typeof input.resident !== "object" ||
+        Array.isArray(input.resident)
+      ) {
+        throw new BadRequestException("resident must be an object.");
+      }
+      const raw = input.resident as BodyInput;
+      resident = {
+        fullName: requiredString(raw, "fullName"),
+        phone: optionalString(raw, "phone"),
+        email: optionalString(raw, "email")
+      };
+    }
+
+    return this.drafts.replacePrimaryTenant(
+      this.principal(request),
+      leaseId,
+      {
+        expectedVersion: requiredInteger(
+          input,
+          "expectedVersion"
+        ),
+        idempotencyKey: requiredString(
+          input,
+          "idempotencyKey"
+        ),
+        residentId: requiredUuid(input, "residentId"),
+        previousPrimaryDisposition:
+          disposition as PreviousPrimaryDisposition,
+        resident
+      }
+    );
   }
 
   @Post(":leaseId/draft/parties")

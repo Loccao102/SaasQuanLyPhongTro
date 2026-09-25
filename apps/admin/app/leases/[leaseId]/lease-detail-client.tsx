@@ -45,6 +45,8 @@ function auditLabel(action: string): string {
       return "Thêm người vào hợp đồng";
     case "LEASE_PARTY_REMOVED":
       return "Xóa người khỏi hợp đồng";
+    case "LEASE_PRIMARY_TENANT_REPLACED":
+      return "Đổi người thuê chính";
     case "LEASE_TERMINATION_READINESS_OVERRIDE":
       return "Cập nhật readiness thủ công";
     default:
@@ -67,6 +69,15 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [selectedPartyResident, setSelectedPartyResident] =
     useState<ResidentSearchResult | null>(null);
   const [residentSearching, setResidentSearching] = useState(false);
+  const [primaryResidentQuery, setPrimaryResidentQuery] = useState("");
+  const [primaryResidentResults, setPrimaryResidentResults] =
+    useState<ResidentSearchResult[]>([]);
+  const [selectedPrimaryResident, setSelectedPrimaryResident] =
+    useState<ResidentSearchResult | null>(null);
+  const [primaryResidentSearching, setPrimaryResidentSearching] =
+    useState(false);
+  const [primaryReplacementConfirmed, setPrimaryReplacementConfirmed] =
+    useState(false);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -161,6 +172,79 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       );
     } finally {
       setResidentSearching(false);
+    }
+  }
+
+  async function searchPrimaryResidents() {
+    if (!data || primaryResidentQuery.trim().length < 2) return;
+    setPrimaryResidentSearching(true);
+    setActionError(null);
+    try {
+      const result = await adminLeasesApi.searchResidents(
+        data.lease.property.id,
+        primaryResidentQuery
+      );
+      setPrimaryResidentResults(
+        result.residents.filter(
+          (resident) =>
+            resident.id !== data.lease.primaryResident?.id
+        )
+      );
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể tìm resident."
+      );
+    } finally {
+      setPrimaryResidentSearching(false);
+    }
+  }
+
+  async function replacePrimaryTenant(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.replaceDraftPrimaryTenant(leaseId, {
+        expectedVersion: data.lease.version,
+        idempotencyKey: keyFor("replace-primary"),
+        residentId:
+          selectedPrimaryResident?.id ?? crypto.randomUUID(),
+        previousPrimaryDisposition: String(
+          form.get("previousPrimaryDisposition") ?? "REMOVE"
+        ) as "REMOVE" | "CO_TENANT" | "OCCUPANT",
+        resident: selectedPrimaryResident
+          ? null
+          : {
+              fullName: String(form.get("fullName") ?? ""),
+              phone: String(form.get("phone") ?? "") || null,
+              email: String(form.get("email") ?? "") || null
+            }
+      });
+      clearKey("replace-primary");
+      setSelectedPrimaryResident(null);
+      setPrimaryResidentResults([]);
+      setPrimaryResidentQuery("");
+      setPrimaryReplacementConfirmed(false);
+      event.currentTarget.reset();
+      setActionSuccess(
+        "Đã đổi người thuê chính trên bản nháp hợp đồng."
+      );
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể đổi người thuê chính."
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -362,6 +446,160 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             <p className="inline-note">
               Dùng version hiện tại để chống ghi đè khi hai người cùng sửa draft.
             </p>
+          </article>
+
+          <article className="panel">
+            <SectionHeader title="Đổi người thuê chính" />
+            <p className="inline-note">
+              Chỉ áp dụng cho DRAFT. Hãy chọn rõ cách giữ hoặc gỡ
+              người thuê chính hiện tại trước khi kích hoạt hợp đồng.
+            </p>
+            <form
+              className="asset-form"
+              onSubmit={(event) => void replacePrimaryTenant(event)}
+              onChange={() => clearKey("replace-primary")}
+            >
+              <div className="resident-search asset-form__wide">
+                <label>
+                  <span>Tìm resident cũ</span>
+                  <input
+                    value={primaryResidentQuery}
+                    onChange={(event) => {
+                      setPrimaryResidentQuery(event.target.value);
+                      setPrimaryReplacementConfirmed(false);
+                    }}
+                    placeholder="Tên, điện thoại hoặc email"
+                  />
+                </label>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    primaryResidentSearching ||
+                    primaryResidentQuery.trim().length < 2
+                  }
+                  onClick={() => void searchPrimaryResidents()}
+                >
+                  {primaryResidentSearching ? "Đang tìm…" : "Tìm"}
+                </button>
+              </div>
+
+              {primaryResidentResults.length > 0 &&
+              !selectedPrimaryResident ? (
+                <div className="resident-search-results asset-form__wide">
+                  {primaryResidentResults.map((resident) => (
+                    <button
+                      className="resident-search-result"
+                      type="button"
+                      key={resident.id}
+                      onClick={() => {
+                        clearKey("replace-primary");
+                        setSelectedPrimaryResident(resident);
+                        setPrimaryReplacementConfirmed(false);
+                      }}
+                    >
+                      <strong>{resident.fullName}</strong>
+                      <span>
+                        {resident.phone ??
+                          resident.email ??
+                          "Chưa có liên hệ"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedPrimaryResident ? (
+                <div className="resident-selected asset-form__wide">
+                  <StatusBadge tone="info">REUSE RESIDENT</StatusBadge>
+                  <div>
+                    <strong>{selectedPrimaryResident.fullName}</strong>
+                    <span>
+                      {selectedPrimaryResident.phone ??
+                        selectedPrimaryResident.email ??
+                        "Chưa có liên hệ"}
+                    </span>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      clearKey("replace-primary");
+                      setSelectedPrimaryResident(null);
+                      setPrimaryReplacementConfirmed(false);
+                    }}
+                  >
+                    Đổi người
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label>
+                    <span>Họ tên người thuê chính mới</span>
+                    <input name="fullName" required />
+                  </label>
+                  <label>
+                    <span>Số điện thoại</span>
+                    <input name="phone" inputMode="tel" />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input name="email" type="email" />
+                  </label>
+                </>
+              )}
+
+              <label className="asset-form__wide">
+                <span>Xử lý người thuê chính hiện tại</span>
+                <select
+                  name="previousPrimaryDisposition"
+                  defaultValue="REMOVE"
+                >
+                  <option value="REMOVE">
+                    Gỡ khỏi bản nháp hợp đồng
+                  </option>
+                  <option value="CO_TENANT">
+                    Giữ lại làm đồng thuê
+                  </option>
+                  <option value="OCCUPANT">
+                    Giữ lại làm người ở
+                  </option>
+                </select>
+              </label>
+
+              <div className="inline-note asset-form__wide">
+                Người hiện tại:{" "}
+                <strong>
+                  {lease.primaryResident?.fullName ?? "Chưa xác định"}
+                </strong>
+                . Người mới sẽ trở thành PRIMARY_TENANT ngay trên
+                bản nháp; chưa làm phòng chuyển sang trạng thái đang thuê.
+              </div>
+
+              <label className="confirm-check asset-form__wide">
+                <input
+                  type="checkbox"
+                  checked={primaryReplacementConfirmed}
+                  onChange={(event) =>
+                    setPrimaryReplacementConfirmed(event.target.checked)
+                  }
+                />
+                <span>
+                  Tôi đã kiểm tra người thuê chính mới và cách xử lý
+                  người thuê chính hiện tại.
+                </span>
+              </label>
+
+              <div className="button-row asset-form__wide">
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving || !primaryReplacementConfirmed}
+                >
+                  Đổi người thuê chính
+                </button>
+              </div>
+            </form>
           </article>
 
           <article className="panel">
