@@ -16,7 +16,8 @@ const job: ClaimedNotificationJob = {
   channel: "TEST",
   messageBody: "hello",
   attemptNumber: 1,
-  maxAttempts: 3
+  maxAttempts: 3,
+  deliveryReplayCheckRequired: false
 };
 
 test("unhandled provider exceptions become UNKNOWN, never retryable success", async () => {

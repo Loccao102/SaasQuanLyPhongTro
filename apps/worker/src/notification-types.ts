@@ -9,6 +9,7 @@ export interface ClaimedNotificationJob {
   messageBody: string;
   attemptNumber: number;
   maxAttempts: number;
+  deliveryReplayCheckRequired: boolean;
 }
 
 export type NotificationProviderResult =
@@ -40,6 +41,7 @@ export type NotificationProviderResult =
 
 export interface NotificationProvider {
   readonly name: string;
+  readonly claimAliases?: readonly string[];
 
   send(job: ClaimedNotificationJob): Promise<NotificationProviderResult>;
 }

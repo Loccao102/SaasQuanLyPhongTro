@@ -85,6 +85,10 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
   const connectionString = process.env.DATABASE_URL;
   assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
 
+  const originalRunningTimeout =
+    process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS;
+  process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS = "60";
+
   const fixturePool = new Pool({ connectionString });
   const database = new DatabaseService();
   const accessControl = new AccessControlService();
@@ -259,20 +263,50 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     );
     const firstRecipientKey = firstClaim.recipientKey;
     assert.equal(firstClaim.attemptNumber, 1);
+    assert.equal(firstClaim.deliveryReplayCheckRequired, false);
 
-    const retryWait = await worker.completeAttempt({
-      organizationId,
-      jobId: firstClaim.id,
-      attemptNumber: 1,
-      result: {
-        kind: "TRANSIENT_FAILURE",
-        errorCode: "TIMEOUT",
-        errorMessage: "Provider UI timed out"
-      }
-    });
-    assert.equal(retryWait.status, "RETRY_WAIT");
+    await fixturePool.query(
+      `UPDATE notification_jobs
+       SET updated_at = now() - interval '2 minutes'
+       WHERE organization_id = $1
+         AND id = $2`,
+      [organizationId, firstClaim.id]
+    );
+    await fixturePool.query(
+      `UPDATE notification_attempts
+       SET started_at = now() - interval '2 minutes'
+       WHERE organization_id = $1
+         AND job_id = $2
+         AND attempt_number = 1`,
+      [organizationId, firstClaim.id]
+    );
 
-    const quotaAfterFirstAttempt = await fixturePool.query<{
+    const recoveredClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
+    assert.ok(recoveredClaim);
+    assert.equal(recoveredClaim.id, firstClaim.id);
+    assert.equal(recoveredClaim.attemptNumber, 2);
+    assert.equal(recoveredClaim.deliveryReplayCheckRequired, true);
+
+    const recoveredAttempt = await fixturePool.query<{
+      status: string;
+      outcome: string | null;
+      error_code: string | null;
+    }>(
+      `SELECT status, outcome, error_code
+       FROM notification_attempts
+       WHERE organization_id = $1
+         AND job_id = $2
+         AND attempt_number = 1`,
+      [organizationId, firstClaim.id]
+    );
+    assert.equal(recoveredAttempt.rows[0]?.status, "FINISHED");
+    assert.equal(recoveredAttempt.rows[0]?.outcome, "UNKNOWN");
+    assert.equal(
+      recoveredAttempt.rows[0]?.error_code,
+      "STALE_ATTEMPT_RECLAIMED"
+    );
+
+    const quotaAfterRecovery = await fixturePool.query<{
       reserved_actions: number;
       consumed_actions: number;
     }>(
@@ -281,8 +315,20 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
        WHERE organization_id = $1`,
       [organizationId]
     );
-    assert.equal(quotaAfterFirstAttempt.rows[0]?.reserved_actions, 1);
-    assert.equal(quotaAfterFirstAttempt.rows[0]?.consumed_actions, 1);
+    assert.equal(quotaAfterRecovery.rows[0]?.reserved_actions, 1);
+    assert.equal(quotaAfterRecovery.rows[0]?.consumed_actions, 1);
+
+    const retryWait = await worker.completeAttempt({
+      organizationId,
+      jobId: recoveredClaim.id,
+      attemptNumber: 2,
+      result: {
+        kind: "TRANSIENT_FAILURE",
+        errorCode: "SESSION_BUSY",
+        errorMessage: "Original sender may still own the browser session"
+      }
+    });
+    assert.equal(retryWait.status, "RETRY_WAIT");
 
     await fixturePool.query(
       `UPDATE notification_jobs
@@ -295,7 +341,8 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     const retryClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(retryClaim);
     assert.equal(retryClaim.id, firstClaim.id);
-    assert.equal(retryClaim.attemptNumber, 2);
+    assert.equal(retryClaim.attemptNumber, 3);
+    assert.equal(retryClaim.deliveryReplayCheckRequired, true);
 
     const quotaDuringRetry = await fixturePool.query<{
       reserved_actions: number;
@@ -312,7 +359,7 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     const sentFirst = await worker.completeAttempt({
       organizationId,
       jobId: retryClaim.id,
-      attemptNumber: 2,
+      attemptNumber: 3,
       result: {
         kind: "SENT_CONFIRMED",
         recipientVerified: true,
@@ -330,6 +377,7 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
       ["zalo-user-001", "zalo-user-002"].includes(secondClaim.recipientKey)
     );
     assert.notEqual(secondClaim.recipientKey, firstRecipientKey);
+    assert.equal(secondClaim.deliveryReplayCheckRequired, false);
 
     const unknownSecond = await worker.completeAttempt({
       organizationId,
@@ -393,6 +441,7 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     assert.ok(manualRetryClaim);
     assert.equal(manualRetryClaim.id, secondClaim.id);
     assert.equal(manualRetryClaim.attemptNumber, 2);
+    assert.equal(manualRetryClaim.deliveryReplayCheckRequired, true);
 
     const sentSecond = await worker.completeAttempt({
       organizationId,
@@ -460,9 +509,15 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     const attemptCounts = new Map(
       attempts.rows.map((row) => [row.job_id, row.count])
     );
-    assert.equal(attemptCounts.get(firstClaim.id), 2);
+    assert.equal(attemptCounts.get(firstClaim.id), 3);
     assert.equal(attemptCounts.get(secondClaim.id), 2);
   } finally {
+    if (originalRunningTimeout === undefined) {
+      delete process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS;
+    } else {
+      process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS =
+        originalRunningTimeout;
+    }
     await database.onModuleDestroy();
     await cleanup(fixturePool);
     await fixturePool.end();

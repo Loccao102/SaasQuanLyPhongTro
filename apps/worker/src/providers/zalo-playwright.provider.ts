@@ -34,6 +34,31 @@ function evidence(
   };
 }
 
+export function existingDeliveryReplayResult(
+  job: ClaimedNotificationJob,
+  visibleExactMatches: number
+): NotificationProviderResult | null {
+  if (
+    !job.deliveryReplayCheckRequired ||
+    !Number.isInteger(visibleExactMatches) ||
+    visibleExactMatches < 1
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "SENT_CONFIRMED",
+    recipientVerified: true,
+    sendVerified: true,
+    providerReference: null,
+    evidence: evidence(job, "pre-send-replay-detected", {
+      visibleExactMatches,
+      recipientVerification: "display-name-exact",
+      postSendVerification: "existing-message-bubble-exact"
+    })
+  };
+}
+
 async function firstVisible(
   page: Page,
   selectors: readonly string[],
@@ -89,7 +114,8 @@ async function editorText(locator: Locator): Promise<string> {
 }
 
 export class ZaloPlaywrightProvider implements NotificationProvider {
-  readonly name = "ZALO_PLAYWRIGHT";
+  readonly name = "PLAYWRIGHT_ZALO";
+  readonly claimAliases = ["ZALO_PLAYWRIGHT"] as const;
 
   private constructor(
     private readonly config: ZaloPlaywrightConfig,
@@ -145,6 +171,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
     }
 
     let context: BrowserContext | null = null;
+    let sendActionAttempted = false;
     try {
       let storageState: unknown | undefined;
       try {
@@ -264,6 +291,20 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
+        if (job.deliveryReplayCheckRequired) {
+          const existingDelivery = await visibleExactTextCount(
+            page,
+            job.messageBody
+          );
+          const replayResult = existingDeliveryReplayResult(
+            job,
+            existingDelivery.count
+          );
+          if (replayResult) {
+            return replayResult;
+          }
+        }
+
         await editor.fill(job.messageBody);
 
         const sendButton = await firstVisible(
@@ -271,6 +312,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           this.config.selectors.sendButtons,
           Math.min(1500, this.config.selectorTimeoutMs)
         );
+        sendActionAttempted = true;
         if (sendButton) {
           await sendButton.click();
         } else {
@@ -330,6 +372,16 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
       }
     } catch (error) {
       if (error instanceof errors.TimeoutError) {
+        if (sendActionAttempted) {
+          return {
+            kind: "UNKNOWN",
+            errorCode: "POST_SEND_TIMEOUT",
+            errorMessage:
+              "Zalo timed out after a send action was attempted; delivery must be verified before retry.",
+            evidence: evidence(job, "post-send-timeout")
+          };
+        }
+
         return {
           kind: "TRANSIENT_FAILURE",
           errorCode: "PROVIDER_TIMEOUT",

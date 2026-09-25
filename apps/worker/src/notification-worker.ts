@@ -102,7 +102,16 @@ export async function runNotificationWorker(): Promise<void> {
         lastHeartbeatAt = now;
       }
 
-      const job = await api.claim(provider.name);
+      const claimProviders = [
+        provider.name,
+        ...(provider.claimAliases ?? [])
+      ];
+      let job = null;
+      for (const claimProvider of claimProviders) {
+        job = await api.claim(claimProvider);
+        if (job) break;
+      }
+
       if (!job) {
         await sleep(pollIntervalMs);
         continue;

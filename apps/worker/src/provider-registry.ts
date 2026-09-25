@@ -5,7 +5,10 @@ import { ZaloPlaywrightProvider } from "./providers/zalo-playwright.provider.js"
 export function loadProvider(): NotificationProvider {
   const provider = process.env.WORKER_PROVIDER?.trim();
 
-  if (provider === "ZALO_PLAYWRIGHT") {
+  if (
+    provider === "ZALO_PLAYWRIGHT" ||
+    provider === "PLAYWRIGHT_ZALO"
+  ) {
     return ZaloPlaywrightProvider.fromEnvironment();
   }
 
