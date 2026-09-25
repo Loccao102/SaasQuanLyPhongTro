@@ -183,3 +183,34 @@ To rotate `SEPAY_API_TOKEN`:
 
 The durable reconciliation cursor means a short worker restart does not lose
 bank transactions; the next sweep catches up from the stored cursor.
+
+
+## Production readiness self-check
+
+Habi exposes safe checks without returning secret/token material.
+
+API-side webhook check:
+
+```text
+GET /api/internal/integrations/sepay/readiness
+Authorization: Bearer <INTERNAL_WORKER_TOKEN>
+```
+
+The response reports only PASS/WARN/FAIL codes for:
+- current webhook secret configuration;
+- previous-secret overlap state;
+- invalid/equal rotation configuration.
+
+The renter-payment worker performs its own startup check because the API-v2
+bearer token belongs only to the worker. When SePay reconciliation is enabled,
+startup fails before polling if:
+- the active renter-payment provider is not SEPAY;
+- the API token is missing/too short;
+- the API URL is invalid;
+- production API URL is not HTTPS.
+
+A production `default` reconciliation scope is WARN-only so an operator can
+choose the final deployment scope without copying credentials into the API.
+
+Neither self-check returns webhook secret values, API token values, signature
+values or bank transaction data.

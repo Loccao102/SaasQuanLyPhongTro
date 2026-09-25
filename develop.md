@@ -1475,3 +1475,17 @@ Implemented:
 Still operational:
 - validate the replay check against the exact production Zalo DOM/account;
 - run crash-after-send and API-completion-failure drills before pilot.
+
+
+## SePay production readiness self-check
+
+Implemented:
+- internal API webhook-readiness endpoint protected by InternalServiceGuard;
+- safe PASS/WARN/FAIL output without secret material;
+- worker-local reconciliation readiness validation, preserving least privilege;
+- production HTTPS requirement for SePay API-v2 polling;
+- provider/token/URL preflight before the reconciliation loop starts;
+- safe startup summary with no credentials.
+
+Remaining operational validation still requires real SePay Test/Live
+credentials and cannot be completed purely in repository code.

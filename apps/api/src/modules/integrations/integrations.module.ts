@@ -8,6 +8,8 @@ import { BillingWebhookInternalController } from "./billing-webhook-internal.con
 import { DevJsonBankWebhookController } from "./dev-json-bank-webhook.controller.js";
 import { DevJsonBankRenterPaymentWebhookController } from "./dev-json-bank-renter-payment-webhook.controller.js";
 import { SePayRenterPaymentWebhookController } from "./sepay-renter-payment-webhook.controller.js";
+import { SePayProductionReadinessInternalController } from "./sepay-production-readiness-internal.controller.js";
+import { SePayProductionReadinessService } from "./sepay-production-readiness.service.js";
 import { RenterPaymentWebhookIngressService } from "./renter-payment-webhook-ingress.service.js";
 import { RenterPaymentWebhookInternalController } from "./renter-payment-webhook-internal.controller.js";
 import { RenterPaymentReconciliationInternalController } from "./renter-payment-reconciliation-internal.controller.js";
@@ -23,6 +25,7 @@ import { SaasBillingWebhookInboxService } from "./saas-billing-webhook-inbox.ser
     BillingWebhookInternalController,
     RenterPaymentWebhookInternalController,
     RenterPaymentReconciliationInternalController,
+    SePayProductionReadinessInternalController,
     DevJsonBankWebhookController,
     DevJsonBankRenterPaymentWebhookController,
     SePayRenterPaymentWebhookController
@@ -32,6 +35,7 @@ import { SaasBillingWebhookInboxService } from "./saas-billing-webhook-inbox.ser
     BillingWebhookIngressService,
     RenterPaymentWebhookIngressService,
     RenterPaymentReconciliationService,
+    SePayProductionReadinessService,
     DevJsonBankWebhookIngressAdapter,
     SePayRenterPaymentWebhookIngressAdapter,
     SaasBillingWebhookInboxService,
