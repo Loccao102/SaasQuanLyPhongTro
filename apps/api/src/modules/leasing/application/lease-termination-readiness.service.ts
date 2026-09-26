@@ -333,6 +333,8 @@ export class LeaseTerminationReadinessService {
         deposit: row.deposit_readiness
       };
     });
+  }
+
   private dateOnly(value: Date | string): string {
     return value instanceof Date
       ? value.toISOString().slice(0, 10)
