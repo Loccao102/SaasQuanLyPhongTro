@@ -162,11 +162,12 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     setActionSuccess(null);
     try {
       await adminLeasesApi.recordMeterReading(meterId, {
-        id: crypto.randomUUID(),
+        id: keyFor("final-meter-" + meterId),
         readingDate: meterReadiness.effectiveDate,
         readingValue: String(form.get("readingValue") ?? ""),
         source: "ADMIN"
       });
+      clearKey("final-meter-" + meterId);
       setActionSuccess(
         "Đã ghi chỉ số cuối. Meter readiness được đồng bộ tự động."
       );
