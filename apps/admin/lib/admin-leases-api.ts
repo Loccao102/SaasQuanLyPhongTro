@@ -78,6 +78,35 @@ export type LeaseDetailResponse = {
   }>;
 };
 
+export type LeaseDepositStatus =
+  | "NOT_REQUIRED"
+  | "UNPAID"
+  | "PARTIALLY_HELD"
+  | "HELD"
+  | "SETTLED";
+
+export type LeaseDepositSummary = {
+  leaseId: string;
+  requiredVnd: number;
+  collectedVnd: number;
+  refundedVnd: number;
+  deductedVnd: number;
+  heldVnd: number;
+  outstandingVnd: number;
+  status: LeaseDepositStatus;
+  permissions: {
+    reconcile: boolean;
+  };
+  entries: Array<{
+    id: string;
+    type: "COLLECTION" | "REFUND" | "DEDUCTION";
+    amountVnd: number;
+    occurredAt: string;
+    note: string | null;
+    createdAt: string;
+  }>;
+};
+
 export type ResidentSearchResult = {
   id: string;
   fullName: string;
@@ -237,6 +266,44 @@ export const adminLeasesApi = {
         encodeURIComponent(residentId) +
         "/remove",
       { method: "POST" }
+    ),
+  deposit: (leaseId: string) =>
+    request<LeaseDepositSummary>(
+      "/" + encodeURIComponent(leaseId) + "/deposit"
+    ),
+  recordDepositCollection: (
+    leaseId: string,
+    input: {
+      idempotencyKey: string;
+      amountVnd: number;
+      occurredAt: string;
+      note?: string | null;
+    }
+  ) =>
+    request<LeaseDepositSummary>(
+      "/" + encodeURIComponent(leaseId) + "/deposit/collections",
+      { method: "POST", body: input }
+    ),
+  settleDeposit: (
+    leaseId: string,
+    input: {
+      idempotencyKey: string;
+      refundVnd: number;
+      deductionVnd: number;
+      occurredAt: string;
+      note: string;
+    }
+  ) =>
+    request<
+      LeaseDepositSummary & {
+        termination: {
+          status: string;
+          depositReadiness: "READY" | "NOT_REQUIRED";
+        };
+      }
+    >(
+      "/" + encodeURIComponent(leaseId) + "/deposit/settlement",
+      { method: "POST", body: input }
     ),
   setTerminationReadiness: (
     leaseId: string,
