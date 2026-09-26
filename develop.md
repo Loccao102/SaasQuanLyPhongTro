@@ -318,11 +318,14 @@ Implemented live operational slice:
 - edit DRAFT contractual terms with optimistic version checks;
 - explicit DRAFT primary-tenant replacement;
 - primary replacement can remove the previous primary or retain them as CO_TENANT/OCCUPANT;
-- retry-safe primary replacement with persisted idempotency receipt and audit trail.
+- retry-safe primary replacement with persisted idempotency receipt and audit trail;
+- dedicated lease deposit ledger separated from contractual deposit terms;
+- idempotent manual deposit collection with payment.reconcile scope enforcement;
+- explicit refund/deduction settlement during an open termination workflow;
+- automatic deposit readiness update after audited settlement.
 
 Still required:
 
-- deposit payment/settlement integration;
 - utility pricing snapshot/reference;
 - attachments;
 - contract PDF/document output;
@@ -330,7 +333,6 @@ Still required:
 - renewal workflow;
 - final meter reading integration;
 - final invoice/debt integration;
-- deposit settlement integration;
 - create replacement/new contract directly from terminated lease/room.
 
 Important invariant:

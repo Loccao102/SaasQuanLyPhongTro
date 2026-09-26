@@ -5,6 +5,7 @@ import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/u
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminLeasesApi,
+  type LeaseDepositSummary,
   type LeaseDetailResponse,
   type LeaseStatus,
   type ResidentSearchResult
@@ -22,6 +23,21 @@ function statusMeta(status: LeaseStatus) {
       return { label: "ĐÃ KẾT THÚC", tone: "neutral" as const };
     case "CANCELLED":
       return { label: "ĐÃ HỦY", tone: "neutral" as const };
+  }
+}
+
+function depositStatusMeta(status: LeaseDepositSummary["status"]) {
+  switch (status) {
+    case "NOT_REQUIRED":
+      return { label: "KHÔNG YÊU CẦU", tone: "neutral" as const };
+    case "UNPAID":
+      return { label: "CHƯA THU", tone: "warning" as const };
+    case "PARTIALLY_HELD":
+      return { label: "ĐÃ THU MỘT PHẦN", tone: "warning" as const };
+    case "HELD":
+      return { label: "ĐANG GIỮ CỌC", tone: "success" as const };
+    case "SETTLED":
+      return { label: "ĐÃ TẤT TOÁN", tone: "success" as const };
   }
 }
 
@@ -49,6 +65,10 @@ function auditLabel(action: string): string {
       return "Đổi người thuê chính";
     case "LEASE_TERMINATION_READINESS_OVERRIDE":
       return "Cập nhật readiness thủ công";
+    case "LEASE_DEPOSIT_COLLECTED":
+      return "Ghi nhận thu tiền cọc";
+    case "LEASE_DEPOSIT_SETTLED":
+      return "Tất toán tiền cọc";
     default:
       return action;
   }
@@ -56,6 +76,7 @@ function auditLabel(action: string): string {
 
 export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [data, setData] = useState<LeaseDetailResponse | null>(null);
+  const [deposit, setDeposit] = useState<LeaseDepositSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -93,7 +114,12 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      setData(await adminLeasesApi.detail(leaseId));
+      const [leaseData, depositData] = await Promise.all([
+        adminLeasesApi.detail(leaseId),
+        adminLeasesApi.deposit(leaseId)
+      ]);
+      setData(leaseData);
+      setDeposit(depositData);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -300,6 +326,81 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     }
   }
 
+  async function recordDepositCollection(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+    if (!deposit) return;
+    const form = new FormData(event.currentTarget);
+    const occurredAt = new Date(String(form.get("occurredAt") ?? ""));
+    if (Number.isNaN(occurredAt.getTime())) {
+      setActionError("Thời điểm thu cọc không hợp lệ.");
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.recordDepositCollection(leaseId, {
+        idempotencyKey: keyFor("deposit-collection"),
+        amountVnd: Number(form.get("amountVnd") ?? 0),
+        occurredAt: occurredAt.toISOString(),
+        note: String(form.get("note") ?? "") || null
+      });
+      clearKey("deposit-collection");
+      event.currentTarget.reset();
+      setActionSuccess("Đã ghi nhận khoản thu tiền cọc.");
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể ghi nhận tiền cọc."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function settleDeposit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!deposit) return;
+    const form = new FormData(event.currentTarget);
+    const occurredAt = new Date(String(form.get("occurredAt") ?? ""));
+    if (Number.isNaN(occurredAt.getTime())) {
+      setActionError("Thời điểm tất toán cọc không hợp lệ.");
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.settleDeposit(leaseId, {
+        idempotencyKey: keyFor("deposit-settlement"),
+        refundVnd: Number(form.get("refundVnd") ?? 0),
+        deductionVnd: Number(form.get("deductionVnd") ?? 0),
+        occurredAt: occurredAt.toISOString(),
+        note: String(form.get("note") ?? "")
+      });
+      clearKey("deposit-settlement");
+      event.currentTarget.reset();
+      setActionSuccess(
+        "Đã tất toán tiền cọc và cập nhật readiness trả phòng."
+      );
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể tất toán tiền cọc."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function cancelDraft() {
     setSaving(true);
     setActionError(null);
@@ -335,7 +436,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     );
   }
 
-  if (loading || !data) {
+  if (loading || !data || !deposit) {
     return (
       <AdminShell title="Chi tiết hợp đồng" activeNav="Hợp đồng">
         <div className="admin-state">Đang tải hợp đồng…</div>
@@ -345,6 +446,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
 
   const lease = data.lease;
   const meta = statusMeta(lease.status);
+  const depositMeta = depositStatusMeta(deposit.status);
 
   return (
     <AdminShell title={"Hợp đồng " + lease.code} activeNav="Hợp đồng">
@@ -396,15 +498,166 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         </article>
 
         <article className="panel">
-          <SectionHeader title="Điều khoản tiền" />
+          <SectionHeader
+            title="Tiền cọc"
+            action={
+              <StatusBadge tone={depositMeta.tone}>
+                {depositMeta.label}
+              </StatusBadge>
+            }
+          />
           <dl className="detail-list">
             <div><dt>Tiền phòng cơ bản</dt><dd><MoneyDisplay amountVnd={lease.baseRentVnd} /> / tháng</dd></div>
-            <div><dt>Tiền cọc yêu cầu</dt><dd><MoneyDisplay amountVnd={lease.depositRequiredVnd} /></dd></div>
-            <div><dt>Trạng thái cọc thực tế</dt><dd><StatusBadge tone="neutral">CHỜ PAYMENT/SETTLEMENT</StatusBadge></dd></div>
+            <div><dt>Tiền cọc yêu cầu</dt><dd><MoneyDisplay amountVnd={deposit.requiredVnd} /></dd></div>
+            <div><dt>Đã thu</dt><dd><MoneyDisplay amountVnd={deposit.collectedVnd} /></dd></div>
+            <div><dt>Đang giữ</dt><dd><MoneyDisplay amountVnd={deposit.heldVnd} /></dd></div>
+            <div><dt>Còn phải thu</dt><dd><MoneyDisplay amountVnd={deposit.outstandingVnd} /></dd></div>
+            <div><dt>Đã hoàn</dt><dd><MoneyDisplay amountVnd={deposit.refundedVnd} /></dd></div>
+            <div><dt>Đã khấu trừ</dt><dd><MoneyDisplay amountVnd={deposit.deductedVnd} /></dd></div>
+            <div><dt>Readiness trả phòng</dt><dd>{deposit.terminationDepositReadiness ?? "—"}</dd></div>
           </dl>
-          <p className="inline-note">
-            Lease chỉ lưu điều khoản. Thu/hoàn/khấu trừ tiền cọc sẽ thuộc Payment/Settlement và có audit riêng.
-          </p>
+
+          {deposit.permissions.reconcile &&
+          deposit.outstandingVnd > 0 &&
+          (lease.status === "DRAFT" || lease.status === "ACTIVE") ? (
+            <form
+              className="asset-form"
+              onSubmit={(event) => void recordDepositCollection(event)}
+              onChange={() => clearKey("deposit-collection")}
+            >
+              <label>
+                <span>Số tiền thu</span>
+                <input
+                  name="amountVnd"
+                  type="number"
+                  min="1"
+                  max={deposit.outstandingVnd}
+                  step="1"
+                  defaultValue={deposit.outstandingVnd}
+                  required
+                />
+              </label>
+              <label>
+                <span>Thời điểm thu</span>
+                <input name="occurredAt" type="datetime-local" required />
+              </label>
+              <label className="asset-form__wide">
+                <span>Ghi chú</span>
+                <input
+                  name="note"
+                  placeholder="Ví dụ: Thu cọc khi nhận phòng"
+                />
+              </label>
+              <div className="button-row asset-form__wide">
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving}
+                >
+                  Ghi nhận thu cọc
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {deposit.permissions.reconcile &&
+          lease.status === "TERMINATION_SCHEDULED" ? (
+            <form
+              className="asset-form"
+              onSubmit={(event) => void settleDeposit(event)}
+              onChange={() => clearKey("deposit-settlement")}
+            >
+              <label>
+                <span>Hoàn lại người thuê</span>
+                <input
+                  name="refundVnd"
+                  type="number"
+                  min="0"
+                  max={deposit.heldVnd}
+                  step="1"
+                  defaultValue={deposit.heldVnd}
+                  required
+                />
+              </label>
+              <label>
+                <span>Khấu trừ</span>
+                <input
+                  name="deductionVnd"
+                  type="number"
+                  min="0"
+                  max={deposit.heldVnd}
+                  step="1"
+                  defaultValue={0}
+                  required
+                />
+              </label>
+              <label>
+                <span>Thời điểm tất toán</span>
+                <input name="occurredAt" type="datetime-local" required />
+              </label>
+              <label className="asset-form__wide">
+                <span>Lý do / biên bản đối soát</span>
+                <input
+                  name="note"
+                  placeholder={
+                    deposit.heldVnd === 0
+                      ? "Xác nhận không còn tiền cọc phải xử lý"
+                      : "Ví dụ: Hoàn cọc sau khi trừ 500.000đ sửa khóa"
+                  }
+                  required
+                />
+              </label>
+              <p className="inline-note asset-form__wide">
+                Tổng hoàn + khấu trừ phải bằng số tiền đang giữ:{" "}
+                <strong><MoneyDisplay amountVnd={deposit.heldVnd} /></strong>.
+                Khi ghi nhận xong, deposit readiness của quy trình trả phòng
+                sẽ được cập nhật tự động.
+              </p>
+              <div className="button-row asset-form__wide">
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving}
+                >
+                  Tất toán tiền cọc
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {deposit.entries.length > 0 ? (
+            <ol className="timeline">
+              {deposit.entries.slice(0, 6).map((entry, index) => (
+                <li key={entry.id}>
+                  <span
+                    className={
+                      "timeline__dot" +
+                      (index > 0 ? " timeline__dot--muted" : "")
+                    }
+                  />
+                  <div>
+                    <strong>
+                      {entry.type === "COLLECTION"
+                        ? "Thu cọc"
+                        : entry.type === "REFUND"
+                          ? "Hoàn cọc"
+                          : "Khấu trừ cọc"}{" "}
+                      · <MoneyDisplay amountVnd={entry.amountVnd} />
+                    </strong>
+                    <span>
+                      {new Date(entry.occurredAt).toLocaleString("vi-VN")}
+                      {entry.note ? " · " + entry.note : ""}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="inline-note">
+              Chưa có giao dịch tiền cọc. Lease vẫn chỉ lưu điều khoản cọc;
+              mọi biến động tiền được ghi ở ledger và audit riêng.
+            </p>
+          )}
         </article>
       </section>
 
