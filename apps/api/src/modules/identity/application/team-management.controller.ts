@@ -40,6 +40,28 @@ export class TeamManagementController {
     });
   }
 
+  @Post("members/:membershipId/invitation/resend")
+  resendInvitation(
+    @Req() request: TenantRequest,
+    @Param("membershipId", new ParseUUIDPipe({ version: "4" })) membershipId: string
+  ) {
+    return this.team.resendInvitation(
+      this.principal(request),
+      membershipId
+    );
+  }
+
+  @Post("members/:membershipId/invitation/revoke")
+  revokeInvitation(
+    @Req() request: TenantRequest,
+    @Param("membershipId", new ParseUUIDPipe({ version: "4" })) membershipId: string
+  ) {
+    return this.team.revokeInvitation(
+      this.principal(request),
+      membershipId
+    );
+  }
+
   @Patch("members/:membershipId")
   updateMember(
     @Req() request: TenantRequest,

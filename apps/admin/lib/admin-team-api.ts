@@ -25,6 +25,11 @@ export type TeamOverview = {
     role: TeamRole;
     status: "INVITED" | "ACTIVE" | "SUSPENDED";
     scopes: TeamScope[];
+    invitation: {
+      state: "PENDING" | "EXPIRED" | "REVOKED" | "ACCEPTED";
+      expiresAt: string;
+      createdAt: string;
+    } | null;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -43,6 +48,15 @@ export type TeamOverview = {
     name: string;
     isActive: boolean;
   }>;
+};
+
+export type InvitationMutationResult = {
+  membershipId: string;
+  status: "INVITED";
+  invitation: {
+    token: string;
+    expiresAt: string;
+  };
 };
 
 export type TeamScopeInput =
@@ -65,7 +79,25 @@ export const adminTeamApi = {
     displayName: string;
     role: TeamRole;
     scopes: TeamScopeInput[];
-  }) => request("/members", { method: "POST", body: input }),
+  }) =>
+    request<InvitationMutationResult>("/members", {
+      method: "POST",
+      body: input
+    }),
+  resendInvitation: (membershipId: string) =>
+    request<InvitationMutationResult>(
+      "/members/" +
+        encodeURIComponent(membershipId) +
+        "/invitation/resend",
+      { method: "POST" }
+    ),
+  revokeInvitation: (membershipId: string) =>
+    request(
+      "/members/" +
+        encodeURIComponent(membershipId) +
+        "/invitation/revoke",
+      { method: "POST" }
+    ),
   updateMember: (
     membershipId: string,
     input: { role: TeamRole; scopes: TeamScopeInput[] }

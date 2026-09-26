@@ -1344,9 +1344,19 @@ Property/floor/room management and the live Lease operational workflow are imple
 - group deactivation blocked while ACTIVE/INVITED memberships still reference it;
 - audit events for membership and group mutations.
 
+Implemented follow-up:
+- opaque hashed membership invitation tokens;
+- configurable invitation expiry;
+- resend invalidates the previous token and issues a fresh one;
+- revoke blocks the outstanding token;
+- public invitation inspection/acceptance flow;
+- new invited users set their first password during acceptance;
+- existing identities keep their existing password;
+- invitation acceptance enforces commercial staff quota before activation;
+- Admin exposes a one-time copyable invitation link plus resend/revoke actions.
+
 Still required:
-- real invitation token/email flow once authentication is production-ready;
-- invitation expiry/resend/revoke;
+- optional email delivery adapter for automatic invitation delivery;
 - custom roles only if product evidence requires them;
 - bulk staff import if pilot onboarding needs it.
 
