@@ -190,14 +190,52 @@ export class PostgresLeaseRepository {
     actorUserId: string;
   }): Promise<void> {
     await this.client.query(
-      `INSERT INTO lease_terminations (
+      `WITH lease_room AS (
+         SELECT room_id
+         FROM leases
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+       ),
+       meter_state AS (
+         SELECT
+           count(m.id)::int AS active_meter_count,
+           count(m.id) FILTER (
+             WHERE EXISTS (
+               SELECT 1
+               FROM meter_readings mr
+               WHERE mr.organization_id = $1::uuid
+                 AND mr.meter_id = m.id
+                 AND mr.reading_date = $3::date
+             )
+           )::int AS final_reading_count
+         FROM lease_room lr
+         LEFT JOIN meters m
+           ON m.organization_id = $1::uuid
+          AND m.room_id = lr.room_id
+          AND m.is_active = true
+       )
+       INSERT INTO lease_terminations (
          organization_id,
          lease_id,
          status,
          effective_date,
          reason,
+         meter_readiness,
          initiated_by_user_id
-       ) VALUES ($1, $2, 'SCHEDULED', $3, $4, $5)`,
+       )
+       SELECT
+         $1,
+         $2,
+         'SCHEDULED',
+         $3,
+         $4,
+         CASE
+           WHEN active_meter_count = 0 THEN 'NOT_REQUIRED'
+           WHEN final_reading_count = active_meter_count THEN 'READY'
+           ELSE 'PENDING'
+         END,
+         $5
+       FROM meter_state`,
       [
         input.organizationId,
         input.leaseId,
