@@ -24,7 +24,9 @@ const residentId = "61000000-0000-4000-8000-000000000001";
 const partyResidentId = "61000000-0000-4000-8000-000000000002";
 const replacementResidentId = "61000000-0000-4000-8000-000000000003";
 const electricityMeterId = "81000000-0000-4000-8000-000000000001";
+const waterMeterId = "81000000-0000-4000-8000-000000000002";
 const finalReadingId = "91000000-0000-4000-8000-000000000001";
+const waterFinalReadingId = "91000000-0000-4000-8000-000000000002";
 
 function principal(
   scopes: TenantPrincipal["membership"]["scopes"] = [
@@ -519,6 +521,64 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     assert.deepEqual(
       depositAudits.rows.map((row) => row.action),
       ["LEASE_DEPOSIT_COLLECTED", "LEASE_DEPOSIT_SETTLED"]
+    );
+
+    await lifecycleService.activate({
+      actor,
+      organizationId,
+      leaseId: leaseId2,
+      idempotencyKey: "lease2-activate-no-meter"
+    });
+    await lifecycleService.scheduleTermination({
+      actor,
+      organizationId,
+      leaseId: leaseId2,
+      idempotencyKey: "lease2-termination-no-meter",
+      effectiveDate: "2026-12-31",
+      reason: "No meter readiness baseline"
+    });
+
+    const noMeter =
+      await terminationReadinessService.meterReadiness(
+        principal(),
+        leaseId2
+      );
+    assert.equal(noMeter.state, "NOT_REQUIRED");
+    assert.equal(noMeter.meters.length, 0);
+
+    await meteringService.createMeter(principal(), {
+      id: waterMeterId,
+      roomId: roomId2,
+      meterType: "WATER",
+      label: "Nước phòng R2"
+    });
+    const meterAdded =
+      await terminationReadinessService.meterReadiness(
+        principal(),
+        leaseId2
+      );
+    assert.equal(meterAdded.state, "PENDING");
+    assert.equal(meterAdded.meters.length, 1);
+
+    await meteringService.addReading(
+      principal(),
+      waterMeterId,
+      {
+        id: waterFinalReadingId,
+        readingDate: "2026-12-31",
+        readingValue: "45.000",
+        source: "ADMIN"
+      }
+    );
+    const meterCompleted =
+      await terminationReadinessService.meterReadiness(
+        principal(),
+        leaseId2
+      );
+    assert.equal(meterCompleted.state, "READY");
+    assert.equal(
+      meterCompleted.meters[0]?.finalReading?.readingValue,
+      "45.000"
     );
   } finally {
     await database.onModuleDestroy();
