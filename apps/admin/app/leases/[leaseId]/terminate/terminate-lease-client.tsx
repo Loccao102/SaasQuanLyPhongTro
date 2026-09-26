@@ -5,7 +5,8 @@ import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/u
 import { AdminShell } from "../../../../components/admin-shell";
 import {
   adminLeasesApi,
-  type LeaseDetailResponse
+  type LeaseDetailResponse,
+  type LeaseTerminationMeterReadiness
 } from "../../../../lib/admin-leases-api";
 
 function readinessTone(value: "PENDING" | "READY" | "NOT_REQUIRED") {
@@ -14,6 +15,8 @@ function readinessTone(value: "PENDING" | "READY" | "NOT_REQUIRED") {
 
 export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
   const [data, setData] = useState<LeaseDetailResponse | null>(null);
+  const [meterReadiness, setMeterReadiness] =
+    useState<LeaseTerminationMeterReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -36,7 +39,12 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      setData(await adminLeasesApi.detail(leaseId));
+      const [leaseData, meterData] = await Promise.all([
+        adminLeasesApi.detail(leaseId),
+        adminLeasesApi.terminationMeterReadiness(leaseId)
+      ]);
+      setData(leaseData);
+      setMeterReadiness(meterData);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -111,7 +119,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
   }
 
   async function setReadiness(
-    kind: "meter" | "financial" | "deposit",
+    kind: "financial",
     state: "READY" | "NOT_REQUIRED" | "PENDING"
   ) {
     const reason = window.prompt(
@@ -135,6 +143,40 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
         action instanceof Error
           ? action.message
           : "Không thể cập nhật readiness."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function recordFinalMeterReading(
+    meterId: string,
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+    if (!meterReadiness?.effectiveDate) return;
+    const form = new FormData(event.currentTarget);
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.recordMeterReading(meterId, {
+        id: crypto.randomUUID(),
+        readingDate: meterReadiness.effectiveDate,
+        readingValue: String(form.get("readingValue") ?? ""),
+        source: "ADMIN"
+      });
+      setActionSuccess(
+        "Đã ghi chỉ số cuối. Meter readiness được đồng bộ tự động."
+      );
+      event.currentTarget.reset();
+      await load();
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể ghi chỉ số cuối."
       );
     } finally {
       setSaving(false);
@@ -178,7 +220,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     );
   }
 
-  if (loading || !data) {
+  if (loading || !data || !meterReadiness) {
     return (
       <AdminShell title="Chấm dứt hợp đồng" activeNav="Hợp đồng">
         <div className="admin-state">Đang tải workflow trả phòng…</div>
