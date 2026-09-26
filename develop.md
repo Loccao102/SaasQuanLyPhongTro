@@ -322,16 +322,18 @@ Implemented live operational slice:
 - dedicated lease deposit ledger separated from contractual deposit terms;
 - idempotent manual deposit collection with payment.reconcile scope enforcement;
 - explicit refund/deduction settlement during an open termination workflow;
-- automatic deposit readiness update after audited settlement.
+- automatic deposit readiness update after audited settlement;
+- utility/service pricing policies already snapshot price + meter reading evidence into renter invoice lines;
+- final meter readiness derived from active room meters and readings on the termination effective date;
+- meter readings automatically move termination meter readiness between PENDING / READY / NOT_REQUIRED;
+- final meter capture is available directly from the Admin termination workflow.
 
 Still required:
 
-- utility pricing snapshot/reference;
 - attachments;
 - contract PDF/document output;
 - amendment workflow;
 - renewal workflow;
-- final meter reading integration;
 - final invoice/debt integration;
 - create replacement/new contract directly from terminated lease/room.
 
