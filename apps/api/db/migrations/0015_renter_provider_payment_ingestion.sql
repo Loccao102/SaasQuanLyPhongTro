@@ -62,8 +62,7 @@ CREATE TABLE renter_billing_webhook_event_links (
     REFERENCES renter_payment_transactions(id) ON DELETE RESTRICT,
   normalized_payment_fingerprint text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (normalized_payment_fingerprint ~ '^[a-f0-9]{64}
-)
+  CHECK (normalized_payment_fingerprint ~ '^[a-f0-9]{64}$')
 );
 
 CREATE INDEX renter_billing_webhook_event_links_payment_idx
