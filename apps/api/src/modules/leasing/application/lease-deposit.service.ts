@@ -78,6 +78,11 @@ export interface LeaseDepositSummaryView {
   heldVnd: number;
   outstandingVnd: number;
   status: LeaseDepositStatus;
+  terminationDepositReadiness:
+    | "PENDING"
+    | "READY"
+    | "NOT_REQUIRED"
+    | null;
   permissions: {
     reconcile: boolean;
   };
@@ -293,6 +298,11 @@ export class LeaseDepositService {
           "Lease does not have an open termination workflow."
         );
       }
+      if (termination.deposit_readiness !== "PENDING") {
+        throw new ConflictException(
+          "Deposit readiness has already been resolved for this termination."
+        );
+      }
 
       const before = await this.snapshot(client, principal, context);
       if (refundVnd + deductionVnd !== before.heldVnd) {
@@ -452,7 +462,7 @@ export class LeaseDepositService {
     principal: TenantPrincipal,
     context: LeaseDepositContext
   ): Promise<LeaseDepositSummaryView> {
-    const [aggregateResult, entryResult] = await Promise.all([
+    const [aggregateResult, entryResult, terminationResult] = await Promise.all([
       client.query<DepositAggregateRow>(
         `SELECT
            COALESCE(sum(amount_vnd) FILTER (WHERE entry_type = 'COLLECTION'), 0)::text
@@ -479,6 +489,18 @@ export class LeaseDepositService {
            AND lease_id = $2::uuid
          ORDER BY occurred_at DESC, created_at DESC, id DESC
          LIMIT 50`,
+        [principal.organizationId, context.leaseId]
+      ),
+      client.query<QueryResultRow & {
+        deposit_readiness: "PENDING" | "READY" | "NOT_REQUIRED";
+      }>(
+        `SELECT deposit_readiness
+         FROM lease_terminations
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND status IN ('SCHEDULED', 'READY')
+         ORDER BY created_at DESC
+         LIMIT 1`,
         [principal.organizationId, context.leaseId]
       )
     ]);
@@ -515,6 +537,8 @@ export class LeaseDepositService {
       heldVnd,
       outstandingVnd,
       status,
+      terminationDepositReadiness:
+        terminationResult.rows[0]?.deposit_readiness ?? null,
       permissions: {
         reconcile: this.accessControl.can(
           principal.membership,
