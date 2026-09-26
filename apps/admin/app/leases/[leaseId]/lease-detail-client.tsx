@@ -514,6 +514,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             <div><dt>Còn phải thu</dt><dd><MoneyDisplay amountVnd={deposit.outstandingVnd} /></dd></div>
             <div><dt>Đã hoàn</dt><dd><MoneyDisplay amountVnd={deposit.refundedVnd} /></dd></div>
             <div><dt>Đã khấu trừ</dt><dd><MoneyDisplay amountVnd={deposit.deductedVnd} /></dd></div>
+            <div><dt>Readiness trả phòng</dt><dd>{deposit.terminationDepositReadiness ?? "—"}</dd></div>
           </dl>
 
           {deposit.permissions.reconcile &&
