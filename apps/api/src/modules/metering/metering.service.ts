@@ -212,6 +212,12 @@ export class MeteringService {
           unit
         }
       );
+      await this.syncOpenTerminationMeterReadiness(
+        client,
+        principal,
+        input.roomId,
+        "METER_CREATED"
+      );
 
       return {
         id: input.id,
@@ -442,6 +448,12 @@ export class MeteringService {
           readingValue,
           source
         }
+      );
+      await this.syncOpenTerminationMeterReadiness(
+        client,
+        principal,
+        meter.room_id,
+        "METER_READING_RECORDED"
       );
 
       return {
@@ -790,6 +802,97 @@ export class MeteringService {
     return value instanceof Date
       ? value.toISOString().slice(0, 10)
       : value.slice(0, 10);
+  }
+
+  private async syncOpenTerminationMeterReadiness(
+    client: PoolClient,
+    principal: TenantPrincipal,
+    roomId: string,
+    trigger: "METER_CREATED" | "METER_READING_RECORDED"
+  ): Promise<void> {
+    const updated = await client.query<QueryResultRow & {
+      lease_id: string;
+      meter_readiness: "PENDING" | "READY" | "NOT_REQUIRED";
+    }>(
+      `WITH target AS (
+         SELECT
+           t.id,
+           t.lease_id,
+           t.effective_date,
+           t.meter_readiness
+         FROM lease_terminations t
+         JOIN leases l
+           ON l.organization_id = t.organization_id
+          AND l.id = t.lease_id
+         WHERE t.organization_id = $1::uuid
+           AND l.room_id = $2::uuid
+           AND l.status = 'TERMINATION_SCHEDULED'
+           AND t.status IN ('SCHEDULED', 'READY')
+         FOR UPDATE OF t
+       ),
+       computed AS (
+         SELECT
+           target.id,
+           target.lease_id,
+           target.meter_readiness,
+           CASE
+             WHEN count(m.id) = 0 THEN 'NOT_REQUIRED'
+             WHEN count(m.id) FILTER (WHERE mr.id IS NOT NULL) = count(m.id)
+               THEN 'READY'
+             ELSE 'PENDING'
+           END AS next_readiness
+         FROM target
+         LEFT JOIN meters m
+           ON m.organization_id = $1::uuid
+          AND m.room_id = $2::uuid
+          AND m.is_active = true
+         LEFT JOIN meter_readings mr
+           ON mr.organization_id = $1::uuid
+          AND mr.meter_id = m.id
+          AND mr.reading_date = target.effective_date
+         GROUP BY
+           target.id,
+           target.lease_id,
+           target.meter_readiness
+       ),
+       changed AS (
+         UPDATE lease_terminations t
+         SET meter_readiness = computed.next_readiness,
+             status = CASE
+               WHEN computed.next_readiness <> 'PENDING'
+                AND t.financial_readiness <> 'PENDING'
+                AND t.deposit_readiness <> 'PENDING'
+               THEN 'READY'
+               ELSE 'SCHEDULED'
+             END,
+             updated_at = now()
+         FROM computed
+         WHERE t.id = computed.id
+           AND t.meter_readiness IS DISTINCT FROM computed.next_readiness
+         RETURNING
+           t.lease_id::text,
+           t.meter_readiness
+       )
+       SELECT lease_id, meter_readiness
+       FROM changed`,
+      [principal.organizationId, roomId]
+    );
+
+    for (const row of updated.rows) {
+      await this.audit(
+        client,
+        principal,
+        "LEASE_TERMINATION_METER_READINESS_SYNCED",
+        "LEASE",
+        row.lease_id,
+        {
+          roomId,
+          meterReadiness: row.meter_readiness,
+          trigger,
+          source: "METERING"
+        }
+      );
+    }
   }
 
   private async audit(
