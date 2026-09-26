@@ -5,10 +5,12 @@ import { CommercialPolicyService } from "../../commercial/application/commercial
 import { DatabaseService } from "../../database/database.service.js";
 import { AccessControlService } from "../../identity/access-control.service.js";
 import type { TenantPrincipal } from "../../identity/tenant-principal.js";
+import { MeteringService } from "../../metering/metering.service.js";
 import { LeaseAdminService } from "./lease-admin.service.js";
 import { LeaseDraftManagementService } from "./lease-draft-management.service.js";
 import { LeaseDepositService } from "./lease-deposit.service.js";
 import { LeaseLifecycleApplicationService } from "./lease-lifecycle-application.service.js";
+import { LeaseTerminationReadinessService } from "./lease-termination-readiness.service.js";
 
 const organizationId = "11000000-0000-4000-8000-000000000001";
 const userId = "21000000-0000-4000-8000-000000000001";
@@ -21,6 +23,8 @@ const leaseId2 = "51000000-0000-4000-8000-000000000002";
 const residentId = "61000000-0000-4000-8000-000000000001";
 const partyResidentId = "61000000-0000-4000-8000-000000000002";
 const replacementResidentId = "61000000-0000-4000-8000-000000000003";
+const electricityMeterId = "81000000-0000-4000-8000-000000000001";
+const finalReadingId = "91000000-0000-4000-8000-000000000001";
 
 function principal(
   scopes: TenantPrincipal["membership"]["scopes"] = [
@@ -43,6 +47,8 @@ function principal(
 }
 
 async function cleanup(pool: Pool): Promise<void> {
+  await pool.query("DELETE FROM meter_readings WHERE organization_id = $1", [organizationId]);
+  await pool.query("DELETE FROM meters WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_deposit_entries WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_command_receipts WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_terminations WHERE organization_id = $1", [organizationId]);
@@ -88,6 +94,17 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     accessControl,
     commercialPolicy
   );
+  const meteringService = new MeteringService(
+    database,
+    accessControl,
+    commercialPolicy
+  );
+  const terminationReadinessService =
+    new LeaseTerminationReadinessService(
+      database,
+      accessControl,
+      commercialPolicy
+    );
 
   try {
     await cleanup(fixturePool);
@@ -340,6 +357,13 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     );
 
 
+    await meteringService.createMeter(principal(), {
+      id: electricityMeterId,
+      roomId,
+      meterType: "ELECTRICITY",
+      label: "Điện phòng R1"
+    });
+
     const collectionInput = {
       idempotencyKey: "lease-deposit-collection-1",
       amountVnd: 3500000,
@@ -390,6 +414,53 @@ test("admin leasing creates a draft idempotently and filters reads by property s
       reason: "Tenant checkout"
     });
 
+    const meterBefore =
+      await terminationReadinessService.meterReadiness(
+        principal(),
+        leaseId
+      );
+    assert.equal(meterBefore.state, "PENDING");
+    assert.equal(meterBefore.effectiveDate, "2026-11-30");
+    assert.equal(meterBefore.meters.length, 1);
+    assert.equal(meterBefore.meters[0]?.id, electricityMeterId);
+    assert.equal(meterBefore.meters[0]?.finalReading, null);
+
+    await assert.rejects(
+      () =>
+        terminationReadinessService.setManualReadiness(
+          principal(),
+          leaseId,
+          {
+            kind: "meter",
+            state: "READY",
+            reason: "Should be module-owned"
+          }
+        ),
+      /module-owned/
+    );
+
+    await meteringService.addReading(
+      principal(),
+      electricityMeterId,
+      {
+        id: finalReadingId,
+        readingDate: "2026-11-30",
+        readingValue: "123.456",
+        source: "ADMIN"
+      }
+    );
+
+    const meterAfter =
+      await terminationReadinessService.meterReadiness(
+        principal(),
+        leaseId
+      );
+    assert.equal(meterAfter.state, "READY");
+    assert.equal(
+      meterAfter.meters[0]?.finalReading?.readingValue,
+      "123.456"
+    );
+
     const settled = await depositService.settle(principal(), leaseId, {
       idempotencyKey: "lease-deposit-settlement-1",
       refundVnd: 3000000,
@@ -418,13 +489,17 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     );
 
     const terminationReadiness = await fixturePool.query(
-      `SELECT deposit_readiness
+      `SELECT meter_readiness, deposit_readiness
        FROM lease_terminations
        WHERE organization_id = $1::uuid
          AND lease_id = $2::uuid
          AND status IN ('SCHEDULED', 'READY')
        LIMIT 1`,
       [organizationId, leaseId]
+    );
+    assert.equal(
+      terminationReadiness.rows[0]?.meter_readiness,
+      "READY"
     );
     assert.equal(
       terminationReadiness.rows[0]?.deposit_readiness,
