@@ -94,6 +94,11 @@ export type LeaseDepositSummary = {
   heldVnd: number;
   outstandingVnd: number;
   status: LeaseDepositStatus;
+  terminationDepositReadiness:
+    | "PENDING"
+    | "READY"
+    | "NOT_REQUIRED"
+    | null;
   permissions: {
     reconcile: boolean;
   };
