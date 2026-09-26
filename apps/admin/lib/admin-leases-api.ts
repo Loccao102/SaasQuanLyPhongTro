@@ -78,6 +78,25 @@ export type LeaseDetailResponse = {
   }>;
 };
 
+export type LeaseTerminationMeterReadiness = {
+  leaseId: string;
+  terminationId: string | null;
+  effectiveDate: string | null;
+  state: "PENDING" | "READY" | "NOT_REQUIRED" | null;
+  meters: Array<{
+    id: string;
+    meterType: "ELECTRICITY" | "WATER";
+    unit: "KWH" | "M3";
+    label: string | null;
+    finalReading: {
+      id: string;
+      readingDate: string;
+      readingValue: string;
+      source: "ADMIN" | "STAFF" | "IMPORT" | null;
+    } | null;
+  }>;
+};
+
 export type LeaseDepositStatus =
   | "NOT_REQUIRED"
   | "UNPAID"
@@ -310,10 +329,36 @@ export const adminLeasesApi = {
       "/" + encodeURIComponent(leaseId) + "/deposit/settlement",
       { method: "POST", body: input }
     ),
+  terminationMeterReadiness: (leaseId: string) =>
+    request<LeaseTerminationMeterReadiness>(
+      "/" +
+        encodeURIComponent(leaseId) +
+        "/termination/meter-readiness"
+    ),
+  recordMeterReading: (
+    meterId: string,
+    input: {
+      id: string;
+      readingDate: string;
+      readingValue: string | number;
+      source?: "ADMIN" | "STAFF" | "IMPORT";
+    }
+  ) =>
+    adminApiRequest<{
+      id: string;
+      readingDate: string;
+      readingValue: string;
+      source: "ADMIN" | "STAFF" | "IMPORT";
+    }>(
+      "/admin/metering/meters/" +
+        encodeURIComponent(meterId) +
+        "/readings",
+      { method: "POST", body: input }
+    ),
   setTerminationReadiness: (
     leaseId: string,
     input: {
-      kind: "meter" | "financial" | "deposit";
+      kind: "financial";
       state: "PENDING" | "READY" | "NOT_REQUIRED";
       reason: string;
     }
