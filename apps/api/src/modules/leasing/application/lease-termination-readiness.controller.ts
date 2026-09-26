@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Param,
   ParseUUIDPipe,
   Post,
@@ -26,6 +27,17 @@ type BodyInput = Record<string, unknown>;
 export class LeaseTerminationReadinessController {
   constructor(private readonly readiness: LeaseTerminationReadinessService) {}
 
+  @Get(":leaseId/termination/meter-readiness")
+  meterReadiness(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string
+  ) {
+    return this.readiness.meterReadiness(
+      this.principal(request),
+      leaseId
+    );
+  }
+
   @Post(":leaseId/termination/readiness")
   setReadiness(
     @Req() request: TenantRequest,
@@ -36,12 +48,10 @@ export class LeaseTerminationReadinessController {
     const state = input.state;
     const reason = input.reason;
 
-    if (
-      kind !== "meter" &&
-      kind !== "financial" &&
-      kind !== "deposit"
-    ) {
-      throw new BadRequestException("Invalid readiness kind.");
+    if (kind !== "financial") {
+      throw new BadRequestException(
+        "Only financial readiness supports manual override."
+      );
     }
     if (
       state !== "PENDING" &&
