@@ -330,7 +330,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
             </label>
             <ul className="consequence-list">
               <li>Lease chuyển sang TERMINATION_SCHEDULED và vẫn chiếm dụng phòng.</li>
-              <li>Meter, Billing/Payment và Deposit readiness khởi tạo ở PENDING.</li>
+              <li>Meter readiness được suy ra từ meter active và reading đúng ngày hiệu lực; Billing/Payment và Deposit tiếp tục theo module sở hữu.</li>
               <li>Chỉ khi tất cả readiness đã READY/NOT_REQUIRED mới được hoàn tất.</li>
             </ul>
             <label className="confirm-check">
@@ -395,19 +395,77 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                 <div className="readiness-row">
                   <div>
                     <strong>Chỉ số điện / nước cuối</strong>
-                    <span>Metering giữ reading source-of-truth.</span>
+                    <span>
+                      Metering tự xác nhận theo reading ngày{" "}
+                      {meterReadiness.effectiveDate ?? termination.effectiveDate ?? "—"}.
+                    </span>
                   </div>
                   <div className="button-row">
                     <StatusBadge tone={readinessTone(readiness!.meter)}>
                       {readiness!.meter}
                     </StatusBadge>
-                    {data.permissions.terminate ? (
-                      <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "READY")}>Ready</button>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("meter", "NOT_REQUIRED")}>N/A</button>
-                      </>
-                    ) : null}
                   </div>
+                </div>
+
+                <div className="asset-form__wide">
+                  {meterReadiness.meters.length === 0 ? (
+                    <p className="inline-note">
+                      Phòng không có meter active nên meter readiness được đánh dấu
+                      NOT_REQUIRED tự động.
+                    </p>
+                  ) : (
+                    meterReadiness.meters.map((meter) => (
+                      <div className="resident-row" key={meter.id}>
+                        <div>
+                          <strong>
+                            {meter.meterType === "ELECTRICITY"
+                              ? "Điện"
+                              : "Nước"}
+                            {meter.label ? " · " + meter.label : ""}
+                          </strong>
+                          <span>
+                            {meter.finalReading
+                              ? "Chỉ số cuối: " +
+                                meter.finalReading.readingValue +
+                                " " +
+                                meter.unit +
+                                " · " +
+                                meter.finalReading.source
+                              : "Chưa có reading cuối ngày " +
+                                (meterReadiness.effectiveDate ?? "—")}
+                          </span>
+                        </div>
+
+                        {meter.finalReading ? (
+                          <StatusBadge tone="success">ĐÃ CHỐT</StatusBadge>
+                        ) : data.permissions.terminate &&
+                          meterReadiness.effectiveDate ? (
+                          <form
+                            className="button-row"
+                            onSubmit={(event) =>
+                              void recordFinalMeterReading(meter.id, event)
+                            }
+                          >
+                            <input
+                              name="readingValue"
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              placeholder={"Chỉ số " + meter.unit}
+                              required
+                            />
+                            <button
+                              className="secondary-button secondary-button--compact"
+                              type="submit"
+                              disabled={saving}
+                            >
+                              Ghi chỉ số cuối
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
                 </div>
                 <div className="readiness-row">
                   <div>
@@ -429,17 +487,23 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                 <div className="readiness-row">
                   <div>
                     <strong>Tiền cọc</strong>
-                    <span>Yêu cầu theo HĐ: <MoneyDisplay amountVnd={lease.depositRequiredVnd} /></span>
+                    <span>
+                      Yêu cầu theo HĐ:{" "}
+                      <MoneyDisplay amountVnd={lease.depositRequiredVnd} />.
+                      Thu/hoàn/khấu trừ được xử lý trong deposit ledger.
+                    </span>
                   </div>
                   <div className="button-row">
                     <StatusBadge tone={readinessTone(readiness!.deposit)}>
                       {readiness!.deposit}
                     </StatusBadge>
-                    {data.permissions.terminate ? (
-                      <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "READY")}>Ready</button>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("deposit", "NOT_REQUIRED")}>N/A</button>
-                      </>
+                    {readiness!.deposit === "PENDING" ? (
+                      <a
+                        className="secondary-link-button"
+                        href={"/leases/" + lease.id}
+                      >
+                        Xử lý tiền cọc
+                      </a>
                     ) : null}
                   </div>
                 </div>
