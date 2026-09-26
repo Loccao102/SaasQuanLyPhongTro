@@ -395,6 +395,19 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     assert.equal(settled.deductedVnd, 500000);
     assert.equal(settled.entries.length, 3);
     assert.equal(settled.termination.depositReadiness, "READY");
+    assert.equal(settled.terminationDepositReadiness, "READY");
+
+    await assert.rejects(
+      () =>
+        depositService.settle(principal(), leaseId, {
+          idempotencyKey: "lease-deposit-settlement-duplicate",
+          refundVnd: 0,
+          deductionVnd: 0,
+          occurredAt: "2026-11-30T04:00:00.000Z",
+          note: "Should not settle twice"
+        }),
+      /already been resolved/
+    );
 
     const terminationReadiness = await fixturePool.query(
       `SELECT deposit_readiness
