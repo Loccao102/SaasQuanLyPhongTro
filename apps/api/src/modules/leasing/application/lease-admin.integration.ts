@@ -7,6 +7,8 @@ import { AccessControlService } from "../../identity/access-control.service.js";
 import type { TenantPrincipal } from "../../identity/tenant-principal.js";
 import { LeaseAdminService } from "./lease-admin.service.js";
 import { LeaseDraftManagementService } from "./lease-draft-management.service.js";
+import { LeaseDepositService } from "./lease-deposit.service.js";
+import { LeaseLifecycleApplicationService } from "./lease-lifecycle-application.service.js";
 
 const organizationId = "11000000-0000-4000-8000-000000000001";
 const userId = "21000000-0000-4000-8000-000000000001";
@@ -41,6 +43,7 @@ function principal(
 }
 
 async function cleanup(pool: Pool): Promise<void> {
+  await pool.query("DELETE FROM lease_deposit_entries WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_command_receipts WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_terminations WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM lease_residents WHERE organization_id = $1", [organizationId]);
@@ -71,6 +74,16 @@ test("admin leasing creates a draft idempotently and filters reads by property s
     commercialPolicy
   );
   const draftService = new LeaseDraftManagementService(
+    database,
+    accessControl,
+    commercialPolicy
+  );
+  const depositService = new LeaseDepositService(
+    database,
+    accessControl,
+    commercialPolicy
+  );
+  const lifecycleService = new LeaseLifecycleApplicationService(
     database,
     accessControl,
     commercialPolicy
@@ -324,6 +337,92 @@ test("admin leasing creates a draft idempotently and filters reads by property s
         (item) =>
           item.action === "LEASE_PRIMARY_TENANT_REPLACED"
       )
+    );
+
+
+    const collectionInput = {
+      idempotencyKey: "lease-deposit-collection-1",
+      amountVnd: 3500000,
+      occurredAt: "2026-10-02T03:00:00.000Z",
+      note: "Thu đủ tiền cọc khi nhận phòng"
+    };
+    const collected = await depositService.recordCollection(
+      principal(),
+      leaseId,
+      collectionInput
+    );
+    const collectionRetry = await depositService.recordCollection(
+      principal(),
+      leaseId,
+      collectionInput
+    );
+    assert.deepEqual(collectionRetry, collected);
+    assert.equal(collected.status, "HELD");
+    assert.equal(collected.collectedVnd, 3500000);
+    assert.equal(collected.heldVnd, 3500000);
+    assert.equal(collected.outstandingVnd, 0);
+    assert.equal(collected.entries.length, 1);
+
+    const actor = {
+      userId,
+      membership: principal().membership
+    };
+    await lifecycleService.activate({
+      actor,
+      organizationId,
+      leaseId,
+      idempotencyKey: "lease-activate-after-deposit"
+    });
+    await lifecycleService.scheduleTermination({
+      actor,
+      organizationId,
+      leaseId,
+      idempotencyKey: "lease-termination-after-deposit",
+      effectiveDate: "2026-11-30",
+      reason: "Tenant checkout"
+    });
+
+    const settled = await depositService.settle(principal(), leaseId, {
+      idempotencyKey: "lease-deposit-settlement-1",
+      refundVnd: 3000000,
+      deductionVnd: 500000,
+      occurredAt: "2026-11-30T03:00:00.000Z",
+      note: "Hoàn cọc sau khi khấu trừ hư hỏng đã xác nhận"
+    });
+    assert.equal(settled.status, "SETTLED");
+    assert.equal(settled.heldVnd, 0);
+    assert.equal(settled.refundedVnd, 3000000);
+    assert.equal(settled.deductedVnd, 500000);
+    assert.equal(settled.entries.length, 3);
+    assert.equal(settled.termination.depositReadiness, "READY");
+
+    const terminationReadiness = await fixturePool.query(
+      `SELECT deposit_readiness
+       FROM lease_terminations
+       WHERE organization_id = $1::uuid
+         AND lease_id = $2::uuid
+         AND status IN ('SCHEDULED', 'READY')
+       LIMIT 1`,
+      [organizationId, leaseId]
+    );
+    assert.equal(
+      terminationReadiness.rows[0]?.deposit_readiness,
+      "READY"
+    );
+
+    const depositAudits = await fixturePool.query(
+      `SELECT action
+       FROM audit_events
+       WHERE organization_id = $1::uuid
+         AND resource_type = 'LEASE'
+         AND resource_id = $2::uuid
+         AND action IN ('LEASE_DEPOSIT_COLLECTED', 'LEASE_DEPOSIT_SETTLED')
+       ORDER BY occurred_at`,
+      [organizationId, leaseId]
+    );
+    assert.deepEqual(
+      depositAudits.rows.map((row) => row.action),
+      ["LEASE_DEPOSIT_COLLECTED", "LEASE_DEPOSIT_SETTLED"]
     );
   } finally {
     await database.onModuleDestroy();
