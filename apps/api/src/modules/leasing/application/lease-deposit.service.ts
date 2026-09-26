@@ -375,7 +375,7 @@ export class LeaseDepositService {
         AND r.id = l.room_id
        WHERE l.organization_id = $1::uuid
          AND l.id = $2::uuid
-       \${lock ? "FOR UPDATE OF l" : ""}`,
+       ${lock ? "FOR UPDATE OF l" : ""}`,
       [principal.organizationId, leaseId]
     );
     const row = result.rows[0];
