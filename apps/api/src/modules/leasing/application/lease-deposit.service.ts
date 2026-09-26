@@ -69,6 +69,36 @@ interface LeaseDepositContext {
   operationalGroupIds: string[];
 }
 
+export interface LeaseDepositSummaryView {
+  leaseId: string;
+  requiredVnd: number;
+  collectedVnd: number;
+  refundedVnd: number;
+  deductedVnd: number;
+  heldVnd: number;
+  outstandingVnd: number;
+  status: LeaseDepositStatus;
+  permissions: {
+    reconcile: boolean;
+  };
+  entries: Array<{
+    id: string;
+    type: LeaseDepositEntryType;
+    amountVnd: number;
+    occurredAt: string;
+    note: string | null;
+    createdAt: string;
+  }>;
+}
+
+export interface LeaseDepositSettlementView
+  extends LeaseDepositSummaryView {
+  termination: {
+    status: string;
+    depositReadiness: "READY" | "NOT_REQUIRED";
+  };
+}
+
 export interface RecordLeaseDepositCollectionInput {
   idempotencyKey: string;
   amountVnd: number;
@@ -92,7 +122,10 @@ export class LeaseDepositService {
     private readonly commercialPolicy: CommercialPolicyService
   ) {}
 
-  summary(principal: TenantPrincipal, leaseId: string) {
+  summary(
+    principal: TenantPrincipal,
+    leaseId: string
+  ): Promise<LeaseDepositSummaryView> {
     return this.db.withTransaction(async (client) => {
       const context = await this.requireContext(
         client,
@@ -109,7 +142,7 @@ export class LeaseDepositService {
     principal: TenantPrincipal,
     leaseId: string,
     input: RecordLeaseDepositCollectionInput
-  ) {
+  ): Promise<LeaseDepositSummaryView> {
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
     const amountVnd = this.positiveMoney(input.amountVnd, "amountVnd");
     const occurredAt = this.isoTimestamp(input.occurredAt, "occurredAt");
@@ -134,7 +167,7 @@ export class LeaseDepositService {
           commandType: "LEASE_DEPOSIT_COLLECTION",
           leaseId
         });
-        return receipt.response;
+        return receipt.response as LeaseDepositSummaryView;
       }
 
       await this.commercialPolicy.assertTenantWriteAllowed(
@@ -201,7 +234,7 @@ export class LeaseDepositService {
     principal: TenantPrincipal,
     leaseId: string,
     input: SettleLeaseDepositInput
-  ) {
+  ): Promise<LeaseDepositSettlementView> {
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
     const refundVnd = this.money(input.refundVnd, "refundVnd");
     const deductionVnd = this.money(input.deductionVnd, "deductionVnd");
@@ -227,7 +260,7 @@ export class LeaseDepositService {
           commandType: "LEASE_DEPOSIT_SETTLEMENT",
           leaseId
         });
-        return receipt.response;
+        return receipt.response as LeaseDepositSettlementView;
       }
 
       await this.commercialPolicy.assertTenantWriteAllowed(
@@ -418,7 +451,7 @@ export class LeaseDepositService {
     client: PoolClient,
     principal: TenantPrincipal,
     context: LeaseDepositContext
-  ) {
+  ): Promise<LeaseDepositSummaryView> {
     const [aggregateResult, entryResult] = await Promise.all([
       client.query<DepositAggregateRow>(
         `SELECT
