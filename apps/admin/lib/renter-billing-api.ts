@@ -140,5 +140,43 @@ export const renterBillingApi = {
       totalVnd: number;
     }>("/cycles/" + encodeURIComponent(cycleId) + "/finalize", {
       method: "POST"
-    })
+    }),
+  listAdjustments: (invoiceId: string) =>
+    request<
+      Array<{
+        id: string;
+        invoiceId: string;
+        adjustmentType: "DISCOUNT" | "SURCHARGE" | "COMPENSATION" | "OTHER";
+        description: string;
+        amountVnd: number;
+        createdAt: string;
+      }>
+    >("/invoices/" + encodeURIComponent(invoiceId) + "/adjustments"),
+  applyAdjustment: (
+    invoiceId: string,
+    input: {
+      adjustmentType: "DISCOUNT" | "SURCHARGE" | "COMPENSATION" | "OTHER";
+      description: string;
+      amountVnd: number;
+    }
+  ) =>
+    request<{
+      id: string;
+      adjustmentType: string;
+      description: string;
+      amountVnd: number;
+      totalVnd: number;
+      remainingVnd: number;
+    }>("/invoices/" + encodeURIComponent(invoiceId) + "/adjustments", {
+      method: "POST",
+      body: input
+    }),
+  removeAdjustment: (invoiceId: string, adjustmentId: string) =>
+    request<{ success: boolean; totalVnd: number; remainingVnd: number }>(
+      "/invoices/" +
+        encodeURIComponent(invoiceId) +
+        "/adjustments/" +
+        encodeURIComponent(adjustmentId),
+      { method: "DELETE" }
+    )
 };

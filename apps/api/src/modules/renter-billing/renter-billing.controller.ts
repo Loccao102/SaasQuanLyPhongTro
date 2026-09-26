@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -117,6 +118,54 @@ export class RenterBillingController {
     @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string
   ) {
     return this.publicInvoices.revokeAccess(this.principal(request), invoiceId);
+  }
+
+  @Get("invoices/:invoiceId/adjustments")
+  listAdjustments(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string
+  ) {
+    return this.billing.listAdjustments(this.principal(request), invoiceId);
+  }
+
+  @Post("invoices/:invoiceId/adjustments")
+  applyAdjustment(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string,
+    @Body() input: BodyInput
+  ) {
+    const adjustmentType = requiredString(input, "adjustmentType") as
+      | "DISCOUNT"
+      | "SURCHARGE"
+      | "COMPENSATION"
+      | "OTHER";
+    if (
+      !["DISCOUNT", "SURCHARGE", "COMPENSATION", "OTHER"].includes(adjustmentType)
+    ) {
+      throw new BadRequestException("adjustmentType is invalid.");
+    }
+    const amountVnd = Number(input.amountVnd);
+    if (!Number.isSafeInteger(amountVnd) || amountVnd === 0) {
+      throw new BadRequestException("amountVnd must be a non-zero safe integer.");
+    }
+    return this.billing.applyAdjustment(this.principal(request), invoiceId, {
+      adjustmentType,
+      description: requiredString(input, "description"),
+      amountVnd
+    });
+  }
+
+  @Delete("invoices/:invoiceId/adjustments/:adjustmentId")
+  removeAdjustment(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string,
+    @Param("adjustmentId", new ParseUUIDPipe({ version: "4" })) adjustmentId: string
+  ) {
+    return this.billing.removeAdjustment(
+      this.principal(request),
+      invoiceId,
+      adjustmentId
+    );
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

@@ -59,6 +59,13 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [notificationRequestKey, setNotificationRequestKey] =
     useState<string | null>(null);
+  const [adjustingInvoiceId, setAdjustingInvoiceId] = useState<string | null>(null);
+  const [adjustmentType, setAdjustmentType] = useState<
+    "DISCOUNT" | "SURCHARGE" | "COMPENSATION" | "OTHER"
+  >("DISCOUNT");
+  const [adjustmentDescription, setAdjustmentDescription] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentSaving, setAdjustmentSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,6 +199,47 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
       );
     } finally {
       setLinkSaving(null);
+    }
+  }
+
+  async function applyAdjustment(invoiceId: string) {
+    if (!adjustmentDescription.trim()) {
+      alert("Vui lòng nhập lý do giảm giá / phụ thu.");
+      return;
+    }
+    const amount = Number(adjustmentAmount);
+    if (!amount || amount <= 0) {
+      alert("Vui lòng nhập số tiền hợp lệ lớn hơn 0.");
+      return;
+    }
+    setAdjustmentSaving(true);
+    try {
+      await renterBillingApi.applyAdjustment(invoiceId, {
+        adjustmentType,
+        description: adjustmentDescription.trim(),
+        amountVnd: amount
+      });
+      setAdjustingInvoiceId(null);
+      setAdjustmentDescription("");
+      setAdjustmentAmount("");
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Không thể áp dụng điều chỉnh.");
+    } finally {
+      setAdjustmentSaving(false);
+    }
+  }
+
+  async function removeAdjustment(invoiceId: string, adjustmentId: string) {
+    if (!window.confirm("Bạn có chắc muốn xóa khoản điều chỉnh này?")) return;
+    setAdjustmentSaving(true);
+    try {
+      await renterBillingApi.removeAdjustment(invoiceId, adjustmentId);
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Không thể xóa điều chỉnh.");
+    } finally {
+      setAdjustmentSaving(false);
     }
   }
 
@@ -363,10 +411,104 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                             {new Intl.NumberFormat("vi-VN").format(line.unitPriceVnd)}
                           </span>
                         </div>
-                        <MoneyDisplay amountVnd={line.amountVnd} />
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <MoneyDisplay amountVnd={line.amountVnd} />
+                          {line.type === "ADJUSTMENT" && invoice.status === "DRAFT" && (
+                            <button
+                              className="danger-button danger-button--compact"
+                              type="button"
+                              style={{ padding: "2px 6px", fontSize: "11px" }}
+                              onClick={() => {
+                                const snap = line.snapshot as Record<string, unknown> | null;
+                                if (snap?.adjustmentId) {
+                                  void removeAdjustment(invoice.id, String(snap.adjustmentId));
+                                }
+                              }}
+                            >
+                              Xóa
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
+
+                  {invoice.status === "DRAFT" ? (
+                    <div style={{ marginTop: "12px", borderTop: "1px dashed var(--border-color, #e5e7eb)", paddingTop: "12px" }}>
+                      {adjustingInvoiceId === invoice.id ? (
+                        <div style={{ background: "var(--bg-subtle, rgba(0,0,0,0.02))", padding: "12px", borderRadius: "8px", border: "1px solid var(--border-color, #e5e7eb)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                            <strong style={{ fontSize: "13px" }}>Thêm giảm giá / phụ thu cho hóa đơn {invoice.number}</strong>
+                            <button
+                              type="button"
+                              className="secondary-button secondary-button--compact"
+                              onClick={() => setAdjustingInvoiceId(null)}
+                            >
+                              Đóng
+                            </button>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "8px", alignItems: "end" }}>
+                            <label>
+                              <span style={{ fontSize: "12px", display: "block", marginBottom: "4px" }}>Loại điều chỉnh</span>
+                              <select
+                                value={adjustmentType}
+                                onChange={(e) => setAdjustmentType(e.target.value as any)}
+                                style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--border-color, #d1d5db)", background: "var(--bg-surface, #fff)" }}
+                              >
+                                <option value="DISCOUNT">Giảm giá khuyến mãi (-)</option>
+                                <option value="SURCHARGE">Phụ thu phát sinh (+)</option>
+                                <option value="COMPENSATION">Bồi thường / Khấu trừ (-)</option>
+                                <option value="OTHER">Khác</option>
+                              </select>
+                            </label>
+                            <label>
+                              <span style={{ fontSize: "12px", display: "block", marginBottom: "4px" }}>Lý do</span>
+                              <input
+                                value={adjustmentDescription}
+                                onChange={(e) => setAdjustmentDescription(e.target.value)}
+                                placeholder="VD: Giảm giá khách mới tháng đầu"
+                                style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--border-color, #d1d5db)" }}
+                              />
+                            </label>
+                            <label>
+                              <span style={{ fontSize: "12px", display: "block", marginBottom: "4px" }}>Số tiền (VND)</span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={adjustmentAmount}
+                                onChange={(e) => setAdjustmentAmount(e.target.value)}
+                                placeholder="300000"
+                                style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--border-color, #d1d5db)" }}
+                              />
+                            </label>
+                            <div style={{ paddingTop: "4px" }}>
+                              <button
+                                type="button"
+                                className="primary-button primary-button--compact"
+                                disabled={adjustmentSaving}
+                                onClick={() => void applyAdjustment(invoice.id)}
+                              >
+                                {adjustmentSaving ? "Đang lưu…" : "Áp dụng"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary-button secondary-button--compact"
+                          onClick={() => {
+                            setAdjustingInvoiceId(invoice.id);
+                            setAdjustmentDescription("");
+                            setAdjustmentAmount("");
+                          }}
+                        >
+                          + Thêm giảm giá / phụ thu
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
 
                   {invoice.status === "ISSUED" ? (
                     <div className="button-row">

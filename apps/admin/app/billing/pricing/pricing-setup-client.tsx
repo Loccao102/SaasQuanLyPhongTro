@@ -26,10 +26,14 @@ import {
 } from "../../../lib/pricing-api";
 
 const itemLabels: Record<PricingItemType, string> = {
-  ELECTRICITY_PER_KWH: "Điện",
-  WATER_PER_M3: "Nước",
+  ELECTRICITY_PER_KWH: "Điện (đồng hồ)",
+  WATER_PER_M3: "Nước (đồng hồ m³)",
+  WATER_PER_PERSON: "Nước (theo đầu người)",
+  WATER_PER_ROOM: "Nước (khoán theo phòng)",
+  VEHICLE_PARKING: "Gửi xe (theo số xe)",
+  SERVICE_PER_PERSON: "Dịch vụ (theo đầu người)",
   INTERNET: "Internet",
-  PARKING: "Gửi xe",
+  PARKING: "Gửi xe (khoán phòng)",
   TRASH: "Rác / vệ sinh",
   CUSTOM: "Phí khác"
 };
@@ -40,10 +44,16 @@ function itemUnit(itemType: PricingItemType) {
       return "/ kWh";
     case "WATER_PER_M3":
       return "/ m³";
+    case "WATER_PER_PERSON":
+    case "SERVICE_PER_PERSON":
+      return "/ người / tháng";
+    case "VEHICLE_PARKING":
+      return "/ xe / tháng";
     case "INTERNET":
     case "PARKING":
     case "TRASH":
-      return "/ tháng";
+    case "WATER_PER_ROOM":
+      return "/ phòng / tháng";
     default:
       return "/ đơn vị";
   }
@@ -103,6 +113,12 @@ export function PricingSetupClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState<CreatePricingPolicyInput | null>(null);
+  const [waterMode, setWaterMode] = useState<
+    "WATER_PER_M3" | "WATER_PER_PERSON" | "WATER_PER_ROOM"
+  >("WATER_PER_M3");
+  const [parkingMode, setParkingMode] = useState<
+    "VEHICLE_PARKING" | "PARKING" | "NONE"
+  >("VEHICLE_PARKING");
 
   const loadPricing = useCallback(async (propertyId: string) => {
     if (!propertyId) {
@@ -183,25 +199,47 @@ export function PricingSetupClient() {
       ) => {
         const unitPriceVnd = readOptionalMoney(form, field);
         if (unitPriceVnd === null) return;
+        const isDynamic =
+          itemType === "ELECTRICITY_PER_KWH" ||
+          itemType === "WATER_PER_M3" ||
+          itemType === "WATER_PER_PERSON" ||
+          itemType === "WATER_PER_ROOM" ||
+          itemType === "VEHICLE_PARKING" ||
+          itemType === "SERVICE_PER_PERSON";
         items.push({
           id: crypto.randomUUID(),
           itemType,
           description,
           unitPriceVnd,
-          fixedQuantity:
-            itemType === "ELECTRICITY_PER_KWH" ||
-            itemType === "WATER_PER_M3"
-              ? undefined
-              : 1,
+          fixedQuantity: isDynamic ? undefined : 1,
           sortOrder
         });
       };
 
       addItem("electricityPriceVnd", "ELECTRICITY_PER_KWH", "Tiền điện", 20);
-      addItem("waterPriceVnd", "WATER_PER_M3", "Tiền nước", 30);
-      addItem("internetPriceVnd", "INTERNET", "Internet", 40);
-      addItem("parkingPriceVnd", "PARKING", "Gửi xe", 50);
-      addItem("trashPriceVnd", "TRASH", "Rác / vệ sinh", 60);
+
+      if (waterMode === "WATER_PER_PERSON") {
+        addItem("waterPriceVnd", "WATER_PER_PERSON", "Tiền nước (theo người)", 30);
+      } else if (waterMode === "WATER_PER_ROOM") {
+        addItem("waterPriceVnd", "WATER_PER_ROOM", "Tiền nước (khoán phòng)", 30);
+      } else {
+        addItem("waterPriceVnd", "WATER_PER_M3", "Tiền nước", 30);
+      }
+
+      if (parkingMode === "VEHICLE_PARKING") {
+        addItem("parkingPriceVnd", "VEHICLE_PARKING", "Phí gửi xe máy", 40);
+      } else if (parkingMode === "PARKING") {
+        addItem("parkingPriceVnd", "PARKING", "Phí gửi xe (khoán phòng)", 40);
+      }
+
+      addItem(
+        "servicePerPersonPriceVnd",
+        "SERVICE_PER_PERSON",
+        "Phí dịch vụ chung (theo người)",
+        50
+      );
+      addItem("internetPriceVnd", "INTERNET", "Internet", 60);
+      addItem("trashPriceVnd", "TRASH", "Rác / vệ sinh", 70);
 
       const effectiveFrom = String(form.get("effectiveFrom") ?? "");
       const effectiveTo = String(form.get("effectiveTo") ?? "") || null;
@@ -352,32 +390,102 @@ export function PricingSetupClient() {
                 placeholder="3500"
               />
             </label>
+
+            <div style={{ display: "grid", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-subtle, rgba(0,0,0,0.02))", borderRadius: "8px", border: "1px solid var(--border-color, #e5e7eb)" }}>
+              <label>
+                <span style={{ fontWeight: 600 }}>Phương thức tính tiền nước</span>
+                <select
+                  value={waterMode}
+                  onChange={(e) => setWaterMode(e.target.value as any)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "0.625rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color, #d1d5db)",
+                    background: "var(--bg-surface, #fff)",
+                    fontSize: "0.875rem"
+                  }}
+                >
+                  <option value="WATER_PER_M3">Theo đồng hồ nước (VND/m³)</option>
+                  <option value="WATER_PER_PERSON">Theo số người ở (VND/người/tháng)</option>
+                  <option value="WATER_PER_ROOM">Khoán cố định phòng (VND/phòng/tháng)</option>
+                </select>
+              </label>
+              <label>
+                <span>
+                  {waterMode === "WATER_PER_M3"
+                    ? "Đơn giá nước · VND/m³"
+                    : waterMode === "WATER_PER_PERSON"
+                    ? "Đơn giá nước · VND/người/tháng"
+                    : "Đơn giá nước · VND/phòng/tháng"}
+                </span>
+                <input
+                  name="waterPriceVnd"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder={waterMode === "WATER_PER_M3" ? "15000" : "100000"}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "grid", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-subtle, rgba(0,0,0,0.02))", borderRadius: "8px", border: "1px solid var(--border-color, #e5e7eb)" }}>
+              <label>
+                <span style={{ fontWeight: 600 }}>Phương thức tính phí gửi xe</span>
+                <select
+                  value={parkingMode}
+                  onChange={(e) => setParkingMode(e.target.value as any)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "0.625rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color, #d1d5db)",
+                    background: "var(--bg-surface, #fff)",
+                    fontSize: "0.875rem"
+                  }}
+                >
+                  <option value="VEHICLE_PARKING">Theo số lượng xe máy đăng ký (VND/xe/tháng)</option>
+                  <option value="PARKING">Khoán cố định phòng (VND/phòng/tháng)</option>
+                  <option value="NONE">Không thu phí gửi xe</option>
+                </select>
+              </label>
+              {parkingMode !== "NONE" && (
+                <label>
+                  <span>
+                    {parkingMode === "VEHICLE_PARKING"
+                      ? "Phí gửi xe · VND/xe/tháng"
+                      : "Phí gửi xe · VND/phòng/tháng"}
+                  </span>
+                  <input
+                    name="parkingPriceVnd"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="100000"
+                  />
+                </label>
+              )}
+            </div>
+
             <label>
-              <span>Nước · VND/m³</span>
+              <span>Phí dịch vụ theo đầu người · VND/người/tháng (vệ sinh, thang máy...)</span>
               <input
-                name="waterPriceVnd"
+                name="servicePerPersonPriceVnd"
                 type="number"
                 min="0"
                 step="1"
                 inputMode="numeric"
-                placeholder="15000"
+                placeholder="50000"
               />
             </label>
             <label>
               <span>Internet · VND/tháng</span>
               <input
                 name="internetPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="100000"
-              />
-            </label>
-            <label>
-              <span>Gửi xe · VND/tháng</span>
-              <input
-                name="parkingPriceVnd"
                 type="number"
                 min="0"
                 step="1"

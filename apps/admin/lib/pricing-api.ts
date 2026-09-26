@@ -3,6 +3,10 @@ import { adminApiRequest } from "./admin-api-client";
 export type PricingItemType =
   | "ELECTRICITY_PER_KWH"
   | "WATER_PER_M3"
+  | "WATER_PER_PERSON"
+  | "WATER_PER_ROOM"
+  | "VEHICLE_PARKING"
+  | "SERVICE_PER_PERSON"
   | "INTERNET"
   | "PARKING"
   | "TRASH"

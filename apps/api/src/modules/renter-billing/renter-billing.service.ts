@@ -646,17 +646,26 @@ export class RenterBillingService {
           }
         }
 
-        const subtotal = await client.query<
-          QueryResultRow & { subtotal_vnd: string }
-        >(
-          `SELECT COALESCE(sum(amount_vnd), 0)::text AS subtotal_vnd
-           FROM renter_invoice_lines
-           WHERE organization_id = $1::uuid
-             AND invoice_id = $2::uuid
-             AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE')`,
-          [principal.organizationId, invoiceId]
-        );
+        const [subtotal, adjustment] = await Promise.all([
+          client.query<QueryResultRow & { subtotal_vnd: string }>(
+            `SELECT COALESCE(sum(amount_vnd), 0)::text AS subtotal_vnd
+             FROM renter_invoice_lines
+             WHERE organization_id = $1::uuid
+               AND invoice_id = $2::uuid
+               AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE')`,
+            [principal.organizationId, invoiceId]
+          ),
+          client.query<QueryResultRow & { adjustment_vnd: string }>(
+            `SELECT COALESCE(sum(amount_vnd), 0)::text AS adjustment_vnd
+             FROM renter_invoice_lines
+             WHERE organization_id = $1::uuid
+               AND invoice_id = $2::uuid
+               AND line_type = 'ADJUSTMENT'`,
+            [principal.organizationId, invoiceId]
+          )
+        ]);
         const subtotalVnd = subtotal.rows[0]?.subtotal_vnd ?? "0";
+        const adjustmentVnd = adjustment.rows[0]?.adjustment_vnd ?? "0";
         const calculationStatus =
           reviewReasons.length === 0 ? "READY" : "REVIEW_REQUIRED";
         if (calculationStatus === "REVIEW_REQUIRED") {
@@ -666,11 +675,12 @@ export class RenterBillingService {
         await client.query(
           `UPDATE renter_invoices
            SET subtotal_vnd = $3::bigint,
-               total_vnd = $3::bigint + adjustment_vnd + previous_balance_vnd,
+               adjustment_vnd = $6::bigint,
+               total_vnd = $3::bigint + $6::bigint + previous_balance_vnd,
                paid_vnd = 0,
-               remaining_vnd = $3::bigint + adjustment_vnd + previous_balance_vnd,
+               remaining_vnd = $3::bigint + $6::bigint + previous_balance_vnd,
                collection_status = CASE
-                 WHEN $3::bigint + adjustment_vnd + previous_balance_vnd = 0
+                 WHEN $3::bigint + $6::bigint + previous_balance_vnd = 0
                    THEN 'PAID'
                  ELSE 'UNPAID'
                END,
@@ -686,7 +696,8 @@ export class RenterBillingService {
             invoiceId,
             subtotalVnd,
             calculationStatus,
-            JSON.stringify(reviewReasons)
+            JSON.stringify(reviewReasons),
+            adjustmentVnd
           ]
         );
       }
@@ -797,6 +808,222 @@ export class RenterBillingService {
               previous: usage.previous,
               current: usage.current
             }
+          })
+        ]
+      );
+      return null;
+    }
+
+    if (item.itemType === "WATER_PER_PERSON") {
+      const occupantRes = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND joined_on <= $3::date
+           AND (left_on IS NULL OR left_on >= $4::date)`,
+        [organizationId, lease.id, cycle.periodEnd, cycle.periodStart]
+      );
+      const occupantCount = Math.max(1, Number(occupantRes.rows[0]?.count ?? 1));
+      const quantity = normalizeQuantity3(occupantCount, "occupantCount");
+      const amountVnd = quantityTimesUnitPriceVnd(quantity, item.unitPriceVnd);
+      const description = item.description
+        ? `${item.description} (${occupantCount} người)`
+        : `Tiền nước (${occupantCount} người)`;
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'WATER', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "OCCUPANT_COUNT",
+            occupantCount
+          })
+        ]
+      );
+      return null;
+    }
+
+    if (item.itemType === "WATER_PER_ROOM") {
+      const quantity = "1.000";
+      const amountVnd = item.unitPriceVnd;
+      const description = item.description || "Tiền nước (khoán theo phòng)";
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'WATER', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "FIXED_ROOM"
+          })
+        ]
+      );
+      return null;
+    }
+
+    if (item.itemType === "VEHICLE_PARKING") {
+      const vehicleRes = await client.query<{
+        count: string;
+        vehicles: Array<{ licensePlate: string; brandModel?: string; ownerName?: string }>;
+      }>(
+        `SELECT
+           count(*)::text AS count,
+           COALESCE(
+             json_agg(
+               json_build_object(
+                 'licensePlate', license_plate,
+                 'brandModel', brand_model,
+                 'ownerName', owner_name
+               )
+             ) FILTER (WHERE license_plate IS NOT NULL),
+             '[]'::json
+           ) AS vehicles
+         FROM lease_vehicles
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND is_active = true
+           AND registered_at <= $3::date
+           AND (unregistered_at IS NULL OR unregistered_at >= $4::date)`,
+        [organizationId, lease.id, cycle.periodEnd, cycle.periodStart]
+      );
+      const vehicleCount = Number(vehicleRes.rows[0]?.count ?? 0);
+      const quantity = normalizeQuantity3(vehicleCount, "vehicleCount");
+      const amountVnd = quantityTimesUnitPriceVnd(quantity, item.unitPriceVnd);
+      const description =
+        vehicleCount > 0
+          ? item.description
+            ? `${item.description} (${vehicleCount} xe)`
+            : `Phí gửi xe (${vehicleCount} xe)`
+          : item.description || "Phí gửi xe (0 xe)";
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'SERVICE', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "VEHICLE_COUNT",
+            vehicleCount,
+            vehicles: vehicleRes.rows[0]?.vehicles ?? []
+          })
+        ]
+      );
+      return null;
+    }
+
+    if (item.itemType === "SERVICE_PER_PERSON") {
+      const occupantRes = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND joined_on <= $3::date
+           AND (left_on IS NULL OR left_on >= $4::date)`,
+        [organizationId, lease.id, cycle.periodEnd, cycle.periodStart]
+      );
+      const occupantCount = Math.max(1, Number(occupantRes.rows[0]?.count ?? 1));
+      const quantity = normalizeQuantity3(occupantCount, "occupantCount");
+      const amountVnd = quantityTimesUnitPriceVnd(quantity, item.unitPriceVnd);
+      const description = `${item.description} (${occupantCount} người)`;
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'SERVICE', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "OCCUPANT_COUNT",
+            occupantCount
           })
         ]
       );
@@ -1241,6 +1468,266 @@ export class RenterBillingService {
       issuedCount: row.issued_count,
       totalVnd: Number(row.total_vnd)
     };
+  }
+
+  async listAdjustments(principal: TenantPrincipal, invoiceId: string) {
+    if (!roleHasPermission(principal.role, "billing.read")) {
+      throw new ForbiddenException("Billing read permission denied.");
+    }
+    const result = await this.db.query<{
+      id: string;
+      invoice_id: string;
+      adjustment_type: string;
+      description: string;
+      amount_vnd: string;
+      created_at: Date | string;
+    }>(
+      `SELECT
+         id::text,
+         invoice_id::text,
+         adjustment_type,
+         description,
+         amount_vnd::text,
+         created_at
+       FROM renter_invoice_adjustments
+       WHERE organization_id = $1::uuid
+         AND invoice_id = $2::uuid
+       ORDER BY created_at ASC`,
+      [principal.organizationId, invoiceId]
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      invoiceId: row.invoice_id,
+      adjustmentType: row.adjustment_type,
+      description: row.description,
+      amountVnd: Number(row.amount_vnd),
+      createdAt: this.isoTimestamp(row.created_at)
+    }));
+  }
+
+  async applyAdjustment(
+    principal: TenantPrincipal,
+    invoiceId: string,
+    input: {
+      adjustmentType: "DISCOUNT" | "SURCHARGE" | "COMPENSATION" | "OTHER";
+      description: string;
+      amountVnd: number;
+    }
+  ) {
+    if (!roleHasPermission(principal.role, "billing.manage")) {
+      throw new ForbiddenException("Billing manage permission denied.");
+    }
+    const description = this.required(input.description, "description");
+    if (!Number.isSafeInteger(input.amountVnd)) {
+      throw new ConflictException("amountVnd must be a safe integer.");
+    }
+
+    let normalizedAmount = input.amountVnd;
+    if (input.adjustmentType === "DISCOUNT") {
+      normalizedAmount = -Math.abs(input.amountVnd);
+    } else if (input.adjustmentType === "SURCHARGE") {
+      normalizedAmount = Math.abs(input.amountVnd);
+    }
+
+    return this.db.withTransaction(async (client) => {
+      const invoice = await client.query<{
+        id: string;
+        status: string;
+        subtotal_vnd: string;
+        previous_balance_vnd: string;
+        paid_vnd: string;
+      }>(
+        `SELECT id::text, status, subtotal_vnd::text, previous_balance_vnd::text, paid_vnd::text
+         FROM renter_invoices
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         FOR UPDATE`,
+        [principal.organizationId, invoiceId]
+      );
+      const invoiceRow = invoice.rows[0];
+      if (invoice.rowCount === 0 || !invoiceRow) {
+        throw new NotFoundException("Invoice not found.");
+      }
+      if (invoiceRow.status !== "DRAFT") {
+        throw new ConflictException("Only DRAFT invoices can be adjusted.");
+      }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const adjustmentId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO renter_invoice_adjustments (
+           id, organization_id, invoice_id, adjustment_type, description, amount_vnd, created_by_user_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          adjustmentId,
+          principal.organizationId,
+          invoiceId,
+          input.adjustmentType,
+          description,
+          normalizedAmount,
+          principal.userId
+        ]
+      );
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id, invoice_id, line_type, description, quantity, unit_price_vnd, amount_vnd, sort_order, snapshot
+         )
+         VALUES ($1, $2, 'ADJUSTMENT', $3, 1, $4, $4, 90, $5::jsonb)`,
+        [
+          principal.organizationId,
+          invoiceId,
+          description,
+          normalizedAmount,
+          JSON.stringify({
+            adjustmentId,
+            adjustmentType: input.adjustmentType,
+            amountVnd: normalizedAmount
+          })
+        ]
+      );
+
+      const adjRes = await client.query<{ sum: string }>(
+        `SELECT COALESCE(sum(amount_vnd), 0)::text AS sum
+         FROM renter_invoice_lines
+         WHERE organization_id = $1::uuid
+           AND invoice_id = $2::uuid
+           AND line_type = 'ADJUSTMENT'`,
+        [principal.organizationId, invoiceId]
+      );
+      const totalAdjustment = Number(adjRes.rows[0]?.sum ?? "0");
+      const subtotal = Number(invoiceRow.subtotal_vnd);
+      const prevBalance = Number(invoiceRow.previous_balance_vnd);
+      const paid = Number(invoiceRow.paid_vnd);
+      const total = subtotal + totalAdjustment + prevBalance;
+      if (total < 0) {
+        throw new ConflictException("Invoice total amount cannot be negative after adjustments.");
+      }
+
+      const remaining = Math.max(0, total - paid);
+      const collectionStatus = remaining === 0 ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "UNPAID";
+
+      await client.query(
+        `UPDATE renter_invoices
+         SET adjustment_vnd = $3,
+             total_vnd = $4,
+             remaining_vnd = $5,
+             collection_status = $6,
+             updated_at = now()
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid`,
+        [principal.organizationId, invoiceId, totalAdjustment, total, remaining, collectionStatus]
+      );
+
+      await this.audit(client, principal, "RENTER_INVOICE_ADJUSTED", "RENTER_INVOICE", invoiceId, {
+        adjustmentId,
+        adjustmentType: input.adjustmentType,
+        description,
+        amountVnd: normalizedAmount,
+        totalVnd: total
+      });
+
+      return {
+        id: adjustmentId,
+        adjustmentType: input.adjustmentType,
+        description,
+        amountVnd: normalizedAmount,
+        totalVnd: total,
+        remainingVnd: remaining
+      };
+    });
+  }
+
+  async removeAdjustment(principal: TenantPrincipal, invoiceId: string, adjustmentId: string) {
+    if (!roleHasPermission(principal.role, "billing.manage")) {
+      throw new ForbiddenException("Billing manage permission denied.");
+    }
+
+    return this.db.withTransaction(async (client) => {
+      const invoice = await client.query<{
+        id: string;
+        status: string;
+        subtotal_vnd: string;
+        previous_balance_vnd: string;
+        paid_vnd: string;
+      }>(
+        `SELECT id::text, status, subtotal_vnd::text, previous_balance_vnd::text, paid_vnd::text
+         FROM renter_invoices
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         FOR UPDATE`,
+        [principal.organizationId, invoiceId]
+      );
+      const invoiceRow = invoice.rows[0];
+      if (invoice.rowCount === 0 || !invoiceRow) {
+        throw new NotFoundException("Invoice not found.");
+      }
+      if (invoiceRow.status !== "DRAFT") {
+        throw new ConflictException("Only DRAFT invoices can be adjusted.");
+      }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      await client.query(
+        `DELETE FROM renter_invoice_adjustments
+         WHERE organization_id = $1::uuid
+           AND invoice_id = $2::uuid
+           AND id = $3::uuid`,
+        [principal.organizationId, invoiceId, adjustmentId]
+      );
+
+      await client.query(
+        `DELETE FROM renter_invoice_lines
+         WHERE organization_id = $1::uuid
+           AND invoice_id = $2::uuid
+           AND line_type = 'ADJUSTMENT'
+           AND snapshot->>'adjustmentId' = $3`,
+        [principal.organizationId, invoiceId, adjustmentId]
+      );
+
+      const adjRes = await client.query<{ sum: string }>(
+        `SELECT COALESCE(sum(amount_vnd), 0)::text AS sum
+         FROM renter_invoice_lines
+         WHERE organization_id = $1::uuid
+           AND invoice_id = $2::uuid
+           AND line_type = 'ADJUSTMENT'`,
+        [principal.organizationId, invoiceId]
+      );
+      const totalAdjustment = Number(adjRes.rows[0]?.sum ?? "0");
+      const subtotal = Number(invoiceRow.subtotal_vnd);
+      const prevBalance = Number(invoiceRow.previous_balance_vnd);
+      const paid = Number(invoiceRow.paid_vnd);
+      const total = subtotal + totalAdjustment + prevBalance;
+      const remaining = Math.max(0, total - paid);
+      const collectionStatus = remaining === 0 ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "UNPAID";
+
+      await client.query(
+        `UPDATE renter_invoices
+         SET adjustment_vnd = $3,
+             total_vnd = $4,
+             remaining_vnd = $5,
+             collection_status = $6,
+             updated_at = now()
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid`,
+        [principal.organizationId, invoiceId, totalAdjustment, total, remaining, collectionStatus]
+      );
+
+      await this.audit(client, principal, "RENTER_INVOICE_ADJUSTMENT_REMOVED", "RENTER_INVOICE", invoiceId, {
+        adjustmentId,
+        totalVnd: total
+      });
+
+      return { success: true, totalVnd: total, remainingVnd: remaining };
+    });
   }
 
   private async audit(

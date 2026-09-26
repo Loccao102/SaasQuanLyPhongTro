@@ -14,6 +14,10 @@ import type { TenantPrincipal } from "../identity/tenant-principal.js";
 export const pricingItemTypes = [
   "ELECTRICITY_PER_KWH",
   "WATER_PER_M3",
+  "WATER_PER_PERSON",
+  "WATER_PER_ROOM",
+  "VEHICLE_PARKING",
+  "SERVICE_PER_PERSON",
   "INTERNET",
   "PARKING",
   "TRASH",
@@ -78,6 +82,101 @@ type PropertyScopeRow = QueryResultRow & {
   id: string;
   operational_group_ids: string[];
 };
+
+export function formatDecimal3(value: string | number, field: string): string {
+  const raw = typeof value === "number" ? String(value) : value.trim();
+  const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(raw);
+  if (!match) {
+    throw new ConflictException(
+      field + " must be a non-negative decimal with at most 3 decimals."
+    );
+  }
+  return match[1] + "." + (match[2] ?? "").padEnd(3, "0");
+}
+
+export function normalizePricingItems(
+  rawItems: CreatePricingPolicyInput["items"]
+): ResolvedPricingItem[] {
+  const seenIds = new Set<string>();
+  let electricityCount = 0;
+  let waterCount = 0;
+  let parkingCount = 0;
+
+  return rawItems
+    .map((item, index) => {
+      if (seenIds.has(item.id)) {
+        throw new ConflictException("Pricing item ids must be unique.");
+      }
+      seenIds.add(item.id);
+
+      if (!pricingItemTypes.includes(item.itemType)) {
+        throw new ConflictException(
+          "Unsupported pricing item type: " + String(item.itemType)
+        );
+      }
+      if (item.itemType === "ELECTRICITY_PER_KWH") electricityCount += 1;
+      const isWaterItem =
+        item.itemType === "WATER_PER_M3" ||
+        item.itemType === "WATER_PER_PERSON" ||
+        item.itemType === "WATER_PER_ROOM";
+      if (isWaterItem) waterCount += 1;
+      const isParkingItem =
+        item.itemType === "PARKING" || item.itemType === "VEHICLE_PARKING";
+      if (isParkingItem) parkingCount += 1;
+
+      if (electricityCount > 1) {
+        throw new ConflictException(
+          "A pricing policy can contain at most one electricity meter item."
+        );
+      }
+      if (waterCount > 1) {
+        throw new ConflictException(
+          "A pricing policy can contain at most one water pricing item (choose meter, per person, or per room)."
+        );
+      }
+      if (parkingCount > 1) {
+        throw new ConflictException(
+          "A pricing policy can contain at most one parking pricing item (choose fixed room or per vehicle)."
+        );
+      }
+
+      if (!Number.isSafeInteger(item.unitPriceVnd) || item.unitPriceVnd < 0) {
+        throw new ConflictException(
+          "unitPriceVnd must be a non-negative safe integer."
+        );
+      }
+
+      const isDynamicQuantity =
+        item.itemType === "ELECTRICITY_PER_KWH" ||
+        item.itemType === "WATER_PER_M3" ||
+        item.itemType === "WATER_PER_PERSON" ||
+        item.itemType === "WATER_PER_ROOM" ||
+        item.itemType === "VEHICLE_PARKING" ||
+        item.itemType === "SERVICE_PER_PERSON";
+      const fixedQuantity = isDynamicQuantity
+        ? "1.000"
+        : formatDecimal3(item.fixedQuantity ?? 1, "fixedQuantity");
+      const sortOrder = item.sortOrder ?? index * 10 + 20;
+      if (!Number.isInteger(sortOrder)) {
+        throw new ConflictException("sortOrder must be an integer.");
+      }
+
+      const description = item.description?.trim();
+      if (!description) {
+        throw new ConflictException("description is required.");
+      }
+
+      return {
+        id: item.id,
+        itemType: item.itemType,
+        description,
+        unitPriceVnd: item.unitPriceVnd,
+        fixedQuantity,
+        sortOrder
+      };
+    })
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+}
 
 @Injectable()
 export class PricingService {
@@ -350,57 +449,7 @@ export class PricingService {
   private normalizeItems(
     rawItems: CreatePricingPolicyInput["items"]
   ): ResolvedPricingItem[] {
-    const seenIds = new Set<string>();
-    let electricityCount = 0;
-    let waterCount = 0;
-
-    return rawItems
-      .map((item, index) => {
-        if (seenIds.has(item.id)) {
-          throw new ConflictException("Pricing item ids must be unique.");
-        }
-        seenIds.add(item.id);
-
-        if (!pricingItemTypes.includes(item.itemType)) {
-          throw new ConflictException(
-            "Unsupported pricing item type: " + String(item.itemType)
-          );
-        }
-        if (item.itemType === "ELECTRICITY_PER_KWH") electricityCount += 1;
-        if (item.itemType === "WATER_PER_M3") waterCount += 1;
-        if (electricityCount > 1 || waterCount > 1) {
-          throw new ConflictException(
-            "A pricing policy can contain at most one electricity and one water meter item."
-          );
-        }
-
-        if (!Number.isSafeInteger(item.unitPriceVnd) || item.unitPriceVnd < 0) {
-          throw new ConflictException(
-            "unitPriceVnd must be a non-negative safe integer."
-          );
-        }
-
-        const metered =
-          item.itemType === "ELECTRICITY_PER_KWH" ||
-          item.itemType === "WATER_PER_M3";
-        const fixedQuantity = metered
-          ? "1.000"
-          : this.decimal3(item.fixedQuantity ?? 1, "fixedQuantity");
-        const sortOrder = item.sortOrder ?? index * 10 + 20;
-        if (!Number.isInteger(sortOrder)) {
-          throw new ConflictException("sortOrder must be an integer.");
-        }
-
-        return {
-          id: item.id,
-          itemType: item.itemType,
-          description: this.required(item.description, "description"),
-          unitPriceVnd: item.unitPriceVnd,
-          fixedQuantity,
-          sortOrder
-        };
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+    return normalizePricingItems(rawItems);
   }
 
   private async requirePropertyRead(

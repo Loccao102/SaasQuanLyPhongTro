@@ -11,6 +11,8 @@ import { LeaseDepositController } from "./application/lease-deposit.controller.j
 import { LeaseDepositService } from "./application/lease-deposit.service.js";
 import { LeaseTerminationReadinessController } from "./application/lease-termination-readiness.controller.js";
 import { LeaseTerminationReadinessService } from "./application/lease-termination-readiness.service.js";
+import { LeaseVehiclesController } from "./application/lease-vehicles.controller.js";
+import { LeaseVehiclesService } from "./application/lease-vehicles.service.js";
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
@@ -18,21 +20,24 @@ import { LeaseTerminationReadinessService } from "./application/lease-terminatio
     LeaseAdminController,
     LeaseTerminationReadinessController,
     LeaseDraftManagementController,
-    LeaseDepositController
+    LeaseDepositController,
+    LeaseVehiclesController
   ],
   providers: [
     LeaseLifecycleApplicationService,
     LeaseAdminService,
     LeaseTerminationReadinessService,
     LeaseDraftManagementService,
-    LeaseDepositService
+    LeaseDepositService,
+    LeaseVehiclesService
   ],
   exports: [
     LeaseLifecycleApplicationService,
     LeaseAdminService,
     LeaseTerminationReadinessService,
     LeaseDraftManagementService,
-    LeaseDepositService
+    LeaseDepositService,
+    LeaseVehiclesService
   ]
 })
 export class LeasingModule {}

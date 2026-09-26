@@ -12,6 +12,25 @@ import {
   type LeaseStatus,
   type ResidentSearchResult
 } from "../../../lib/admin-leases-api";
+import {
+  leaseVehiclesApi,
+  type LeaseVehicle
+} from "../../../lib/lease-vehicles-api";
+
+function vehicleTypeMeta(type: LeaseVehicle["vehicleType"]) {
+  switch (type) {
+    case "MOTORBIKE":
+      return { label: "Xe máy", tone: "info" as const };
+    case "ELECTRIC_BIKE":
+      return { label: "Xe máy điện", tone: "info" as const };
+    case "BICYCLE":
+      return { label: "Xe đạp", tone: "neutral" as const };
+    case "CAR":
+      return { label: "Ô tô", tone: "warning" as const };
+    default:
+      return { label: "Khác", tone: "neutral" as const };
+  }
+}
 
 function statusMeta(status: LeaseStatus) {
   switch (status) {
@@ -145,8 +164,10 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [renewalConfirmed, setRenewalConfirmed] = useState(false);
   const [attachments, setAttachments] = useState<LeaseAttachment[]>([]);
   const [amendments, setAmendments] = useState<LeaseAmendment[]>([]);
+  const [vehicles, setVehicles] = useState<LeaseVehicle[]>([]);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [amendmentModalOpen, setAmendmentModalOpen] = useState(false);
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -162,16 +183,18 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [leaseData, depositData, attachmentData, amendmentData] = await Promise.all([
+      const [leaseData, depositData, attachmentData, amendmentData, vehicleData] = await Promise.all([
         adminLeasesApi.detail(leaseId),
         adminLeasesApi.deposit(leaseId),
         adminLeasesApi.attachments(leaseId),
-        adminLeasesApi.amendments(leaseId)
+        adminLeasesApi.amendments(leaseId),
+        leaseVehiclesApi.list(leaseId)
       ]);
       setData(leaseData);
       setDeposit(depositData);
       setAttachments(attachmentData.attachments);
       setAmendments(amendmentData.amendments);
+      setVehicles(vehicleData);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -593,6 +616,67 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Không thể tạo phụ lục.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await leaseVehiclesApi.add(leaseId, {
+        licensePlate: String(form.get("licensePlate") ?? "").trim().toUpperCase(),
+        vehicleType: String(form.get("vehicleType") ?? "MOTORBIKE"),
+        brandModel: String(form.get("brandModel") ?? "").trim() || undefined,
+        ownerName: String(form.get("ownerName") ?? "").trim() || undefined,
+        registeredAt: String(form.get("registeredAt") ?? "").trim() || undefined
+      });
+      setVehicleModalOpen(false);
+      setActionSuccess("Đã đăng ký phương tiện mới vào hợp đồng.");
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Không thể thêm phương tiện.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleVehicleStatus(vehicle: LeaseVehicle) {
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await leaseVehiclesApi.update(leaseId, vehicle.id, {
+        isActive: !vehicle.isActive
+      });
+      setActionSuccess(
+        vehicle.isActive
+          ? `Đã dừng gửi phương tiện [${vehicle.licensePlate}].`
+          : `Đã kích hoạt lại gửi phương tiện [${vehicle.licensePlate}].`
+      );
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Không thể cập nhật trạng thái phương tiện.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeVehicle(vehicleId: string, plate: string) {
+    if (!confirm(`Bạn có chắc chắn muốn xóa phương tiện [${plate}] khỏi hợp đồng này?`)) return;
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await leaseVehiclesApi.remove(leaseId, vehicleId);
+      setActionSuccess(`Đã xóa phương tiện [${plate}].`);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Không thể xóa phương tiện.");
     } finally {
       setSaving(false);
     }
@@ -1661,6 +1745,166 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <div>
+            <SectionHeader title="Phương tiện / Xe máy gửi" />
+            <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "var(--color-muted, #64748b)" }}>
+              Quản lý danh sách xe của phòng để hệ thống tự động tính tiền giữ xe theo đầu xe khi xuất hóa đơn ({vehicles.filter((v) => v.isActive).length}/{vehicles.length} xe đang gửi).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setVehicleModalOpen(true)}
+          >
+            + Đăng ký xe mới
+          </button>
+        </div>
+
+        {vehicleModalOpen ? (
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "16px",
+              borderRadius: "8px",
+              border: "1px solid var(--color-border, #e2e8f0)",
+              background: "var(--color-bg-secondary, #f8fafc)"
+            }}
+          >
+            <h4 style={{ margin: "0 0 8px 0" }}>Đăng ký xe gửi mới</h4>
+            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "var(--color-muted, #64748b)" }}>
+              Nhập thông tin biển số và loại phương tiện để áp dụng phí giữ xe chính xác theo số lượng thực tế.
+            </p>
+            <form className="asset-form" onSubmit={(event) => void submitVehicle(event)}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <label>
+                  <span>Biển số xe *</span>
+                  <input
+                    name="licensePlate"
+                    required
+                    placeholder="VD: 29-B1 123.45"
+                    style={{ textTransform: "uppercase" }}
+                  />
+                </label>
+                <label>
+                  <span>Loại phương tiện</span>
+                  <select name="vehicleType" defaultValue="MOTORBIKE">
+                    <option value="MOTORBIKE">Xe máy</option>
+                    <option value="ELECTRIC_BIKE">Xe máy điện / Xe đạp điện</option>
+                    <option value="BICYCLE">Xe đạp</option>
+                    <option value="CAR">Ô tô</option>
+                    <option value="OTHER">Khác</option>
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <label>
+                  <span>Nhãn hiệu / Dòng xe</span>
+                  <input
+                    name="brandModel"
+                    placeholder="VD: Honda Vision / Air Blade"
+                  />
+                </label>
+                <label>
+                  <span>Chủ xe / Người gửi</span>
+                  <input
+                    name="ownerName"
+                    placeholder={data.lease.primaryResident?.fullName ?? "Tên người gửi"}
+                  />
+                </label>
+              </div>
+
+              <label>
+                <span>Ngày bắt đầu gửi</span>
+                <input
+                  name="registeredAt"
+                  type="date"
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                />
+              </label>
+
+              <div className="button-row" style={{ marginTop: "12px" }}>
+                <button className="secondary-button" type="button" onClick={() => setVehicleModalOpen(false)}>
+                  Hủy
+                </button>
+                <button className="primary-button" type="submit" disabled={saving}>
+                  Xác nhận lưu xe
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {vehicles.length === 0 ? (
+          <div className="admin-state">Chưa có phương tiện nào được đăng ký cho hợp đồng này.</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Biển số</th>
+                  <th>Loại xe</th>
+                  <th>Dòng xe / Nhãn hiệu</th>
+                  <th>Chủ xe</th>
+                  <th>Ngày gửi</th>
+                  <th>Trạng thái</th>
+                  <th style={{ textAlign: "right" }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vehicles.map((v) => {
+                  const meta = vehicleTypeMeta(v.vehicleType);
+                  return (
+                    <tr key={v.id}>
+                      <td>
+                        <strong style={{ fontFamily: "monospace", fontSize: "14px", letterSpacing: "0.5px" }}>
+                          {v.licensePlate}
+                        </strong>
+                      </td>
+                      <td>
+                        <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+                      </td>
+                      <td>{v.brandModel || "—"}</td>
+                      <td>{v.ownerName || "—"}</td>
+                      <td>{new Date(v.registeredAt).toLocaleDateString("vi-VN")}</td>
+                      <td>
+                        <StatusBadge tone={v.isActive ? "success" : "neutral"}>
+                          {v.isActive ? "ĐANG GỬI" : "ĐÃ DỪNG"}
+                        </StatusBadge>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: "8px" }}>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "4px 8px", fontSize: "12px" }}
+                            onClick={() => void toggleVehicleStatus(v)}
+                            disabled={saving}
+                          >
+                            {v.isActive ? "Dừng gửi" : "Gửi lại"}
+                          </button>
+                          <button
+                            type="button"
+                            className="destructive-button"
+                            style={{ padding: "4px 8px", fontSize: "12px" }}
+                            onClick={() => void removeVehicle(v.id, v.licensePlate)}
+                            disabled={saving}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

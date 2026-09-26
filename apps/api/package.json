@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsc -p tsconfig.build.json && node --watch dist/main.js",
+    "watch": "tsc -w -p tsconfig.build.json --preserveWatchOutput",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "db:setup": "tsx scripts/db-setup.ts",
