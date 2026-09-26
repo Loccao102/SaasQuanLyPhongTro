@@ -109,7 +109,7 @@ export class LeaseTerminationReadinessService {
     if (
       !this.accessControl.can(
         principal.membership,
-        "lease.terminate",
+        "lease.read",
         resource
       ) ||
       !this.accessControl.can(
