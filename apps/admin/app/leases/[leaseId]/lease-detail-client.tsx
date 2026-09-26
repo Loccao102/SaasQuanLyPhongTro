@@ -65,6 +65,8 @@ function auditLabel(action: string): string {
       return "Đổi người thuê chính";
     case "LEASE_TERMINATION_READINESS_OVERRIDE":
       return "Cập nhật readiness thủ công";
+    case "LEASE_TERMINATION_METER_READINESS_SYNCED":
+      return "Đồng bộ chỉ số cuối trả phòng";
     case "LEASE_DEPOSIT_COLLECTED":
       return "Ghi nhận thu tiền cọc";
     case "LEASE_DEPOSIT_SETTLED":
