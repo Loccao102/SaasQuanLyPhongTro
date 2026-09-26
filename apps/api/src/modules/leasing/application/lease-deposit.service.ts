@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   ConflictException,
   ForbiddenException,
@@ -12,7 +13,8 @@ import type { Permission } from "../../identity/domain/access-control.js";
 import type { TenantPrincipal } from "../../identity/tenant-principal.js";
 import {
   assertReceiptMatches,
-  normalizeIdempotencyKey
+  normalizeIdempotencyKey,
+  type StoredCommandReceipt
 } from "./idempotent-command.js";
 import { PostgresLeaseRepository } from "../infrastructure/postgres-lease-repository.js";
 
@@ -152,6 +154,11 @@ export class LeaseDepositService {
     const amountVnd = this.positiveMoney(input.amountVnd, "amountVnd");
     const occurredAt = this.isoTimestamp(input.occurredAt, "occurredAt");
     const note = this.optionalNote(input.note);
+    const requestFingerprint = this.fingerprint({
+      amountVnd,
+      occurredAt,
+      note
+    });
 
     return this.db.withTransaction(async (client) => {
       const context = await this.requireContext(
@@ -168,11 +175,12 @@ export class LeaseDepositService {
       );
 
       if (receipt) {
-        assertReceiptMatches(receipt, {
-          commandType: "LEASE_DEPOSIT_COLLECTION",
-          leaseId
-        });
-        return receipt.response as LeaseDepositSummaryView;
+        return this.replayReceipt<LeaseDepositSummaryView>(
+          receipt,
+          "LEASE_DEPOSIT_COLLECTION",
+          leaseId,
+          requestFingerprint
+        );
       }
 
       await this.commercialPolicy.assertTenantWriteAllowed(
@@ -228,7 +236,10 @@ export class LeaseDepositService {
         idempotencyKey,
         commandType: "LEASE_DEPOSIT_COLLECTION",
         leaseId,
-        response
+        response: {
+          requestFingerprint,
+          result: response
+        }
       });
 
       return response;
@@ -245,6 +256,12 @@ export class LeaseDepositService {
     const deductionVnd = this.money(input.deductionVnd, "deductionVnd");
     const occurredAt = this.isoTimestamp(input.occurredAt, "occurredAt");
     const note = this.requiredNote(input.note);
+    const requestFingerprint = this.fingerprint({
+      refundVnd,
+      deductionVnd,
+      occurredAt,
+      note
+    });
 
     return this.db.withTransaction(async (client) => {
       const context = await this.requireContext(
@@ -261,11 +278,12 @@ export class LeaseDepositService {
       );
 
       if (receipt) {
-        assertReceiptMatches(receipt, {
-          commandType: "LEASE_DEPOSIT_SETTLEMENT",
-          leaseId
-        });
-        return receipt.response as LeaseDepositSettlementView;
+        return this.replayReceipt<LeaseDepositSettlementView>(
+          receipt,
+          "LEASE_DEPOSIT_SETTLEMENT",
+          leaseId,
+          requestFingerprint
+        );
       }
 
       await this.commercialPolicy.assertTenantWriteAllowed(
@@ -392,7 +410,10 @@ export class LeaseDepositService {
         idempotencyKey,
         commandType: "LEASE_DEPOSIT_SETTLEMENT",
         leaseId,
-        response
+        response: {
+          requestFingerprint,
+          result: response
+        }
       });
 
       return response;
@@ -641,6 +662,37 @@ export class LeaseDepositService {
         JSON.stringify(metadata)
       ]
     );
+  }
+
+  private replayReceipt<T>(
+    receipt: StoredCommandReceipt,
+    commandType: string,
+    leaseId: string,
+    requestFingerprint: string
+  ): T {
+    assertReceiptMatches(receipt, { commandType, leaseId });
+
+    const stored = receipt.response;
+    if (
+      typeof stored !== "object" ||
+      stored === null ||
+      !("requestFingerprint" in stored) ||
+      !("result" in stored) ||
+      (stored as { requestFingerprint?: unknown }).requestFingerprint !==
+        requestFingerprint
+    ) {
+      throw new ConflictException(
+        "The idempotency key was already used with different deposit data."
+      );
+    }
+
+    return (stored as { result: T }).result;
+  }
+
+  private fingerprint(value: Readonly<Record<string, unknown>>): string {
+    return createHash("sha256")
+      .update(JSON.stringify(value))
+      .digest("hex");
   }
 
   private money(value: number, field: string): number {
