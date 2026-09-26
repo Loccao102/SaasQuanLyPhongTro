@@ -357,6 +357,14 @@ test("admin leasing creates a draft idempotently and filters reads by property s
       collectionInput
     );
     assert.deepEqual(collectionRetry, collected);
+    await assert.rejects(
+      () =>
+        depositService.recordCollection(principal(), leaseId, {
+          ...collectionInput,
+          amountVnd: 100000
+        }),
+      /different deposit data/
+    );
     assert.equal(collected.status, "HELD");
     assert.equal(collected.collectedVnd, 3500000);
     assert.equal(collected.heldVnd, 3500000);
