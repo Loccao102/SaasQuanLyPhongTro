@@ -810,6 +810,16 @@ export class MeteringService {
     roomId: string,
     trigger: "METER_CREATED" | "METER_READING_RECORDED"
   ): Promise<void> {
+    await client.query(
+      `SELECT id
+       FROM leases
+       WHERE organization_id = $1::uuid
+         AND room_id = $2::uuid
+         AND status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+       FOR UPDATE`,
+      [principal.organizationId, roomId]
+    );
+
     const updated = await client.query<QueryResultRow & {
       lease_id: string;
       meter_readiness: "PENDING" | "READY" | "NOT_REQUIRED";
