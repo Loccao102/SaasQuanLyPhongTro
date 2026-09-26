@@ -21,7 +21,14 @@ const policy: OrganizationCommercialPolicy = {
     staffLimit: 10,
     automationActionsMonthly: 1000,
     advancedReports: false,
-    auditLog: true
+    auditLog: true,
+    source: {
+      room_limit: "PLAN",
+      staff_limit: "PLAN",
+      automation_actions_monthly: "PLAN",
+      advanced_reports: "PLAN",
+      audit_log: "PLAN"
+    }
   }
 };
 
