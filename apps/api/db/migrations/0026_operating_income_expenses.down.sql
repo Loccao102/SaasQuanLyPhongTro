@@ -1,0 +1,5 @@
+BEGIN;
+
+DROP TABLE IF EXISTS operating_expenses CASCADE;
+
+COMMIT;

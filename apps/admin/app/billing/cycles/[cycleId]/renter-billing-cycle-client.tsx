@@ -53,6 +53,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
+  const [issuedUrls, setIssuedUrls] = useState<Record<string, string>>({});
   const [linkSaving, setLinkSaving] = useState<string | null>(null);
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
         "http://localhost:3002";
       const url = base + "/i/" + result.token;
       setIssuedUrl(url);
+      setIssuedUrls((prev) => ({ ...prev, [invoiceId]: url }));
       try {
         await navigator.clipboard.writeText(url);
         setLinkMessage(
@@ -221,12 +223,23 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           <strong>Public invoice đã cập nhật.</strong>
           <span>{linkMessage}</span>
           {issuedUrl ? (
-            <input
-              aria-label="Link hóa đơn công khai vừa tạo"
-              readOnly
-              value={issuedUrl}
-              onFocus={(event) => event.currentTarget.select()}
-            />
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "8px" }}>
+              <input
+                aria-label="Link hóa đơn công khai vừa tạo"
+                readOnly
+                value={issuedUrl}
+                style={{ flex: 1 }}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <a
+                className="secondary-link-button secondary-link-button--compact"
+                href={issuedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Mở trang khách xem ↗
+              </a>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -384,6 +397,31 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                           ? "Đổi link công khai"
                           : "Tạo link công khai"}
                       </button>
+                      {issuedUrls[invoice.id] ? (
+                        <>
+                          <a
+                            className="secondary-link-button"
+                            href={issuedUrls[invoice.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            📱 Mở trang khách xem ↗
+                          </a>
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => {
+                              const targetUrl = issuedUrls[invoice.id];
+                              if (targetUrl) {
+                                void navigator.clipboard.writeText(targetUrl);
+                                setLinkMessage("Đã sao chép link công khai vào clipboard.");
+                              }
+                            }}
+                          >
+                            📋 Sao chép link
+                          </button>
+                        </>
+                      ) : null}
                       {invoice.publicLinkActive ? (
                         <button
                           className="danger-button"

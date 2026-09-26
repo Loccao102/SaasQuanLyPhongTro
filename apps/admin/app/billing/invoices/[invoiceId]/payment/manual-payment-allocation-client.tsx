@@ -8,6 +8,7 @@ import {
 } from "react";
 import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../../components/admin-shell";
+import { renterBillingApi } from "../../../../../lib/renter-billing-api";
 import {
   renterPaymentsApi,
   type RenterCollectionStatus,
@@ -49,6 +50,8 @@ export function ManualPaymentAllocationClient({
 }) {
   const [data, setData] = useState<RenterPaymentDetailResponse | null>(null);
   const [pending, setPending] = useState<PendingPayment | null>(null);
+  const [publicUrl, setPublicUrl] = useState<string | null>(null);
+  const [publicLinkSaving, setPublicLinkSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,30 @@ export function ManualPaymentAllocationClient({
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function generatePublicLink() {
+    setPublicLinkSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await renterBillingApi.issuePublicLink(invoiceId);
+      const base =
+        process.env.NEXT_PUBLIC_PUBLIC_INVOICE_BASE_URL?.replace(/\/$/, "") ??
+        "http://localhost:3002";
+      const url = base + "/i/" + result.token;
+      setPublicUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setSuccess("Đã tạo link công khai và sao chép vào clipboard.");
+      } catch {
+        setSuccess("Đã tạo link công khai.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể tạo link công khai.");
+    } finally {
+      setPublicLinkSaving(false);
+    }
+  }
 
   function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -206,6 +233,57 @@ export function ManualPaymentAllocationClient({
               <strong>{data.allocations.length}</strong>
             </div>
           </section>
+
+          {data.invoice.status === "ISSUED" ? (
+            <section className="panel" style={{ marginBottom: "20px" }}>
+              <div className="asset-section-heading">
+                <div>
+                  <span className="eyebrow">ONLINE PAYMENT · VIETQR</span>
+                  <h2>Link thanh toán công khai cho khách</h2>
+                </div>
+              </div>
+              <p className="inline-note" style={{ marginBottom: "16px" }}>
+                Gửi link này cho khách thuê qua Zalo/SMS. Khách có thể quét mã VietQR tự động điền tiền và nội dung, xem bảng kê chi tiết và cập nhật thanh toán tự động theo thời gian thực.
+              </p>
+              {publicUrl ? (
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <input
+                    readOnly
+                    value={publicUrl}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <a
+                    className="primary-link-button"
+                    href={publicUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Mở trang thanh toán ↗
+                  </a>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(publicUrl);
+                      setSuccess("Đã sao chép link thanh toán công khai vào clipboard.");
+                    }}
+                  >
+                    📋 Sao chép link
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={publicLinkSaving}
+                  onClick={() => void generatePublicLink()}
+                >
+                  {publicLinkSaving ? "Đang tạo link…" : "🔗 Tạo link thanh toán VietQR cho khách"}
+                </button>
+              )}
+            </section>
+          ) : null}
 
           {data.permissions.reconcile &&
           data.invoice.status === "ISSUED" &&

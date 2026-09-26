@@ -5,7 +5,9 @@ import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
   adminAssetsApi,
-  type AdminRoomDetail
+  type AdminRoomDetail,
+  type RoomEquipment,
+  type EquipmentConditionStatus
 } from "../../../../lib/admin-assets-api";
 
 function money(value: number): string {
@@ -16,18 +18,34 @@ function money(value: number): string {
   }).format(value);
 }
 
+const conditionLabels: Record<EquipmentConditionStatus, { label: string; tone: "success" | "info" | "warning" | "danger" | "neutral" }> = {
+  EXCELLENT: { label: "Hoàn hảo", tone: "success" },
+  GOOD: { label: "Tốt", tone: "info" },
+  FAIR: { label: "Bình thường", tone: "neutral" },
+  NEEDS_REPAIR: { label: "Cần bảo trì", tone: "warning" },
+  DAMAGED: { label: "Hư hỏng", tone: "danger" }
+};
+
 export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [data, setData] = useState<AdminRoomDetail | null>(null);
+  const [equipmentList, setEquipmentList] = useState<RoomEquipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showAddEquipment, setShowAddEquipment] = useState(false);
+  const [addingEquipment, setAddingEquipment] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await adminAssetsApi.room(roomId));
+      const [roomData, equipData] = await Promise.all([
+        adminAssetsApi.room(roomId),
+        adminAssetsApi.roomEquipment(roomId)
+      ]);
+      setData(roomData);
+      setEquipmentList(equipData);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -75,6 +93,63 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       setMutationError(
         mutation instanceof Error ? mutation.message : "Không thể ngưng phòng."
       );
+      setSaving(false);
+    }
+  }
+
+  async function handleAddEquipment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setAddingEquipment(true);
+    setMutationError(null);
+    try {
+      await adminAssetsApi.createRoomEquipment(roomId, {
+        name: String(form.get("equipName") ?? ""),
+        brand: String(form.get("brand") ?? "") || undefined,
+        modelOrSerial: String(form.get("modelOrSerial") ?? "") || undefined,
+        quantity: Number(form.get("quantity") ?? 1),
+        conditionStatus: String(form.get("conditionStatus") ?? "GOOD") as EquipmentConditionStatus,
+        compensationValueVnd: Number(form.get("compensationValueVnd") ?? 0),
+        note: String(form.get("note") ?? "") || undefined,
+        installedAt: String(form.get("installedAt") ?? "") || undefined
+      });
+      setShowAddEquipment(false);
+      await load();
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : "Không thể thêm thiết bị.");
+    } finally {
+      setAddingEquipment(false);
+    }
+  }
+
+  async function handleDeleteEquipment(equipmentId: string, name: string) {
+    if (!window.confirm(`Xoá thiết bị "${name}" khỏi phòng?`)) return;
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await adminAssetsApi.deleteRoomEquipment(roomId, equipmentId);
+      await load();
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : "Không thể xoá thiết bị.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdateEquipmentCondition(
+    equipmentId: string,
+    conditionStatus: EquipmentConditionStatus
+  ) {
+    setSaving(true);
+    setMutationError(null);
+    try {
+      await adminAssetsApi.updateRoomEquipment(roomId, equipmentId, { conditionStatus });
+      await load();
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Không thể cập nhật tình trạng thiết bị."
+      );
+    } finally {
       setSaving(false);
     }
   }
@@ -149,6 +224,178 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 ) : null}
               </div>
             </form>
+          </section>
+
+          <section className="panel">
+            <div className="asset-section-heading">
+              <div>
+                <span className="eyebrow">INVENTORY · BÀN GIAO THIẾT BỊ</span>
+                <h2>Danh mục trang thiết bị & Đồ đạc ({equipmentList.length})</h2>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setShowAddEquipment((prev) => !prev)}
+              >
+                {showAddEquipment ? "Đóng form" : "+ Thêm thiết bị"}
+              </button>
+            </div>
+
+            {showAddEquipment ? (
+              <form
+                className="asset-form"
+                style={{
+                  marginBottom: "1.5rem",
+                  padding: "1rem",
+                  background: "var(--color-bg-muted, #f8fafc)",
+                  borderRadius: "8px",
+                  border: "1px solid var(--color-border, #e2e8f0)"
+                }}
+                onSubmit={(e) => void handleAddEquipment(e)}
+              >
+                <label>
+                  <span>Tên thiết bị *</span>
+                  <input name="equipName" placeholder="vd: Điều hoà Daikin 1.5 HP" required />
+                </label>
+                <label>
+                  <span>Hãng / Thương hiệu</span>
+                  <input name="brand" placeholder="vd: Daikin, Panasonic..." />
+                </label>
+                <label>
+                  <span>Model / Số Serial</span>
+                  <input name="modelOrSerial" placeholder="vd: FTKB35WAVMV..." />
+                </label>
+                <label>
+                  <span>Số lượng</span>
+                  <input name="quantity" type="number" min="1" defaultValue={1} required />
+                </label>
+                <label>
+                  <span>Tình trạng ban đầu</span>
+                  <select name="conditionStatus" defaultValue="GOOD">
+                    <option value="EXCELLENT">Hoàn hảo (Mới 100%)</option>
+                    <option value="GOOD">Tốt (Đang hoạt động ổn định)</option>
+                    <option value="FAIR">Bình thường (Có dấu hiệu hao mòn)</option>
+                    <option value="NEEDS_REPAIR">Cần bảo trì / sửa chữa</option>
+                    <option value="DAMAGED">Hư hỏng</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Giá trị đền bù quy định (VNĐ)</span>
+                  <input
+                    name="compensationValueVnd"
+                    type="number"
+                    min="0"
+                    step="50000"
+                    placeholder="vd: 2000000"
+                    defaultValue={0}
+                  />
+                </label>
+                <label>
+                  <span>Ngày lắp đặt / Bàn giao</span>
+                  <input name="installedAt" type="date" />
+                </label>
+                <label className="asset-form__wide">
+                  <span>Ghi chú / Quy định bảo quản</span>
+                  <input name="note" placeholder="vd: Điều hoà kèm remote, lưới lọc sạch sẽ..." />
+                </label>
+                <div className="button-row asset-form__wide">
+                  <button className="primary-button" type="submit" disabled={addingEquipment}>
+                    {addingEquipment ? "Đang lưu..." : "Lưu thiết bị"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setShowAddEquipment(false)}
+                  >
+                    Huỷ
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
+            {equipmentList.length === 0 ? (
+              <div className="admin-state" style={{ padding: "1.5rem" }}>
+                Phòng này chưa có danh mục thiết bị bàn giao. Hãy bấm <strong>"+ Thêm thiết bị"</strong> để ghi nhận đồ đạc (máy lạnh, tủ lạnh, giường, nệm...).
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "0.75rem" }}>
+                {equipmentList.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.85rem 1rem",
+                      background: "var(--color-surface, #ffffff)",
+                      border: "1px solid var(--color-border, #e2e8f0)",
+                      borderRadius: "8px",
+                      flexWrap: "wrap",
+                      gap: "0.75rem"
+                    }}
+                  >
+                    <div style={{ minWidth: "220px", flex: "1 1 auto" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <strong style={{ fontSize: "1rem" }}>{item.name}</strong>
+                        <span style={{ fontSize: "0.85rem", color: "var(--color-muted, #64748b)" }}>
+                          x{item.quantity}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "var(--color-muted, #64748b)", marginTop: "0.25rem" }}>
+                        {item.brand ? `Hãng: ${item.brand} ` : ""}
+                        {item.modelOrSerial ? `· Serial: ${item.modelOrSerial} ` : ""}
+                        {item.compensationValueVnd > 0
+                          ? `· Đền bù: ${money(item.compensationValueVnd)}`
+                          : ""}
+                      </div>
+                      {item.note ? (
+                        <div style={{ fontSize: "0.8rem", color: "var(--color-muted, #64748b)", marginTop: "0.2rem", fontStyle: "italic" }}>
+                          {item.note}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <StatusBadge tone={conditionLabels[item.conditionStatus]?.tone ?? "neutral"}>
+                        {conditionLabels[item.conditionStatus]?.label ?? item.conditionStatus}
+                      </StatusBadge>
+                      <select
+                        value={item.conditionStatus}
+                        onChange={(e) =>
+                          void handleUpdateEquipmentCondition(
+                            item.id,
+                            e.target.value as EquipmentConditionStatus
+                          )
+                        }
+                        disabled={saving}
+                        style={{
+                          fontSize: "0.8rem",
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "4px",
+                          border: "1px solid var(--color-border, #cbd5e1)"
+                        }}
+                      >
+                        <option value="EXCELLENT">Hoàn hảo</option>
+                        <option value="GOOD">Tốt</option>
+                        <option value="FAIR">Bình thường</option>
+                        <option value="NEEDS_REPAIR">Cần bảo trì</option>
+                        <option value="DAMAGED">Hư hỏng</option>
+                      </select>
+                      <button
+                        className="danger-button"
+                        type="button"
+                        style={{ padding: "0.3rem 0.6rem", fontSize: "0.8rem" }}
+                        disabled={saving}
+                        onClick={() => void handleDeleteEquipment(item.id, item.name)}
+                        title="Xoá thiết bị"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {data.currentLease ? (

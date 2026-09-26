@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,8 +19,10 @@ import {
   AssetCommandService,
   type PropertyType
 } from "./asset-command.service.js";
+import { RoomEquipmentService } from "./room-equipment.service.js";
 
 type AssetBody = Record<string, unknown>;
+
 
 const propertyTypes = new Set<PropertyType>([
   "BOARDING_HOUSE",
@@ -86,7 +89,10 @@ function optionalPropertyType(input: AssetBody): PropertyType | undefined {
 @Controller("admin/assets")
 @UseGuards(TenantPrincipalGuard)
 export class AssetCommandController {
-  constructor(private readonly commands: AssetCommandService) {}
+  constructor(
+    private readonly commands: AssetCommandService,
+    private readonly equipment: RoomEquipmentService
+  ) {}
 
   @Post("properties")
   createProperty(@Req() request: TenantRequest, @Body() input: AssetBody) {
@@ -191,6 +197,58 @@ export class AssetCommandController {
     @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string
   ) {
     return this.commands.deactivateProperty(this.principal(request), propertyId);
+  }
+
+  @Post("rooms/:roomId/equipment")
+  createEquipment(
+    @Req() request: TenantRequest,
+    @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string,
+    @Body() input: AssetBody
+  ) {
+    return this.equipment.create(this.principal(request), roomId, {
+      name: requiredString(input, "name"),
+      brand: optionalString(input, "brand"),
+      modelOrSerial: optionalString(input, "modelOrSerial"),
+      quantity: optionalInteger(input, "quantity"),
+      conditionStatus: optionalString(input, "conditionStatus") as any,
+      compensationValueVnd:
+        input.compensationValueVnd !== undefined
+          ? Number(input.compensationValueVnd)
+          : undefined,
+      note: optionalString(input, "note"),
+      installedAt: optionalString(input, "installedAt")
+    });
+  }
+
+  @Patch("rooms/:roomId/equipment/:equipmentId")
+  updateEquipment(
+    @Req() request: TenantRequest,
+    @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string,
+    @Param("equipmentId", new ParseUUIDPipe({ version: "4" })) equipmentId: string,
+    @Body() input: AssetBody
+  ) {
+    return this.equipment.update(this.principal(request), roomId, equipmentId, {
+      name: optionalString(input, "name") ?? undefined,
+      brand: optionalString(input, "brand"),
+      modelOrSerial: optionalString(input, "modelOrSerial"),
+      quantity: optionalInteger(input, "quantity"),
+      conditionStatus: optionalString(input, "conditionStatus") as any,
+      compensationValueVnd:
+        input.compensationValueVnd !== undefined
+          ? Number(input.compensationValueVnd)
+          : undefined,
+      note: optionalString(input, "note"),
+      installedAt: optionalString(input, "installedAt")
+    });
+  }
+
+  @Delete("rooms/:roomId/equipment/:equipmentId")
+  deleteEquipment(
+    @Req() request: TenantRequest,
+    @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string,
+    @Param("equipmentId", new ParseUUIDPipe({ version: "4" })) equipmentId: string
+  ) {
+    return this.equipment.delete(this.principal(request), roomId, equipmentId);
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

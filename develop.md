@@ -326,16 +326,17 @@ Implemented live operational slice:
 - utility/service pricing policies already snapshot price + meter reading evidence into renter invoice lines;
 - final meter readiness derived from active room meters and readings on the termination effective date;
 - meter readings automatically move termination meter readiness between PENDING / READY / NOT_REQUIRED;
-- final meter capture is available directly from the Admin termination workflow.
+- final meter capture is available directly from the Admin termination workflow;
+- automated financial readiness for lease terminations derived from real renter invoices, removing manual financial overrides;
+- transactional re-verification of final invoices and debt in termination finalization;
+- renewal workflow: idempotent draft lease creation linked to active lease via renewed_from_lease_id with party preservation and deposit rollover;
+- replacement lease creation directly from terminated lease / vacant room with query parameter prefill;
+- standardized Vietnamese residential lease agreement printable view at /leases/[leaseId]/print with @media print support.
 
 Still required:
 
 - attachments;
-- contract PDF/document output;
-- amendment workflow;
-- renewal workflow;
-- final invoice/debt integration;
-- create replacement/new contract directly from terminated lease/room.
+- amendment workflow.
 
 Important invariant:
 

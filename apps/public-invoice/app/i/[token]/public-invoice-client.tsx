@@ -62,8 +62,46 @@ export function PublicInvoiceClient({ token }: { token: string }) {
   const [invalid, setInvalid] = useState(false);
   const [live, setLive] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   const encodedToken = useMemo(() => encodeURIComponent(token), [token]);
+
+  async function handleReportSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setReporting(true);
+    setReportError(null);
+    setReportSuccess(null);
+    try {
+      const res = await fetch(apiBase + "/public/maintenance/" + encodedToken, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: String(form.get("title") ?? ""),
+          category: String(form.get("category") ?? "OTHER"),
+          description: String(form.get("description") ?? ""),
+          residentName: String(form.get("residentName") ?? "") || undefined,
+          residentPhone: String(form.get("residentPhone") ?? "") || undefined
+        })
+      });
+      const body = (await res.json()) as { message?: string };
+      if (!res.ok) {
+        throw new Error(body.message || "Không thể gửi yêu cầu báo hỏng.");
+      }
+      setReportSuccess(body.message || "Đã gửi thông báo thành công tới chủ nhà.");
+      setTimeout(() => {
+        setShowReportModal(false);
+        setReportSuccess(null);
+      }, 3000);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Có lỗi xảy ra khi gửi.");
+    } finally {
+      setReporting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +291,217 @@ export function PublicInvoiceClient({ token }: { token: string }) {
             </p>
           </section>
         )}
+
+        <section
+          style={{
+            marginTop: "1.5rem",
+            padding: "1rem",
+            background: "#f8fafc",
+            borderRadius: "12px",
+            border: "1px dashed #cbd5e1",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: "0.5rem"
+          }}
+        >
+          <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+            Phòng gặp sự cố hỏng hóc (điện, nước, điều hòa, đồ đạc)?
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowReportModal(true)}
+            style={{
+              padding: "0.5rem 1rem",
+              background: "#ffffff",
+              border: "1px solid #cbd5e1",
+              borderRadius: "8px",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              color: "#0f172a",
+              cursor: "pointer"
+            }}
+          >
+            🛠 Báo hỏng / Yêu cầu sửa chữa
+          </button>
+        </section>
+
+        {showReportModal ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.6)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+              padding: "1rem"
+            }}
+          >
+            <div
+              style={{
+                background: "#ffffff",
+                borderRadius: "16px",
+                padding: "1.5rem",
+                maxWidth: "480px",
+                width: "100%",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)",
+                textAlign: "left"
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "1rem"
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "1.15rem", color: "#0f172a" }}>
+                  Báo hỏng phòng {data.roomCode}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "1.25rem",
+                    cursor: "pointer",
+                    color: "#64748b"
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {reportSuccess ? (
+                <div
+                  style={{
+                    padding: "1rem",
+                    background: "#f0fdf4",
+                    color: "#166534",
+                    borderRadius: "8px",
+                    textAlign: "center",
+                    fontWeight: 500
+                  }}
+                >
+                  ✓ {reportSuccess}
+                </div>
+              ) : (
+                <form onSubmit={(e) => void handleReportSubmit(e)}>
+                  {reportError ? (
+                    <div
+                      style={{
+                        padding: "0.75rem",
+                        background: "#fef2f2",
+                        color: "#991b1b",
+                        borderRadius: "8px",
+                        fontSize: "0.85rem",
+                        marginBottom: "1rem"
+                      }}
+                    >
+                      {reportError}
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: "grid", gap: "0.75rem" }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem", color: "#475569" }}>
+                      <span>Sự cố cần sửa chữa *</span>
+                      <input
+                        name="title"
+                        placeholder="vd: Máy lạnh chảy nước / Chập điện"
+                        required
+                        style={{ padding: "0.6rem", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                      />
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem", color: "#475569" }}>
+                      <span>Loại sự cố</span>
+                      <select
+                        name="category"
+                        defaultValue="OTHER"
+                        style={{ padding: "0.6rem", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                      >
+                        <option value="ELECTRICITY">Điện & Ánh sáng</option>
+                        <option value="PLUMBING">Ống nước & Bồn cầu</option>
+                        <option value="APPLIANCE">Thiết bị máy móc (Máy giặt, Điều hòa...)</option>
+                        <option value="STRUCTURAL">Cửa, khóa, tường</option>
+                        <option value="INTERNET">Mạng Internet / Wifi</option>
+                        <option value="OTHER">Khác</option>
+                      </select>
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem", color: "#475569" }}>
+                      <span>Mô tả chi tiết sự cố *</span>
+                      <textarea
+                        name="description"
+                        rows={3}
+                        placeholder="Mô tả cụ thể để thợ mang đúng đồ sửa..."
+                        required
+                        style={{ padding: "0.6rem", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                      />
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem", color: "#475569" }}>
+                      <span>Tên người báo</span>
+                      <input
+                        name="residentName"
+                        placeholder="Tên của bạn"
+                        style={{ padding: "0.6rem", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                      />
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem", color: "#475569" }}>
+                      <span>Số điện thoại liên hệ</span>
+                      <input
+                        name="residentPhone"
+                        placeholder="Số điện thoại thợ liên hệ khi tới"
+                        style={{ padding: "0.6rem", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                      />
+                    </label>
+
+                    <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
+                      <button
+                        type="submit"
+                        disabled={reporting}
+                        style={{
+                          flex: 1,
+                          padding: "0.75rem",
+                          background: "#0284c7",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontWeight: 600,
+                          cursor: "pointer"
+                        }}
+                      >
+                        {reporting ? "Đang gửi..." : "Gửi yêu cầu sửa chữa"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowReportModal(false)}
+                        style={{
+                          padding: "0.75rem 1rem",
+                          background: "#f1f5f9",
+                          border: "none",
+                          borderRadius: "8px",
+                          color: "#475569",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Đóng
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         <footer className="invoice-footer">
           <span>{data.organizationName}</span>

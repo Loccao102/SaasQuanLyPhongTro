@@ -7,11 +7,13 @@ import { AssetCommandService } from "./application/asset-command.service.js";
 import { AssetReadController } from "./application/asset-read.controller.js";
 import { AssetReadService } from "./application/asset-read.service.js";
 import { RoomApplicationService } from "./application/room-application.service.js";
+import { RoomEquipmentService } from "./application/room-equipment.service.js";
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
   controllers: [AssetReadController, AssetCommandController],
-  providers: [RoomApplicationService, AssetReadService, AssetCommandService],
-  exports: [RoomApplicationService, AssetReadService, AssetCommandService]
+  providers: [RoomApplicationService, AssetReadService, AssetCommandService, RoomEquipmentService],
+  exports: [RoomApplicationService, AssetReadService, AssetCommandService, RoomEquipmentService]
 })
 export class PropertiesModule {}
+

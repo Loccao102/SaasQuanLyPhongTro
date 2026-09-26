@@ -100,6 +100,94 @@ export class AuthenticationRepository {
     };
   }
 
+  async findCredentialByUserId(
+    userId: string
+  ): Promise<CredentialIdentity | null> {
+    const result = await this.db.query<CredentialRow>(
+      `SELECT
+         u.id::text AS user_id,
+         u.email,
+         u.display_name,
+         u.status AS user_status,
+         u.auth_version,
+         c.password_hash,
+         c.password_salt,
+         c.scrypt_n,
+         c.scrypt_r,
+         c.scrypt_p
+       FROM users u
+       JOIN user_password_credentials c ON c.user_id = u.id
+       WHERE u.id = $1::uuid
+       LIMIT 1`,
+      [userId]
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      userId: row.user_id,
+      email: row.email,
+      displayName: row.display_name,
+      userStatus: row.user_status,
+      authVersion: row.auth_version,
+      credential: {
+        hash: row.password_hash,
+        salt: row.password_salt,
+        n: row.scrypt_n,
+        r: row.scrypt_r,
+        p: row.scrypt_p
+      }
+    };
+  }
+
+  async changePassword(
+    userId: string,
+    currentSessionId: string,
+    credential: PasswordCredential
+  ): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      const userResult = await client.query<{ auth_version: number }>(
+        `UPDATE users
+         SET auth_version = auth_version + 1, updated_at = now()
+         WHERE id = $1::uuid
+         RETURNING auth_version`,
+        [userId]
+      );
+      const newVersion = userResult.rows[0]?.auth_version;
+      if (!newVersion) {
+        throw new Error("User was not found.");
+      }
+
+      await client.query(
+        `UPDATE user_password_credentials
+         SET password_hash = $2,
+             password_salt = $3,
+             scrypt_n = $4,
+             scrypt_r = $5,
+             scrypt_p = $6,
+             password_changed_at = now(),
+             updated_at = now()
+         WHERE user_id = $1::uuid`,
+        [
+          userId,
+          credential.hash,
+          credential.salt,
+          credential.n,
+          credential.r,
+          credential.p
+        ]
+      );
+
+      await client.query(
+        `UPDATE auth_sessions
+         SET auth_version = $2, last_seen_at = now()
+         WHERE id = $1::uuid`,
+        [currentSessionId, newVersion]
+      );
+    });
+  }
+
   async createSession(input: {
     userId: string;
     authVersion: number;

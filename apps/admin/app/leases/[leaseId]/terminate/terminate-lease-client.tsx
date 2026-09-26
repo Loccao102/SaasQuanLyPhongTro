@@ -6,7 +6,8 @@ import { AdminShell } from "../../../../components/admin-shell";
 import {
   adminLeasesApi,
   type LeaseDetailResponse,
-  type LeaseTerminationMeterReadiness
+  type LeaseTerminationMeterReadiness,
+  type LeaseTerminationFinancialReadiness
 } from "../../../../lib/admin-leases-api";
 
 function readinessTone(value: "PENDING" | "READY" | "NOT_REQUIRED") {
@@ -17,6 +18,8 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
   const [data, setData] = useState<LeaseDetailResponse | null>(null);
   const [meterReadiness, setMeterReadiness] =
     useState<LeaseTerminationMeterReadiness | null>(null);
+  const [financialReadiness, setFinancialReadiness] =
+    useState<LeaseTerminationFinancialReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -39,12 +42,14 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [leaseData, meterData] = await Promise.all([
+      const [leaseData, meterData, financialData] = await Promise.all([
         adminLeasesApi.detail(leaseId),
-        adminLeasesApi.terminationMeterReadiness(leaseId)
+        adminLeasesApi.terminationMeterReadiness(leaseId),
+        adminLeasesApi.terminationFinancialReadiness(leaseId)
       ]);
       setData(leaseData);
       setMeterReadiness(meterData);
+      setFinancialReadiness(financialData);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -471,19 +476,70 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                 <div className="readiness-row">
                   <div>
                     <strong>Công nợ cuối</strong>
-                    <span>Billing/Payment giữ invoice và settlement source-of-truth.</span>
+                    <span>
+                      Renter Billing tự động xác nhận theo các hóa đơn của hợp đồng.
+                      {financialReadiness?.summary.outstandingDebtVnd ? (
+                        <> · Còn nợ: <MoneyDisplay amountVnd={financialReadiness.summary.outstandingDebtVnd} /></>
+                      ) : null}
+                    </span>
                   </div>
                   <div className="button-row">
-                    <StatusBadge tone={readinessTone(readiness!.financial)}>
-                      {readiness!.financial}
+                    <StatusBadge tone={readinessTone(financialReadiness?.state ?? readiness!.financial)}>
+                      {financialReadiness?.state ?? readiness!.financial}
                     </StatusBadge>
-                    {data.permissions.terminate ? (
-                      <>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "READY")}>Ready</button>
-                        <button className="secondary-button secondary-button--compact" type="button" disabled={saving} onClick={() => void setReadiness("financial", "NOT_REQUIRED")}>N/A</button>
-                      </>
-                    ) : null}
                   </div>
+                </div>
+
+                <div className="asset-form__wide">
+                  {!financialReadiness || financialReadiness.summary.invoiceCount === 0 ? (
+                    <p className="inline-note">
+                      Hợp đồng không có hóa đơn nào phát sinh công nợ tồn đọng. Financial readiness được tự động xác nhận NOT_REQUIRED.
+                    </p>
+                  ) : (
+                    <>
+                      <dl className="detail-list" style={{ marginBottom: "0.75rem" }}>
+                        <div>
+                          <dt>Tổng tiền hóa đơn</dt>
+                          <dd><MoneyDisplay amountVnd={financialReadiness.summary.totalInvoicedVnd} /></dd>
+                        </div>
+                        <div>
+                          <dt>Đã thanh toán</dt>
+                          <dd><MoneyDisplay amountVnd={financialReadiness.summary.totalPaidVnd} /></dd>
+                        </div>
+                        <div>
+                          <dt>Công nợ còn lại</dt>
+                          <dd><MoneyDisplay amountVnd={financialReadiness.summary.outstandingDebtVnd} /></dd>
+                        </div>
+                      </dl>
+
+                      {financialReadiness.summary.hasDraftInvoices ? (
+                        <p className="inline-note" style={{ color: "var(--warning-color, #b45309)" }}>
+                          ⚠️ Có hóa đơn DRAFT chưa phát hành. Vui lòng phát hành hoặc hủy hóa đơn draft trước khi chấm dứt.
+                        </p>
+                      ) : null}
+
+                      {financialReadiness.invoices.map((inv) => (
+                        <div className="resident-row" key={inv.id}>
+                          <div>
+                            <strong>
+                              Hóa đơn {inv.invoiceNumber}
+                              {inv.status === "DRAFT" ? " (Bản nháp)" : ""}
+                            </strong>
+                            <span>
+                              Kỳ: {inv.periodStart} → {inv.periodEnd} · Hạn: {inv.dueDate}
+                              {" · Còn nợ: "}
+                              <MoneyDisplay amountVnd={inv.remainingVnd} />
+                            </span>
+                          </div>
+                          <div className="button-row">
+                            <StatusBadge tone={inv.collectionStatus === "PAID" ? "success" : inv.collectionStatus === "PARTIALLY_PAID" ? "warning" : "danger"}>
+                              {inv.collectionStatus}
+                            </StatusBadge>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
                 <div className="readiness-row">
                   <div>
@@ -583,7 +639,24 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
       {lease.status === "TERMINATED" ? (
         <div className="admin-state">
           <strong>Hợp đồng đã kết thúc.</strong>
-          <span>Phòng không còn bị Lease này chiếm dụng. Lịch sử vẫn được giữ nguyên.</span>
+          <span>Phòng {lease.room.code} không còn bị Lease này chiếm dụng. Lịch sử vẫn được giữ nguyên.</span>
+          <div style={{ marginTop: "1rem" }}>
+            <a
+              className="primary-link-button"
+              href={
+                "/leases/new?propertyId=" +
+                encodeURIComponent(lease.property.id) +
+                "&roomId=" +
+                encodeURIComponent(lease.room.id) +
+                "&baseRentVnd=" +
+                lease.baseRentVnd +
+                "&depositRequiredVnd=" +
+                lease.depositRequiredVnd
+              }
+            >
+              + Tạo hợp đồng mới cho phòng này
+            </a>
+          </div>
         </div>
       ) : null}
 

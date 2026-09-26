@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   NotFoundException,
@@ -139,6 +140,25 @@ export class LeaseAdminController {
     });
   }
 
+  @Post(":leaseId/renew")
+  renew(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.admin.renewLease(this.principal(request), leaseId, {
+      newLeaseId: requiredUuid(input, "newLeaseId"),
+      idempotencyKey: requiredString(input, "idempotencyKey"),
+      newLeaseCode: requiredString(input, "newLeaseCode"),
+      startDate: requiredString(input, "startDate"),
+      plannedEndDate: optionalString(input, "plannedEndDate"),
+      baseRentVnd: requiredInteger(input, "baseRentVnd"),
+      depositRequiredVnd: requiredInteger(input, "depositRequiredVnd"),
+      billingDay: requiredInteger(input, "billingDay"),
+      rolloverDeposit: typeof input.rolloverDeposit === "boolean" ? input.rolloverDeposit : undefined
+    });
+  }
+
   @Post(":leaseId/activate")
   activate(
     @Req() request: TenantRequest,
@@ -219,6 +239,66 @@ export class LeaseAdminController {
         idempotencyKey: requiredString(input, "idempotencyKey")
       })
     );
+  }
+
+  @Get(":leaseId/attachments")
+  listAttachments(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string
+  ) {
+    return this.admin.listAttachments(this.principal(request), leaseId);
+  }
+
+  @Post(":leaseId/attachments")
+  addAttachment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.admin.addAttachment(this.principal(request), leaseId, {
+      attachmentId: input.attachmentId ? requiredUuid(input, "attachmentId") : undefined,
+      attachmentType: requiredString(input, "attachmentType") as any,
+      fileName: requiredString(input, "fileName"),
+      fileUrl: requiredString(input, "fileUrl"),
+      fileSizeBytes: input.fileSizeBytes !== undefined && input.fileSizeBytes !== null ? Number(input.fileSizeBytes) : undefined,
+      mimeType: optionalString(input, "mimeType"),
+      note: optionalString(input, "note")
+    });
+  }
+
+  @Delete(":leaseId/attachments/:attachmentId")
+  deleteAttachment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Param("attachmentId", new ParseUUIDPipe({ version: "4" })) attachmentId: string
+  ) {
+    return this.admin.deleteAttachment(this.principal(request), leaseId, attachmentId);
+  }
+
+  @Get(":leaseId/amendments")
+  listAmendments(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string
+  ) {
+    return this.admin.listAmendments(this.principal(request), leaseId);
+  }
+
+  @Post(":leaseId/amendments")
+  createAmendment(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.admin.createAmendment(this.principal(request), leaseId, {
+      amendmentId: input.amendmentId ? requiredUuid(input, "amendmentId") : undefined,
+      amendmentNumber: requiredString(input, "amendmentNumber"),
+      effectiveDate: requiredString(input, "effectiveDate"),
+      changesSummary: requiredString(input, "changesSummary"),
+      adjustedBaseRentVnd: input.adjustedBaseRentVnd !== undefined && input.adjustedBaseRentVnd !== null ? requiredInteger(input, "adjustedBaseRentVnd") : undefined,
+      adjustedDepositRequiredVnd: input.adjustedDepositRequiredVnd !== undefined && input.adjustedDepositRequiredVnd !== null ? requiredInteger(input, "adjustedDepositRequiredVnd") : undefined,
+      adjustedPlannedEndDate: optionalString(input, "adjustedPlannedEndDate"),
+      note: optionalString(input, "note")
+    });
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

@@ -35,5 +35,12 @@ export const adminAuthApi = {
     adminApiRequest<{ loggedOut: boolean }>("/auth/logout", {
       method: "POST",
       organization: false
+    }),
+
+  changePassword: (input: { currentPassword: string; newPassword: string }) =>
+    adminApiRequest<{ success: boolean; message: string }>("/auth/change-password", {
+      method: "POST",
+      body: input,
+      organization: false
     })
 };

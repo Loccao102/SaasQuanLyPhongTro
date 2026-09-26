@@ -12,11 +12,15 @@ import type {
   TenantRequest
 } from "../../identity/tenant-principal.js";
 import { AssetReadService } from "./asset-read.service.js";
+import { RoomEquipmentService } from "./room-equipment.service.js";
 
 @Controller("admin/assets")
 @UseGuards(TenantPrincipalGuard)
 export class AssetReadController {
-  constructor(private readonly assets: AssetReadService) {}
+  constructor(
+    private readonly assets: AssetReadService,
+    private readonly equipment: RoomEquipmentService
+  ) {}
 
   @Get()
   overview(@Req() request: TenantRequest) {
@@ -37,6 +41,14 @@ export class AssetReadController {
     @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string
   ) {
     return this.assets.room(this.principal(request), roomId);
+  }
+
+  @Get("rooms/:roomId/equipment")
+  roomEquipment(
+    @Req() request: TenantRequest,
+    @Param("roomId", new ParseUUIDPipe({ version: "4" })) roomId: string
+  ) {
+    return this.equipment.listByRoom(this.principal(request), roomId);
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

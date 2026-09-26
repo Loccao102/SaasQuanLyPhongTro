@@ -1,5 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
+  hashPassword,
+  InvalidPasswordPolicyError,
   PASSWORD_KEY_LENGTH,
   PASSWORD_SCRYPT_N,
   PASSWORD_SCRYPT_P,
@@ -122,6 +124,37 @@ export class AuthenticationService {
     const tokenHash = safeTokenHash(sessionToken);
     if (!tokenHash) return;
     await this.repository.revokeSessionByTokenHash(tokenHash);
+  }
+
+  async changePassword(
+    userId: string,
+    currentSessionId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const identity = await this.repository.findCredentialByUserId(userId);
+    if (!identity || identity.userStatus !== "ACTIVE") {
+      throw new InvalidCredentialsError();
+    }
+
+    const verified = await verifyPassword(currentPassword, identity.credential);
+    if (!verified) {
+      throw new BadRequestException("Mật khẩu hiện tại không chính xác.");
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException("Mật khẩu mới không được trùng với mật khẩu hiện tại.");
+    }
+
+    try {
+      const newCredential = await hashPassword(newPassword);
+      await this.repository.changePassword(userId, currentSessionId, newCredential);
+    } catch (err) {
+      if (err instanceof InvalidPasswordPolicyError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
   }
 
   sessionTtlSeconds(): number {

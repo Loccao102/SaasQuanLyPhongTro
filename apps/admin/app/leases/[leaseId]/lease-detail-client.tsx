@@ -5,6 +5,8 @@ import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/u
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminLeasesApi,
+  type LeaseAmendment,
+  type LeaseAttachment,
   type LeaseDepositSummary,
   type LeaseDetailResponse,
   type LeaseStatus,
@@ -41,6 +43,36 @@ function depositStatusMeta(status: LeaseDepositSummary["status"]) {
   }
 }
 
+function attachmentTypeMeta(type: string) {
+  switch (type) {
+    case "CITIZEN_ID_FRONT":
+      return { label: "CCCD MẶT TRƯỚC", tone: "info" as const };
+    case "CITIZEN_ID_BACK":
+      return { label: "CCCD MẶT SAU", tone: "info" as const };
+    case "HANDOVER_MINUTES":
+      return { label: "BIÊN BẢN BÀN GIAO", tone: "success" as const };
+    case "CONTRACT_SCAN":
+      return { label: "BẢN SCAN HỢP ĐỒNG", tone: "neutral" as const };
+    default:
+      return { label: "TÀI LIỆU KHÁC", tone: "neutral" as const };
+  }
+}
+
+function formatBytes(bytes: number | null): string {
+  if (!bytes) return "—";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function formatVnd(amount: number) {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+
 function auditLabel(action: string): string {
   switch (action) {
     case "LEASE_DRAFT_CREATED":
@@ -71,6 +103,14 @@ function auditLabel(action: string): string {
       return "Ghi nhận thu tiền cọc";
     case "LEASE_DEPOSIT_SETTLED":
       return "Tất toán tiền cọc";
+    case "LEASE_RENEWAL_DRAFT_CREATED":
+      return "Tạo bản nháp gia hạn hợp đồng";
+    case "LEASE_ATTACHMENT_ADDED":
+      return "Thêm tệp đính kèm";
+    case "LEASE_ATTACHMENT_REMOVED":
+      return "Xóa tệp đính kèm";
+    case "LEASE_AMENDED":
+      return "Ký phụ lục hợp đồng";
     default:
       return action;
   }
@@ -101,6 +141,12 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     useState(false);
   const [primaryReplacementConfirmed, setPrimaryReplacementConfirmed] =
     useState(false);
+  const [renewalModalOpen, setRenewalModalOpen] = useState(false);
+  const [renewalConfirmed, setRenewalConfirmed] = useState(false);
+  const [attachments, setAttachments] = useState<LeaseAttachment[]>([]);
+  const [amendments, setAmendments] = useState<LeaseAmendment[]>([]);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [amendmentModalOpen, setAmendmentModalOpen] = useState(false);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -116,12 +162,16 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [leaseData, depositData] = await Promise.all([
+      const [leaseData, depositData, attachmentData, amendmentData] = await Promise.all([
         adminLeasesApi.detail(leaseId),
-        adminLeasesApi.deposit(leaseId)
+        adminLeasesApi.deposit(leaseId),
+        adminLeasesApi.attachments(leaseId),
+        adminLeasesApi.amendments(leaseId)
       ]);
       setData(leaseData);
       setDeposit(depositData);
+      setAttachments(attachmentData.attachments);
+      setAmendments(amendmentData.amendments);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -423,6 +473,131 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     }
   }
 
+  async function submitRenewal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data) return;
+    const form = new FormData(event.currentTarget);
+    const newLeaseId = crypto.randomUUID();
+    const idempotencyKey = keyFor("renew-lease");
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const result = await adminLeasesApi.renewLease(leaseId, {
+        newLeaseId,
+        idempotencyKey,
+        newLeaseCode: String(form.get("newLeaseCode") ?? "").trim(),
+        startDate: String(form.get("startDate") ?? "").trim(),
+        plannedEndDate: String(form.get("plannedEndDate") ?? "").trim() || null,
+        baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
+        depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
+        billingDay: Number(form.get("billingDay") ?? 1),
+        rolloverDeposit: form.get("rolloverDeposit") === "on"
+      });
+      clearKey("renew-lease");
+      setRenewalModalOpen(false);
+      setRenewalConfirmed(false);
+      setActionSuccess("Đã tạo bản nháp gia hạn thành công. Đang chuyển hướng...");
+      window.location.assign("/leases/" + result.leaseId);
+    } catch (action) {
+      setActionError(
+        action instanceof Error
+          ? action.message
+          : "Không thể gia hạn hợp đồng."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitAttachment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const file = form.get("file") as File | null;
+    if (!file || file.size === 0) {
+      setActionError("Vui lòng chọn tệp tài liệu / ảnh.");
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const fileUrl = String(reader.result);
+        await adminLeasesApi.addAttachment(leaseId, {
+          attachmentType: String(form.get("attachmentType") ?? "OTHER") as any,
+          fileName: file.name,
+          fileUrl,
+          fileSizeBytes: file.size,
+          mimeType: file.type,
+          note: String(form.get("note") ?? "") || null
+        });
+        setUploadModalOpen(false);
+        setActionSuccess("Đã thêm tệp đính kèm thành công.");
+        await load();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Không thể tải lên tệp.");
+      } finally {
+        setSaving(false);
+      }
+    };
+    reader.onerror = () => {
+      setActionError("Lỗi đọc tệp tải lên.");
+      setSaving(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function removeAttachment(attachmentId: string) {
+    if (!confirm("Bạn có chắc chắn muốn xóa tệp đính kèm này?")) return;
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.deleteAttachment(leaseId, attachmentId);
+      setActionSuccess("Đã xóa tệp đính kèm.");
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Không thể xóa tệp.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitAmendment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const adjustedRent = form.get("adjustedBaseRentVnd");
+      const adjustedDeposit = form.get("adjustedDepositRequiredVnd");
+      const adjustedEndDate = form.get("adjustedPlannedEndDate");
+
+      await adminLeasesApi.createAmendment(leaseId, {
+        amendmentNumber: String(form.get("amendmentNumber") ?? "").trim(),
+        effectiveDate: String(form.get("effectiveDate") ?? "").trim(),
+        changesSummary: String(form.get("changesSummary") ?? "").trim(),
+        adjustedBaseRentVnd: adjustedRent ? Number(adjustedRent) : undefined,
+        adjustedDepositRequiredVnd: adjustedDeposit ? Number(adjustedDeposit) : undefined,
+        adjustedPlannedEndDate: adjustedEndDate ? String(adjustedEndDate).trim() : undefined,
+        note: String(form.get("note") ?? "").trim() || undefined
+      });
+      setAmendmentModalOpen(false);
+      setActionSuccess("Đã ký phụ lục hợp đồng và cập nhật điều khoản thành công.");
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Không thể tạo phụ lục.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (error) {
     return (
       <AdminShell title="Chi tiết hợp đồng" activeNav="Hợp đồng">
@@ -459,6 +634,38 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         action={
           <div className="button-row">
             <a className="secondary-link-button" href="/leases">← Danh sách</a>
+            <a
+              className="secondary-link-button"
+              href={"/leases/" + lease.id + "/print"}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              In hợp đồng
+            </a>
+            {data.permissions.manage && lease.status === "ACTIVE" ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setRenewalModalOpen(true)}
+              >
+                Gia hạn hợp đồng
+              </button>
+            ) : null}
+            {lease.status === "TERMINATED" ? (
+              <a
+                className="primary-link-button"
+                href={
+                  "/leases/new?roomId=" +
+                  encodeURIComponent(lease.room.id) +
+                  "&baseRentVnd=" +
+                  lease.baseRentVnd +
+                  "&depositRequiredVnd=" +
+                  lease.depositRequiredVnd
+                }
+              >
+                + Tạo HĐ mới cho phòng này
+              </a>
+            ) : null}
             {data.permissions.terminate &&
             (lease.status === "ACTIVE" || lease.status === "TERMINATION_SCHEDULED") ? (
               <a className="danger-link-button" href={"/leases/" + lease.id + "/terminate"}>
@@ -483,6 +690,138 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         </div>
       ) : null}
 
+      {renewalModalOpen && lease.status === "ACTIVE" ? (
+        <section className="panel" style={{ border: "2px solid var(--color-primary)", marginBottom: "20px" }}>
+          <SectionHeader
+            title="Gia hạn hợp đồng (Tạo bản nháp mới)"
+            action={
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setRenewalModalOpen(false)}
+              >
+                Đóng
+              </button>
+            }
+          />
+          <p className="inline-note" style={{ marginBottom: "16px" }}>
+            Hợp đồng mới sẽ được tạo ở trạng thái <strong>BẢN NHÁP (DRAFT)</strong> và liên kết với hợp đồng hiện tại ({lease.code}).
+            Toàn bộ thông tin người thuê chính và người ở cùng sẽ được tự động sao chép. Hợp đồng hiện tại tiếp tục hiệu lực cho đến khi hợp đồng mới được kích hoạt.
+          </p>
+          <form className="asset-form" onSubmit={(event) => void submitRenewal(event)}>
+            <label>
+              <span>Mã hợp đồng mới</span>
+              <input
+                name="newLeaseCode"
+                required
+                defaultValue={lease.code + "-GH"}
+                placeholder="VD: HD-2026-0002"
+              />
+            </label>
+            <label>
+              <span>Ngày bắt đầu mới</span>
+              <input
+                name="startDate"
+                type="date"
+                required
+                defaultValue={
+                  lease.plannedEndDate
+                    ? (() => {
+                        const d = new Date(lease.plannedEndDate);
+                        d.setDate(d.getDate() + 1);
+                        return d.toISOString().slice(0, 10);
+                      })()
+                    : new Date().toISOString().slice(0, 10)
+                }
+              />
+            </label>
+            <label>
+              <span>Ngày kết thúc dự kiến</span>
+              <input
+                name="plannedEndDate"
+                type="date"
+                defaultValue={
+                  lease.plannedEndDate
+                    ? (() => {
+                        const d = new Date(lease.plannedEndDate);
+                        d.setFullYear(d.getFullYear() + 1);
+                        return d.toISOString().slice(0, 10);
+                      })()
+                    : ""
+                }
+              />
+            </label>
+            <label>
+              <span>Tiền phòng / tháng (VND)</span>
+              <input
+                name="baseRentVnd"
+                type="number"
+                min="0"
+                step="1"
+                required
+                defaultValue={lease.baseRentVnd}
+              />
+            </label>
+            <label>
+              <span>Tiền cọc yêu cầu (VND)</span>
+              <input
+                name="depositRequiredVnd"
+                type="number"
+                min="0"
+                step="1"
+                required
+                defaultValue={lease.depositRequiredVnd}
+              />
+            </label>
+            <label>
+              <span>Ngày chốt hàng tháng</span>
+              <input
+                name="billingDay"
+                type="number"
+                min="1"
+                max="31"
+                required
+                defaultValue={lease.billingDay}
+              />
+            </label>
+            <label className="asset-form__wide confirm-check">
+              <input
+                type="checkbox"
+                name="rolloverDeposit"
+                defaultChecked={deposit ? deposit.heldVnd > 0 : false}
+              />
+              <span>
+                Chuyển tiếp số dư tiền cọc đang giữ ({deposit ? <MoneyDisplay amountVnd={deposit.heldVnd} /> : "0đ"}) sang hợp đồng gia hạn
+              </span>
+            </label>
+            <label className="asset-form__wide confirm-check">
+              <input
+                type="checkbox"
+                checked={renewalConfirmed}
+                onChange={(e) => setRenewalConfirmed(e.target.checked)}
+              />
+              <span>Tôi xác nhận tạo bản nháp gia hạn với các điều khoản trên.</span>
+            </label>
+            <div className="button-row asset-form__wide">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setRenewalModalOpen(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={saving || !renewalConfirmed}
+              >
+                {saving ? "Đang xử lý…" : "Tạo hợp đồng gia hạn"}
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
       <section className="lease-detail-grid">
         <article className="panel">
           <SectionHeader
@@ -496,6 +835,19 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             <div><dt>Ngày kết thúc dự kiến</dt><dd>{lease.plannedEndDate ?? "Không thời hạn"}</dd></div>
             <div><dt>Ngày chốt hàng tháng</dt><dd>Ngày {lease.billingDay}</dd></div>
             <div><dt>Phiên bản</dt><dd>v{lease.version}</dd></div>
+            {lease.renewedFromLeaseId ? (
+              <div>
+                <dt>Gia hạn từ hợp đồng</dt>
+                <dd>
+                  <a
+                    href={"/leases/" + lease.renewedFromLeaseId}
+                    style={{ color: "var(--color-primary)", textDecoration: "underline" }}
+                  >
+                    Xem hợp đồng gốc →
+                  </a>
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </article>
 
@@ -1057,6 +1409,259 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </div>
             </div>
           ))
+        )}
+      </section>
+
+      <section className="panel">
+        <SectionHeader
+          title="Tài liệu & Hồ sơ đính kèm"
+          action={
+            data.permissions.manage ? (
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => setUploadModalOpen(!uploadModalOpen)}
+              >
+                {uploadModalOpen ? "Đóng form tải lên" : "+ Tải lên tài liệu / CCCD"}
+              </button>
+            ) : null
+          }
+        />
+
+        {uploadModalOpen ? (
+          <div style={{ background: "var(--color-bg-secondary, #f8fafc)", padding: "16px", borderRadius: "8px", marginBottom: "16px", border: "1px solid var(--color-border, #e2e8f0)" }}>
+            <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: 600 }}>Tải lên tài liệu mới</h4>
+            <form className="asset-form" onSubmit={(event) => void submitAttachment(event)}>
+              <label>
+                <span>Loại tài liệu</span>
+                <select name="attachmentType" defaultValue="CITIZEN_ID_FRONT" required>
+                  <option value="CITIZEN_ID_FRONT">CCCD Mặt trước</option>
+                  <option value="CITIZEN_ID_BACK">CCCD Mặt sau</option>
+                  <option value="CONTRACT_SCAN">Bản scan hợp đồng đã ký</option>
+                  <option value="HANDOVER_MINUTES">Biên bản bàn giao phòng / đồ đạc</option>
+                  <option value="OTHER">Tài liệu khác</option>
+                </select>
+              </label>
+              <label>
+                <span>Tệp tin (ảnh hoặc PDF)</span>
+                <input name="file" type="file" accept="image/*,application/pdf" required />
+              </label>
+              <label>
+                <span>Ghi chú bổ sung (tùy chọn)</span>
+                <input name="note" placeholder="VD: CCCD người thuê phụ hoặc ghi chú bàn giao..." />
+              </label>
+              <div className="button-row" style={{ marginTop: "12px" }}>
+                <button className="secondary-button" type="button" onClick={() => setUploadModalOpen(false)}>Hủy</button>
+                <button className="primary-button" type="submit" disabled={saving}>Tải lên</button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {attachments.length === 0 ? (
+          <div className="admin-state">Chưa có tài liệu hoặc ảnh CCCD nào được đính kèm.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
+            {attachments.map((item) => {
+              const typeMeta = attachmentTypeMeta(item.attachmentType);
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    border: "1px solid var(--color-border, #e2e8f0)",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "8px",
+                    background: "var(--color-bg, #ffffff)"
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                      <StatusBadge tone={typeMeta.tone}>
+                        {typeMeta.label}
+                      </StatusBadge>
+                      <span style={{ fontSize: "11px", color: "var(--color-muted, #64748b)" }}>
+                        {formatBytes(item.fileSizeBytes)}
+                      </span>
+                    </div>
+                    <strong style={{ display: "block", fontSize: "13px", wordBreak: "break-all" }}>
+                      {item.fileName}
+                    </strong>
+                    {item.note ? (
+                      <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "var(--color-muted, #64748b)" }}>
+                        {item.note}
+                      </p>
+                    ) : null}
+                    <div style={{ fontSize: "11px", color: "var(--color-muted, #94a3b8)", marginTop: "6px" }}>
+                      Đã tải lên: {new Date(item.uploadedAt).toLocaleDateString("vi-VN")}
+                    </div>
+                  </div>
+                  <div className="button-row" style={{ marginTop: "8px", justifyContent: "flex-end" }}>
+                    <a
+                      className="secondary-link-button secondary-link-button--compact"
+                      href={item.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={item.fileName}
+                    >
+                      Xem / Tải về
+                    </a>
+                    {data.permissions.manage ? (
+                      <button
+                        className="danger-button danger-button--compact"
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void removeAttachment(item.id)}
+                      >
+                        Xóa
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <SectionHeader
+          title="Phụ lục hợp đồng điều chỉnh"
+          action={
+            data.permissions.manage && (lease.status === "ACTIVE" || lease.status === "TERMINATION_SCHEDULED") ? (
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => setAmendmentModalOpen(!amendmentModalOpen)}
+              >
+                {amendmentModalOpen ? "Đóng form phụ lục" : "+ Ký phụ lục điều chỉnh"}
+              </button>
+            ) : null
+          }
+        />
+
+        {amendmentModalOpen ? (
+          <div style={{ background: "var(--color-bg-secondary, #f8fafc)", padding: "16px", borderRadius: "8px", marginBottom: "16px", border: "1px solid var(--color-border, #e2e8f0)" }}>
+            <h4 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: 600 }}>Tạo phụ lục điều chỉnh hợp đồng</h4>
+            <p className="inline-note" style={{ marginBottom: "12px" }}>
+              Khi lưu phụ lục, hệ thống sẽ lưu vết lịch sử điều chỉnh pháp lý và tự động cập nhật điều khoản của hợp đồng hiện tại (giá thuê, tiền cọc, ngày kết thúc).
+            </p>
+            <form className="asset-form" onSubmit={(event) => void submitAmendment(event)}>
+              <label>
+                <span>Số hiệu phụ lục</span>
+                <input
+                  name="amendmentNumber"
+                  required
+                  defaultValue={"PL-" + lease.code + "-" + String(amendments.length + 1).padStart(2, "0")}
+                  placeholder="VD: PL-01/HD-2026"
+                />
+              </label>
+              <label>
+                <span>Ngày có hiệu lực</span>
+                <input
+                  name="effectiveDate"
+                  type="date"
+                  required
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                />
+              </label>
+              <label>
+                <span>Tóm tắt nội dung thay đổi</span>
+                <textarea
+                  name="changesSummary"
+                  required
+                  placeholder="VD: Điều chỉnh giá thuê từ tháng 10/2026 và gia hạn thêm 6 tháng hợp đồng"
+                  rows={2}
+                />
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <label>
+                  <span>Giá thuê mới (VND/tháng) - Để trống nếu không đổi</span>
+                  <input
+                    name="adjustedBaseRentVnd"
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder={"Hiện tại: " + formatVnd(lease.baseRentVnd)}
+                  />
+                </label>
+                <label>
+                  <span>Tiền cọc yêu cầu mới (VND) - Để trống nếu không đổi</span>
+                  <input
+                    name="adjustedDepositRequiredVnd"
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder={"Hiện tại: " + formatVnd(lease.depositRequiredVnd)}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>Ngày kết thúc mới - Để trống nếu không đổi</span>
+                <input
+                  name="adjustedPlannedEndDate"
+                  type="date"
+                  placeholder={lease.plannedEndDate ?? ""}
+                />
+              </label>
+              <label>
+                <span>Ghi chú thêm</span>
+                <input name="note" placeholder="Thỏa thuận riêng giữa hai bên..." />
+              </label>
+              <div className="button-row" style={{ marginTop: "12px" }}>
+                <button className="secondary-button" type="button" onClick={() => setAmendmentModalOpen(false)}>Hủy</button>
+                <button className="primary-button" type="submit" disabled={saving}>Xác nhận ký phụ lục</button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {amendments.length === 0 ? (
+          <div className="admin-state">Chưa có phụ lục điều chỉnh nào được ký cho hợp đồng này.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {amendments.map((am) => (
+              <div
+                key={am.id}
+                style={{
+                  border: "1px solid var(--color-border, #e2e8f0)",
+                  borderRadius: "8px",
+                  padding: "14px",
+                  background: "var(--color-bg, #ffffff)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <strong style={{ fontSize: "14px" }}>{am.amendmentNumber}</strong>
+                    <StatusBadge tone="info">Hiệu lực: {am.effectiveDate}</StatusBadge>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--color-muted, #64748b)" }}>
+                    {new Date(am.createdAt).toLocaleDateString("vi-VN")}
+                  </span>
+                </div>
+                <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "var(--color-text, #1e293b)" }}>
+                  {am.changesSummary}
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", fontSize: "12px", background: "var(--color-bg-secondary, #f8fafc)", padding: "8px 12px", borderRadius: "6px" }}>
+                  {am.adjustedBaseRentVnd !== null ? (
+                    <div>Giá thuê mới: <strong><MoneyDisplay amountVnd={am.adjustedBaseRentVnd} /></strong></div>
+                  ) : null}
+                  {am.adjustedDepositRequiredVnd !== null ? (
+                    <div>Cọc mới: <strong><MoneyDisplay amountVnd={am.adjustedDepositRequiredVnd} /></strong></div>
+                  ) : null}
+                  {am.adjustedPlannedEndDate !== null ? (
+                    <div>Kết thúc mới: <strong>{am.adjustedPlannedEndDate}</strong></div>
+                  ) : null}
+                  {am.note ? (
+                    <div style={{ color: "var(--color-muted, #64748b)" }}>Ghi chú: {am.note}</div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 

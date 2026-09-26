@@ -125,6 +125,36 @@ export class AuthenticationController {
     return { loggedOut: true };
   }
 
+  @Post("change-password")
+  async changePassword(
+    @Req() request: Request,
+    @Body() body: Record<string, unknown>
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const sessionToken = this.sessionCookie(request);
+    const session = await this.authentication.authenticateSession(sessionToken);
+
+    if (!session) {
+      throw new UnauthorizedException("Phiên đăng nhập đã hết hạn hoặc không hợp lệ.");
+    }
+
+    if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
+      throw new UnauthorizedException("CSRF token không hợp lệ.");
+    }
+
+    const currentPassword = this.requiredString(body.currentPassword, "currentPassword");
+    const newPassword = this.requiredString(body.newPassword, "newPassword");
+
+    await this.authentication.changePassword(
+      session.userId,
+      session.sessionId,
+      currentPassword,
+      newPassword
+    );
+
+    return { success: true, message: "Đổi mật khẩu thành công." };
+  }
+
   private sessionCookie(request: Request): string | undefined {
     return parseCookies(request.headers.cookie)[authCookieNames().session];
   }

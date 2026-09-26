@@ -90,6 +90,40 @@ export type CreateRoomInput = {
   sortOrder?: number;
 };
 
+export type EquipmentConditionStatus =
+  | "EXCELLENT"
+  | "GOOD"
+  | "FAIR"
+  | "DAMAGED"
+  | "NEEDS_REPAIR";
+
+export type RoomEquipment = {
+  id: string;
+  organizationId: string;
+  propertyId: string;
+  roomId: string;
+  name: string;
+  brand: string | null;
+  modelOrSerial: string | null;
+  quantity: number;
+  conditionStatus: EquipmentConditionStatus;
+  compensationValueVnd: number;
+  note: string | null;
+  installedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateRoomEquipmentInput = {
+  name: string;
+  brand?: string | null;
+  modelOrSerial?: string | null;
+  quantity?: number;
+  conditionStatus?: EquipmentConditionStatus;
+  compensationValueVnd?: number;
+  note?: string | null;
+  installedAt?: string | null;
+};
 
 async function request<T>(
   path: string,
@@ -156,5 +190,41 @@ export const adminAssetsApi = {
   deactivateRoom: (roomId: string) =>
     request("/rooms/" + encodeURIComponent(roomId) + "/deactivate", {
       method: "POST"
-    })
+    }),
+
+  roomEquipment: (roomId: string) =>
+    request<RoomEquipment[]>("/rooms/" + encodeURIComponent(roomId) + "/equipment"),
+  createRoomEquipment: (roomId: string, input: CreateRoomEquipmentInput) =>
+    request<RoomEquipment>(
+      "/rooms/" + encodeURIComponent(roomId) + "/equipment",
+      {
+        method: "POST",
+        body: input
+      }
+    ),
+  updateRoomEquipment: (
+    roomId: string,
+    equipmentId: string,
+    input: Partial<CreateRoomEquipmentInput>
+  ) =>
+    request<RoomEquipment>(
+      "/rooms/" +
+        encodeURIComponent(roomId) +
+        "/equipment/" +
+        encodeURIComponent(equipmentId),
+      {
+        method: "PATCH",
+        body: input
+      }
+    ),
+  deleteRoomEquipment: (roomId: string, equipmentId: string) =>
+    request<{ success: boolean; id: string }>(
+      "/rooms/" +
+        encodeURIComponent(roomId) +
+        "/equipment/" +
+        encodeURIComponent(equipmentId),
+      {
+        method: "DELETE"
+      }
+    )
 };

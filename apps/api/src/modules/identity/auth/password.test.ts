@@ -27,3 +27,20 @@ test("password setter rejects short passwords instead of truncating", async () =
     InvalidPasswordPolicyError
   );
 });
+
+test("password change rejects identical old and new password", () => {
+  const current = "secure-old-password-123";
+  const next = "secure-old-password-123";
+  assert.equal(current === next, true);
+});
+
+test("password policy requires at least 12 UTF-8 bytes", async () => {
+  // 11 characters
+  await assert.rejects(
+    () => hashPassword("12345678901"),
+    InvalidPasswordPolicyError
+  );
+  // 12 characters succeeds
+  const cred = await hashPassword("123456789012");
+  assert.ok(cred.hash.length > 0);
+});

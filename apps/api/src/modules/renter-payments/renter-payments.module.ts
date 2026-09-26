@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { CommercialModule } from "../commercial/commercial.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { IdentityModule } from "../identity/identity.module.js";
+import { CreditBalanceController } from "./credit-balance.controller.js";
+import { CreditBalanceService } from "./credit-balance.service.js";
 import { RenterPaymentReviewController } from "./renter-payment-review.controller.js";
 import { RenterPaymentReviewService } from "./renter-payment-review.service.js";
 import { RenterPaymentsController } from "./renter-payments.controller.js";
@@ -11,18 +13,20 @@ import { RenterProviderPaymentProcessingService } from "./renter-provider-paymen
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
-  controllers: [RenterPaymentsController, RenterPaymentReviewController],
+  controllers: [RenterPaymentsController, RenterPaymentReviewController, CreditBalanceController],
   providers: [
     RenterPaymentsService,
     RenterPaymentReviewService,
     RenterPaymentWebhookInboxService,
-    RenterProviderPaymentProcessingService
+    RenterProviderPaymentProcessingService,
+    CreditBalanceService
   ],
   exports: [
     RenterPaymentsService,
     RenterPaymentReviewService,
     RenterPaymentWebhookInboxService,
-    RenterProviderPaymentProcessingService
+    RenterProviderPaymentProcessingService,
+    CreditBalanceService
   ]
 })
 export class RenterPaymentsModule {}

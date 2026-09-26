@@ -42,6 +42,154 @@ type FinalMeterRow = QueryResultRow & {
   reading_source: "ADMIN" | "STAFF" | "IMPORT" | null;
 };
 
+type FinancialTerminationContextRow = QueryResultRow & {
+  lease_id: string;
+  lease_status: string;
+  room_id: string;
+  property_id: string;
+  termination_id: string | null;
+  effective_date: Date | string | null;
+  financial_readiness: ReadinessState | null;
+  operational_group_ids: string[];
+};
+
+type TerminationInvoiceRow = QueryResultRow & {
+  id: string;
+  invoice_number: string;
+  status: "DRAFT" | "ISSUED" | "VOID";
+  collection_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+  period_start: Date | string;
+  period_end: Date | string;
+  due_date: Date | string;
+  total_vnd: string;
+  paid_vnd: string;
+  remaining_vnd: string;
+};
+
+export interface LeaseTerminationFinancialReadiness {
+  leaseId: string;
+  terminationId: string | null;
+  effectiveDate: string | null;
+  state: ReadinessState | null;
+  summary: {
+    totalInvoicedVnd: number;
+    totalPaidVnd: number;
+    outstandingDebtVnd: number;
+    hasDraftInvoices: boolean;
+    invoiceCount: number;
+  };
+  invoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    status: "DRAFT" | "ISSUED" | "VOID";
+    collectionStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+    periodStart: string;
+    periodEnd: string;
+    dueDate: string;
+    totalVnd: number;
+    paidVnd: number;
+    remainingVnd: number;
+  }>;
+}
+
+export async function syncLeaseTerminationFinancialReadiness(
+  client: { query: DatabaseService["query"] },
+  input: {
+    organizationId: string;
+    leaseId: string;
+    actorUserId?: string | null;
+    trigger: string;
+  }
+): Promise<Array<{ leaseId: string; financialReadiness: ReadinessState }>> {
+  const updated = await client.query<QueryResultRow & {
+    lease_id: string;
+    financial_readiness: ReadinessState;
+  }>(
+    `WITH target AS (
+       SELECT
+         t.id,
+         t.lease_id,
+         t.financial_readiness
+       FROM lease_terminations t
+       JOIN leases l
+         ON l.organization_id = t.organization_id
+        AND l.id = t.lease_id
+       WHERE t.organization_id = $1::uuid
+         AND t.lease_id = $2::uuid
+         AND l.status = 'TERMINATION_SCHEDULED'
+         AND t.status IN ('SCHEDULED', 'READY')
+       FOR UPDATE OF t
+     ),
+     computed AS (
+       SELECT
+         target.id,
+         target.lease_id,
+         target.financial_readiness,
+         CASE
+           WHEN count(i.id) = 0 THEN 'NOT_REQUIRED'
+           WHEN count(i.id) FILTER (WHERE i.status = 'DRAFT') > 0 THEN 'PENDING'
+           WHEN coalesce(sum(i.remaining_vnd) FILTER (WHERE i.status = 'ISSUED'), 0) > 0 THEN 'PENDING'
+           ELSE 'READY'
+         END AS next_readiness
+       FROM target
+       LEFT JOIN renter_invoices i
+         ON i.organization_id = $1::uuid
+        AND i.lease_id = target.lease_id
+        AND i.status IN ('DRAFT', 'ISSUED')
+       GROUP BY
+         target.id,
+         target.lease_id,
+         target.financial_readiness
+     ),
+     changed AS (
+       UPDATE lease_terminations t
+       SET financial_readiness = computed.next_readiness,
+           status = CASE
+             WHEN t.meter_readiness <> 'PENDING'
+              AND computed.next_readiness <> 'PENDING'
+              AND t.deposit_readiness <> 'PENDING'
+             THEN 'READY'
+             ELSE 'SCHEDULED'
+           END,
+           updated_at = now()
+       FROM computed
+       WHERE t.id = computed.id
+         AND t.financial_readiness IS DISTINCT FROM computed.next_readiness
+       RETURNING
+         t.lease_id::text,
+         t.financial_readiness
+     )
+     SELECT lease_id, financial_readiness
+     FROM changed`,
+    [input.organizationId, input.leaseId]
+  );
+
+  for (const row of updated.rows) {
+    await client.query(
+      `INSERT INTO audit_events (
+         organization_id, actor_user_id, action, resource_type, resource_id, metadata
+       )
+       VALUES ($1, $2, 'LEASE_TERMINATION_FINANCIAL_READINESS_SYNCED', 'LEASE', $3, $4::jsonb)`,
+      [
+        input.organizationId,
+        input.actorUserId ?? null,
+        row.lease_id,
+        JSON.stringify({
+          leaseId: row.lease_id,
+          financialReadiness: row.financial_readiness,
+          trigger: input.trigger,
+          source: "RENTER_BILLING"
+        })
+      ]
+    );
+  }
+
+  return updated.rows.map((r) => ({
+    leaseId: r.lease_id,
+    financialReadiness: r.financial_readiness
+  }));
+}
+
 @Injectable()
 export class LeaseTerminationReadinessService {
   constructor(
@@ -188,6 +336,184 @@ export class LeaseTerminationReadinessService {
     };
   }
 
+  async financialReadiness(
+    principal: TenantPrincipal,
+    leaseId: string
+  ): Promise<LeaseTerminationFinancialReadiness> {
+    const contextResult = await this.db.query<FinancialTerminationContextRow>(
+      `SELECT
+         l.id::text AS lease_id,
+         l.status AS lease_status,
+         r.id::text AS room_id,
+         p.id::text AS property_id,
+         t.id::text AS termination_id,
+         t.effective_date,
+         t.financial_readiness,
+         COALESCE(
+           array_agg(DISTINCT pog.operational_group_id::text)
+             FILTER (WHERE pog.operational_group_id IS NOT NULL),
+           '{}'::text[]
+         ) AS operational_group_ids
+       FROM leases l
+       JOIN rooms r
+         ON r.organization_id = l.organization_id
+        AND r.id = l.room_id
+       JOIN properties p
+         ON p.organization_id = r.organization_id
+        AND p.id = r.property_id
+       LEFT JOIN property_operational_groups pog
+         ON pog.organization_id = p.organization_id
+        AND pog.property_id = p.id
+       LEFT JOIN lease_terminations t
+         ON t.organization_id = l.organization_id
+        AND t.lease_id = l.id
+        AND t.status IN ('SCHEDULED', 'READY')
+       WHERE l.organization_id = $1::uuid
+         AND l.id = $2::uuid
+       GROUP BY
+         l.id,
+         l.status,
+         r.id,
+         p.id,
+         t.id,
+         t.effective_date,
+         t.financial_readiness
+       LIMIT 1`,
+      [principal.organizationId, leaseId]
+    );
+
+    const context = contextResult.rows[0];
+    if (!context) {
+      throw new NotFoundException("Lease was not found.");
+    }
+
+    const resource = {
+      organizationId: principal.organizationId,
+      propertyId: context.property_id,
+      operationalGroupIds: context.operational_group_ids
+    };
+    if (
+      !this.accessControl.can(
+        principal.membership,
+        "lease.read",
+        resource
+      ) ||
+      !this.accessControl.can(
+        principal.membership,
+        "billing.read",
+        resource
+      )
+    ) {
+      throw new ForbiddenException(
+        "Lease termination financial permission denied."
+      );
+    }
+
+    if (
+      context.lease_status !== "TERMINATION_SCHEDULED" ||
+      !context.termination_id
+    ) {
+      return {
+        leaseId,
+        terminationId: null,
+        effectiveDate: null,
+        state: null,
+        summary: {
+          totalInvoicedVnd: 0,
+          totalPaidVnd: 0,
+          outstandingDebtVnd: 0,
+          hasDraftInvoices: false,
+          invoiceCount: 0
+        },
+        invoices: []
+      };
+    }
+
+    await syncLeaseTerminationFinancialReadiness(this.db, {
+      organizationId: principal.organizationId,
+      leaseId,
+      actorUserId: principal.userId,
+      trigger: "READINESS_QUERY"
+    });
+
+    const refreshedContext = await this.db.query<QueryResultRow & {
+      financial_readiness: ReadinessState;
+      effective_date: Date | string | null;
+    }>(
+      `SELECT financial_readiness, effective_date
+       FROM lease_terminations
+       WHERE organization_id = $1::uuid
+         AND id = $2::uuid
+       LIMIT 1`,
+      [principal.organizationId, context.termination_id]
+    );
+
+    const invoices = await this.db.query<TerminationInvoiceRow>(
+      `SELECT
+         id::text,
+         invoice_number,
+         status,
+         collection_status,
+         period_start,
+         period_end,
+         due_date,
+         total_vnd::text,
+         paid_vnd::text,
+         remaining_vnd::text
+       FROM renter_invoices
+       WHERE organization_id = $1::uuid
+         AND lease_id = $2::uuid
+       ORDER BY period_start DESC, invoice_number DESC, id`,
+      [principal.organizationId, leaseId]
+    );
+
+    const nonVoidInvoices = invoices.rows.filter((inv) => inv.status !== "VOID");
+    const totalInvoicedVnd = nonVoidInvoices.reduce(
+      (sum, inv) => sum + Number(inv.total_vnd),
+      0
+    );
+    const totalPaidVnd = nonVoidInvoices.reduce(
+      (sum, inv) => sum + Number(inv.paid_vnd),
+      0
+    );
+    const outstandingDebtVnd = nonVoidInvoices
+      .filter((inv) => inv.status === "ISSUED")
+      .reduce((sum, inv) => sum + Number(inv.remaining_vnd), 0);
+    const hasDraftInvoices = nonVoidInvoices.some((inv) => inv.status === "DRAFT");
+
+    const effectiveDate = refreshedContext.rows[0]?.effective_date
+      ? this.dateOnly(refreshedContext.rows[0].effective_date)
+      : context.effective_date
+        ? this.dateOnly(context.effective_date)
+        : null;
+
+    return {
+      leaseId,
+      terminationId: context.termination_id,
+      effectiveDate,
+      state: refreshedContext.rows[0]?.financial_readiness ?? context.financial_readiness,
+      summary: {
+        totalInvoicedVnd,
+        totalPaidVnd,
+        outstandingDebtVnd,
+        hasDraftInvoices,
+        invoiceCount: nonVoidInvoices.length
+      },
+      invoices: invoices.rows.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        status: inv.status,
+        collectionStatus: inv.collection_status,
+        periodStart: this.dateOnly(inv.period_start),
+        periodEnd: this.dateOnly(inv.period_end),
+        dueDate: this.dateOnly(inv.due_date),
+        totalVnd: Number(inv.total_vnd),
+        paidVnd: Number(inv.paid_vnd),
+        remainingVnd: Number(inv.remaining_vnd)
+      }))
+    };
+  }
+
   async setManualReadiness(
     principal: TenantPrincipal,
     leaseId: string,
@@ -197,7 +523,11 @@ export class LeaseTerminationReadinessService {
       reason: string;
     }
   ) {
-    if (input.kind === "meter" || input.kind === "deposit") {
+    if (
+      input.kind === "meter" ||
+      input.kind === "deposit" ||
+      input.kind === "financial"
+    ) {
       throw new ConflictException(
         input.kind +
           " readiness is module-owned and cannot be manually overridden."

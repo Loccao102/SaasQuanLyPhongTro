@@ -38,6 +38,17 @@ export class LeaseTerminationReadinessController {
     );
   }
 
+  @Get(":leaseId/termination/financial-readiness")
+  financialReadiness(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string
+  ) {
+    return this.readiness.financialReadiness(
+      this.principal(request),
+      leaseId
+    );
+  }
+
   @Post(":leaseId/termination/readiness")
   setReadiness(
     @Req() request: TenantRequest,
@@ -48,10 +59,12 @@ export class LeaseTerminationReadinessController {
     const state = input.state;
     const reason = input.reason;
 
-    if (kind !== "financial") {
-      throw new BadRequestException(
-        "Only financial readiness supports manual override."
-      );
+    if (
+      kind !== "meter" &&
+      kind !== "financial" &&
+      kind !== "deposit"
+    ) {
+      throw new BadRequestException("Invalid readiness kind.");
     }
     if (
       state !== "PENDING" &&

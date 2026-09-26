@@ -43,6 +43,7 @@ export type LeaseDetailResponse = {
     terminationReason: string | null;
     version: number;
     createdAt: string;
+    renewedFromLeaseId?: string | null;
   };
   permissions: {
     manage: boolean;
@@ -94,6 +95,32 @@ export type LeaseTerminationMeterReadiness = {
       readingValue: string;
       source: "ADMIN" | "STAFF" | "IMPORT" | null;
     } | null;
+  }>;
+};
+
+export type LeaseTerminationFinancialReadiness = {
+  leaseId: string;
+  terminationId: string | null;
+  effectiveDate: string | null;
+  state: "PENDING" | "READY" | "NOT_REQUIRED" | null;
+  summary: {
+    totalInvoicedVnd: number;
+    totalPaidVnd: number;
+    outstandingDebtVnd: number;
+    hasDraftInvoices: boolean;
+    invoiceCount: number;
+  };
+  invoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    status: "DRAFT" | "ISSUED" | "VOID";
+    collectionStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+    periodStart: string;
+    periodEnd: string;
+    dueDate: string;
+    totalVnd: number;
+    paidVnd: number;
+    remainingVnd: number;
   }>;
 };
 
@@ -178,12 +205,94 @@ function command(
   });
 }
 
+export type LeaseAttachment = {
+  id: string;
+  attachmentType:
+    | "CITIZEN_ID_FRONT"
+    | "CITIZEN_ID_BACK"
+    | "HANDOVER_MINUTES"
+    | "CONTRACT_SCAN"
+    | "OTHER";
+  fileName: string;
+  fileUrl: string;
+  fileSizeBytes: number | null;
+  mimeType: string | null;
+  note: string | null;
+  uploadedAt: string;
+  actorUserId: string | null;
+};
+
+export type LeaseAmendment = {
+  id: string;
+  amendmentNumber: string;
+  effectiveDate: string;
+  changesSummary: string;
+  adjustedBaseRentVnd: number | null;
+  adjustedDepositRequiredVnd: number | null;
+  adjustedPlannedEndDate: string | null;
+  note: string | null;
+  createdAt: string;
+  actorUserId: string | null;
+};
+
 export const adminLeasesApi = {
   list: () => request<LeaseListResponse>(""),
   detail: (leaseId: string) =>
     request<LeaseDetailResponse>("/" + encodeURIComponent(leaseId)),
   createDraft: (input: CreateLeaseDraftInput) =>
     request<{ leaseId: string; residentId: string; status: "DRAFT" }>("", {
+      method: "POST",
+      body: input
+    }),
+  attachments: (leaseId: string) =>
+    request<{ leaseId: string; attachments: LeaseAttachment[] }>(
+      "/" + encodeURIComponent(leaseId) + "/attachments"
+    ),
+  addAttachment: (
+    leaseId: string,
+    input: {
+      attachmentId?: string;
+      attachmentType: LeaseAttachment["attachmentType"];
+      fileName: string;
+      fileUrl: string;
+      fileSizeBytes?: number | null;
+      mimeType?: string | null;
+      note?: string | null;
+    }
+  ) =>
+    request<LeaseAttachment>("/" + encodeURIComponent(leaseId) + "/attachments", {
+      method: "POST",
+      body: input
+    }),
+  deleteAttachment: (leaseId: string, attachmentId: string) =>
+    request<{ success: boolean; attachmentId: string }>(
+      "/" + encodeURIComponent(leaseId) + "/attachments/" + encodeURIComponent(attachmentId),
+      { method: "DELETE" }
+    ),
+  amendments: (leaseId: string) =>
+    request<{ leaseId: string; amendments: LeaseAmendment[] }>(
+      "/" + encodeURIComponent(leaseId) + "/amendments"
+    ),
+  createAmendment: (
+    leaseId: string,
+    input: {
+      amendmentId?: string;
+      amendmentNumber: string;
+      effectiveDate: string;
+      changesSummary: string;
+      adjustedBaseRentVnd?: number | null;
+      adjustedDepositRequiredVnd?: number | null;
+      adjustedPlannedEndDate?: string | null;
+      note?: string | null;
+    }
+  ) =>
+    request<{
+      id: string;
+      leaseId: string;
+      amendmentNumber: string;
+      effectiveDate: string;
+      changesSummary: string;
+    }>("/" + encodeURIComponent(leaseId) + "/amendments", {
       method: "POST",
       body: input
     }),
@@ -355,6 +464,32 @@ export const adminLeasesApi = {
         "/readings",
       { method: "POST", body: input }
     ),
+  terminationFinancialReadiness: (leaseId: string) =>
+    request<LeaseTerminationFinancialReadiness>(
+      "/" + encodeURIComponent(leaseId) + "/termination/financial-readiness"
+    ),
+  renewLease: (
+    leaseId: string,
+    input: {
+      newLeaseId: string;
+      idempotencyKey: string;
+      newLeaseCode: string;
+      startDate: string;
+      plannedEndDate?: string | null;
+      baseRentVnd: number;
+      depositRequiredVnd: number;
+      billingDay: number;
+      rolloverDeposit?: boolean;
+    }
+  ) =>
+    request<{
+      leaseId: string;
+      renewedFromLeaseId: string;
+      status: "DRAFT";
+    }>("/" + encodeURIComponent(leaseId) + "/renew", {
+      method: "POST",
+      body: input
+    }),
   setTerminationReadiness: (
     leaseId: string,
     input: {

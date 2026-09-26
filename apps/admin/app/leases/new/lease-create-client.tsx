@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -23,12 +24,17 @@ type RoomOption = {
 };
 
 export function LeaseCreateClient() {
+  const searchParams = useSearchParams();
+  const paramRoomId = searchParams.get("roomId") ?? "";
+  const paramBaseRent = searchParams.get("baseRentVnd") ?? "";
+  const paramDeposit = searchParams.get("depositRequiredVnd") ?? "";
+
   const [properties, setProperties] = useState<AdminPropertyDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedRoomId, setSelectedRoomId] = useState(paramRoomId);
   const [residentQuery, setResidentQuery] = useState("");
   const [residentResults, setResidentResults] = useState<ResidentSearchResult[]>([]);
   const [selectedResident, setSelectedResident] =
@@ -87,6 +93,12 @@ export function LeaseCreateClient() {
       ),
     [properties]
   );
+
+  useEffect(() => {
+    if (paramRoomId && !selectedRoomId && rooms.some((r) => r.id === paramRoomId)) {
+      setSelectedRoomId(paramRoomId);
+    }
+  }, [paramRoomId, selectedRoomId, rooms]);
 
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
 
@@ -188,6 +200,12 @@ export function LeaseCreateClient() {
         </div>
       ) : (
         <form className="lease-create-layout" onSubmit={(event) => void submit(event)}>
+          {paramRoomId && selectedRoom ? (
+            <div className="admin-state admin-state--success" style={{ gridColumn: "1 / -1", marginBottom: "8px" }}>
+              <strong>Tạo hợp đồng mới thay thế cho phòng {selectedRoom.code}</strong>
+              <span>Phòng: {selectedRoom.propertyName} · {selectedRoom.code}. Các thông số giá thuê và tiền cọc đã được điền sẵn từ hợp đồng trước.</span>
+            </div>
+          ) : null}
           <section className="panel">
             <div className="asset-section-heading">
               <div>
@@ -232,11 +250,25 @@ export function LeaseCreateClient() {
               </label>
               <label>
                 <span>Tiền phòng / tháng (VND)</span>
-                <input name="baseRentVnd" type="number" min="0" step="1" required />
+                <input
+                  name="baseRentVnd"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={paramBaseRent || undefined}
+                  required
+                />
               </label>
               <label>
                 <span>Tiền cọc yêu cầu (VND)</span>
-                <input name="depositRequiredVnd" type="number" min="0" step="1" defaultValue="0" required />
+                <input
+                  name="depositRequiredVnd"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={paramDeposit || "0"}
+                  required
+                />
               </label>
               <label>
                 <span>Ngày chốt hàng tháng</span>

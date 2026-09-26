@@ -1,0 +1,158 @@
+name: habi-prod
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-propops}
+      POSTGRES_USER: ${POSTGRES_USER:-propops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-propops_secure_password}
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "work_mem=8MB"
+    volumes:
+      - propops_postgres_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-propops} -d ${POSTGRES_DB:-propops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - propops_redis_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: api
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops_secure_password}@postgres:5432/${POSTGRES_DB:-propops}
+    command: ["pnpm", "--filter", "@propops/api", "db:setup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops_secure_password}@postgres:5432/${POSTGRES_DB:-propops}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
+      DB_SLOW_OPERATION_THRESHOLD_MS: ${DB_SLOW_OPERATION_THRESHOLD_MS:-250}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://admin.yourdomain.com,https://invoice.yourdomain.com}
+      INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN}
+      OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN}
+      DEV_BILLING_WEBHOOK_SECRET: ${DEV_BILLING_WEBHOOK_SECRET}
+      SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
+      SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS: ${SEPAY_RENTER_WEBHOOK_SECRET_PREVIOUS:-}
+      PUBLIC_INVOICE_BASE_URL: ${PUBLIC_INVOICE_BASE_URL:-https://invoice.yourdomain.com}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: http://api:4000/api
+      INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN}
+      WORKER_PROVIDER: ${WORKER_PROVIDER:-DEV_MANUAL_REVIEW}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-3000}
+      WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-30000}
+      BILLING_SWEEP_INTERVAL_MS: ${BILLING_SWEEP_INTERVAL_MS:-300000}
+      BILLING_SWEEP_LIMIT: ${BILLING_SWEEP_LIMIT:-100}
+      SEPAY_RENTER_WEBHOOK_SECRET: ${SEPAY_RENTER_WEBHOOK_SECRET:-}
+      SEPAY_RECONCILIATION_ENABLED: ${SEPAY_RECONCILIATION_ENABLED:-true}
+      SEPAY_API_BASE_URL: ${SEPAY_API_BASE_URL:-https://userapi.sepay.vn/v2}
+      SEPAY_API_TOKEN: ${SEPAY_API_TOKEN:-}
+      SEPAY_RECONCILIATION_INTERVAL_MS: ${SEPAY_RECONCILIATION_INTERVAL_MS:-900000}
+      SEPAY_RECONCILIATION_INITIAL_LOOKBACK_HOURS: ${SEPAY_RECONCILIATION_INITIAL_LOOKBACK_HOURS:-24}
+    depends_on:
+      api:
+        condition: service_started
+
+  admin:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    depends_on:
+      api:
+        condition: service_started
+
+  public-invoice:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: public-invoice
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    depends_on:
+      api:
+        condition: service_started
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - propops_certbot_www:/var/www/certbot:ro
+      - propops_certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - admin
+      - public-invoice
+
+volumes:
+  propops_postgres_prod:
+  propops_redis_prod:
+  propops_certbot_www:
+  propops_certbot_certs:
