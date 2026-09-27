@@ -112,6 +112,7 @@ export class AuthenticationService {
   async login(input: {
     email: string;
     password: string;
+    accountType?: "TENANT" | "PLATFORM";
     sessionContext?: SessionContext;
   }): Promise<AuthenticationResult> {
     const email = input.email.trim();
@@ -127,7 +128,13 @@ export class AuthenticationService {
       identity?.credential ?? DUMMY_CREDENTIAL
     );
 
-    if (!identity || identity.userStatus !== "ACTIVE" || !verified) {
+    if (
+      !identity ||
+      identity.userStatus !== "ACTIVE" ||
+      !verified ||
+      (input.accountType !== undefined &&
+        identity.accountType !== input.accountType)
+    ) {
       throw new InvalidCredentialsError();
     }
 
