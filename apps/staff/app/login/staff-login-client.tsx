@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -8,6 +9,11 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useStaffAuth } from "../../components/staff-auth-provider";
+import { StaffGoogleIdentityButton } from "../../components/google-identity-button";
+import {
+  staffAuthApi,
+  type StaffAuthConfig
+} from "../../lib/staff-auth-api";
 
 function safeNext(value: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -24,8 +30,15 @@ export function StaffLoginClient() {
     () => safeNext(searchParams.get("next")),
     [searchParams]
   );
+  const [config, setConfig] = useState<StaffAuthConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (auth.online) {
+      void staffAuthApi.config().then(setConfig).catch(() => setConfig(null));
+    }
+  }, [auth.online]);
 
   useEffect(() => {
     if (
@@ -41,6 +54,34 @@ export function StaffLoginClient() {
     next,
     router
   ]);
+
+  const googleLogin = useCallback(
+    async (credential: string) => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const session = await auth.google({
+          credential,
+          mode: "LOGIN"
+        });
+        if (session.memberships.length === 0) {
+          setError("Tài khoản chưa có tenant hoạt động.");
+          return;
+        }
+        router.replace(next);
+        router.refresh();
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Không thể đăng nhập bằng Google."
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [auth, next, router]
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,6 +142,19 @@ export function StaffLoginClient() {
               Không thể tạo phiên đăng nhập mới khi mất mạng.
             </span>
           </div>
+        ) : null}
+
+        {config?.googleEnabled && config.googleClientId && auth.online ? (
+          <>
+            <StaffGoogleIdentityButton
+              clientId={config.googleClientId}
+              disabled={submitting}
+              onCredential={googleLogin}
+            />
+            <div className="staff-state">
+              <span>hoặc đăng nhập bằng email</span>
+            </div>
+          </>
         ) : null}
 
         <form
