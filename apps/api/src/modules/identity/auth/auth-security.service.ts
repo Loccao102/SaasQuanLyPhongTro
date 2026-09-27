@@ -400,6 +400,13 @@ export class AuthSecurityService {
           severity: "MEDIUM",
           summary: "Mật khẩu tài khoản Habi vừa được thay đổi."
         };
+      case "ACCOUNT_AUTHENTICATORS_RESET":
+        return {
+          type: "ACCOUNT_AUTHENTICATORS_RESET",
+          severity: "HIGH",
+          summary:
+            "Authenticator của tài khoản Habi vừa được reset bởi Control Plane. Tất cả session cũ đã bị thu hồi."
+        };
       default:
         return null;
     }
