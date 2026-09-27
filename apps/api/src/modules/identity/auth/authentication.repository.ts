@@ -14,6 +14,16 @@ export interface CredentialIdentity {
   credential: PasswordCredential;
 }
 
+export interface AccountIdentity {
+  userId: string;
+  email: string;
+  displayName: string;
+  userStatus: string;
+  authVersion: number;
+  organizationId: string | null;
+  accountType: "TENANT" | "PLATFORM";
+}
+
 export interface SessionIdentity {
   sessionId: string;
   userId: string;
@@ -44,6 +54,16 @@ type CredentialRow = QueryResultRow & {
   scrypt_n: number;
   scrypt_r: number;
   scrypt_p: number;
+};
+
+type AccountRow = QueryResultRow & {
+  user_id: string;
+  email: string;
+  display_name: string;
+  user_status: string;
+  auth_version: number;
+  organization_id: string | null;
+  account_type: "TENANT" | "PLATFORM";
 };
 
 type SessionRow = QueryResultRow & {
@@ -155,6 +175,64 @@ export class AuthenticationRepository {
         p: row.scrypt_p
       }
     };
+  }
+
+  async findAccountByEmail(email: string): Promise<AccountIdentity | null> {
+    const result = await this.db.query<AccountRow>(
+      `SELECT
+         id::text AS user_id,
+         email,
+         display_name,
+         status AS user_status,
+         auth_version,
+         organization_id::text,
+         account_type
+       FROM users
+       WHERE lower(email) = lower($1)
+       LIMIT 1`,
+      [email]
+    );
+    return result.rows[0] ? this.mapAccount(result.rows[0]) : null;
+  }
+
+  async findAccountByGoogleSubject(
+    subject: string
+  ): Promise<AccountIdentity | null> {
+    const result = await this.db.query<AccountRow>(
+      `SELECT
+         u.id::text AS user_id,
+         u.email,
+         u.display_name,
+         u.status AS user_status,
+         u.auth_version,
+         u.organization_id::text,
+         u.account_type
+       FROM user_auth_identities i
+       JOIN users u ON u.id = i.user_id
+       WHERE i.provider = 'GOOGLE'
+         AND i.provider_subject = $1
+       LIMIT 1`,
+      [subject]
+    );
+    return result.rows[0] ? this.mapAccount(result.rows[0]) : null;
+  }
+
+  async linkGoogleIdentity(input: {
+    userId: string;
+    subject: string;
+    providerEmail: string;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO user_auth_identities (
+         user_id, provider, provider_subject, provider_email
+       )
+       VALUES ($1, 'GOOGLE', $2, $3)
+       ON CONFLICT (user_id, provider) DO UPDATE
+         SET provider_subject = EXCLUDED.provider_subject,
+             provider_email = EXCLUDED.provider_email,
+             updated_at = now()`,
+      [input.userId, input.subject, input.providerEmail]
+    );
   }
 
   async changePassword(
@@ -277,6 +355,18 @@ export class AuthenticationRepository {
        WHERE token_hash = $1`,
       [tokenHash]
     );
+  }
+
+  private mapAccount(row: AccountRow): AccountIdentity {
+    return {
+      userId: row.user_id,
+      email: row.email,
+      displayName: row.display_name,
+      userStatus: row.user_status,
+      authVersion: row.auth_version,
+      organizationId: row.organization_id,
+      accountType: row.account_type
+    };
   }
 
   async listActiveMemberships(
