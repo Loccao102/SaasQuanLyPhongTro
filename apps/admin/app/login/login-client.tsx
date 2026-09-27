@@ -1,19 +1,25 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
   type FormEvent
 } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAdminAuth } from "../../components/admin-auth-provider";
+import { GoogleIdentityButton } from "../../components/google-identity-button";
+import {
+  adminAuthApi,
+  type AuthConfig
+} from "../../lib/admin-auth-api";
 
 function safeNext(value: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return "/";
   }
-
   return value;
 }
 
@@ -25,8 +31,15 @@ export function LoginClient() {
     () => safeNext(searchParams.get("next")),
     [searchParams]
   );
+  const [config, setConfig] = useState<AuthConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void adminAuthApi.config()
+      .then(setConfig)
+      .catch(() => setConfig(null));
+  }, []);
 
   useEffect(() => {
     if (
@@ -35,17 +48,23 @@ export function LoginClient() {
     ) {
       router.replace(next);
     }
-  }, [
-    auth.selectedMembership,
-    auth.status,
-    next,
-    router
-  ]);
+  }, [auth.selectedMembership, auth.status, next, router]);
+
+  const finish = useCallback(
+    (memberships: number) => {
+      if (memberships === 0) {
+        setError("Tài khoản chưa có tenant hoạt động.");
+        return;
+      }
+      router.replace(next);
+      router.refresh();
+    },
+    [next, router]
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-
     setSubmitting(true);
     setError(null);
 
@@ -54,26 +73,38 @@ export function LoginClient() {
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? "")
       });
-
-      if (session.memberships.length === 0) {
-        setError(
-          "Đăng nhập thành công nhưng tài khoản chưa có workspace hoạt động."
-        );
-        return;
-      }
-
-      router.replace(next);
-      router.refresh();
+      finish(session.memberships.length);
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Không thể đăng nhập."
+        caught instanceof Error ? caught.message : "Không thể đăng nhập."
       );
     } finally {
       setSubmitting(false);
     }
   }
+
+  const googleLogin = useCallback(
+    async (credential: string) => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const session = await auth.google({
+          credential,
+          mode: "LOGIN"
+        });
+        finish(session.memberships.length);
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Không thể đăng nhập bằng Google."
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [auth, finish]
+  );
 
   return (
     <main className="login-page">
@@ -87,11 +118,10 @@ export function LoginClient() {
         </div>
 
         <div className="login-heading">
-          <span className="eyebrow">ADMIN WORKSPACE</span>
-          <h1>Đăng nhập vận hành</h1>
+          <span className="eyebrow">HABI WORKSPACE</span>
+          <h1>Đăng nhập</h1>
           <p>
-            Dùng tài khoản được cấp quyền để quản lý tài sản, hợp đồng,
-            hóa đơn và dòng tiền.
+            Tiếp tục quản lý cơ sở, hợp đồng, hóa đơn và dòng tiền của tenant.
           </p>
         </div>
 
@@ -113,6 +143,20 @@ export function LoginClient() {
               Thử lại
             </button>
           </div>
+        ) : null}
+
+        {config?.googleEnabled && config.googleClientId ? (
+          <>
+            <GoogleIdentityButton
+              clientId={config.googleClientId}
+              mode="LOGIN"
+              disabled={submitting}
+              onCredential={googleLogin}
+            />
+            <div className="login-inline-state" aria-hidden="true">
+              hoặc đăng nhập bằng email
+            </div>
+          </>
         ) : null}
 
         <form className="login-form" onSubmit={(event) => void submit(event)}>
@@ -158,10 +202,18 @@ export function LoginClient() {
           </button>
         </form>
 
-        <p className="login-footnote">
-          Habi không có luồng đăng ký công khai ở giai đoạn này. Tài khoản
-          phải được chủ hệ thống hoặc quản trị viên cấp quyền.
-        </p>
+        {config?.registrationEnabled ? (
+          <p className="login-footnote">
+            Chưa có Habi?{" "}
+            <Link href="/register">
+              Tạo tenant và dùng thử ngay
+            </Link>
+          </p>
+        ) : (
+          <p className="login-footnote">
+            Đăng ký mới đang tạm đóng. Tài khoản hiện có vẫn đăng nhập bình thường.
+          </p>
+        )}
       </section>
     </main>
   );
