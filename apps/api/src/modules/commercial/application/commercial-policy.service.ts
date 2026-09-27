@@ -3,10 +3,12 @@ import type { PoolClient, QueryResultRow } from "pg";
 import {
   evaluateResourceLimit,
   resolveEffectiveEntitlements,
+  tenantFeatureEnabled,
   type EffectiveEntitlements,
   type EntitlementKey,
   type EntitlementOverride,
-  type PlanEntitlements
+  type PlanEntitlements,
+  type TenantFeatureKey
 } from "../domain/entitlements.js";
 import {
   subscriptionAccessMode,
@@ -67,6 +69,13 @@ export class CommercialWriteRestrictedError extends Error {
   }
 }
 
+export class CommercialFeatureDisabledError extends Error {
+  constructor(public readonly feature: TenantFeatureKey) {
+    super(`Tenant feature ${feature} is disabled by the current plan or CMS override.`);
+    this.name = "CommercialFeatureDisabledError";
+  }
+}
+
 export class CommercialResourceLimitExceededError extends Error {
   constructor(
     public readonly resource: CommercialResource,
@@ -83,7 +92,7 @@ export class CommercialResourceLimitExceededError extends Error {
 
 function featureBoolean(
   features: unknown,
-  key: "advanced_reports" | "audit_log"
+  key: TenantFeatureKey
 ): boolean {
   if (
     typeof features === "object" &&
@@ -179,6 +188,15 @@ export class CommercialPolicyService {
       roomLimit: row.room_limit,
       staffLimit: row.staff_limit,
       automationActionsMonthly: row.automation_quota,
+      properties: featureBoolean(row.features, "properties"),
+      leases: featureBoolean(row.features, "leases"),
+      metering: featureBoolean(row.features, "metering"),
+      billing: featureBoolean(row.features, "billing"),
+      payments: featureBoolean(row.features, "payments"),
+      maintenance: featureBoolean(row.features, "maintenance"),
+      notifications: featureBoolean(row.features, "notifications"),
+      reports: featureBoolean(row.features, "reports"),
+      teamManagement: featureBoolean(row.features, "team_management"),
       advancedReports: featureBoolean(row.features, "advanced_reports"),
       auditLog: featureBoolean(row.features, "audit_log")
     };
@@ -206,6 +224,15 @@ export class CommercialPolicyService {
       throw new CommercialWriteRestrictedError(
         `Subscription status ${policy.subscriptionStatus} is read-only.`
       );
+    }
+  }
+
+  assertFeatureAllowed(
+    policy: OrganizationCommercialPolicy,
+    feature: TenantFeatureKey
+  ): void {
+    if (!tenantFeatureEnabled(policy.entitlements, feature)) {
+      throw new CommercialFeatureDisabledError(feature);
     }
   }
 
