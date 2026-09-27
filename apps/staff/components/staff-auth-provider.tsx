@@ -44,6 +44,7 @@ type StaffAuthContextValue = {
   error: string | null;
   refresh: () => Promise<StaffSession | null>;
   login: (input: { email: string; password: string }) => Promise<StaffSession>;
+  google: (input: { credential: string; mode: "LOGIN" }) => Promise<StaffSession>;
   logout: () => Promise<void>;
   switchOrganization: (organizationId: string) => void;
 };
@@ -277,6 +278,23 @@ export function StaffAuthProvider({
     [applySession]
   );
 
+  const google = useCallback(
+    async (input: { credential: string; mode: "LOGIN" }) => {
+      if (
+        typeof navigator !== "undefined" &&
+        !navigator.onLine
+      ) {
+        throw new StaffNetworkError();
+      }
+
+      return applySession(
+        await staffAuthApi.google(input),
+        "authenticated"
+      );
+    },
+    [applySession]
+  );
+
   const logout = useCallback(async () => {
     if (
       typeof navigator !== "undefined" &&
@@ -338,11 +356,13 @@ export function StaffAuthProvider({
       error,
       refresh,
       login,
+      google,
       logout,
       switchOrganization
     }),
     [
       error,
+      google,
       login,
       logout,
       online,
