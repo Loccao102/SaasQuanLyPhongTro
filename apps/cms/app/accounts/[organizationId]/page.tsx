@@ -16,6 +16,7 @@ type AccountAction =
   | { kind: "status"; account: CmsTenantAccount; status: "ACTIVE" | "SUSPENDED" }
   | { kind: "role"; account: CmsTenantAccount }
   | { kind: "resetPassword"; account: CmsTenantAccount }
+  | { kind: "resetAuthenticators"; account: CmsTenantAccount }
   | { kind: "revokeSessions"; account: CmsTenantAccount }
   | {
       kind: "feature";
@@ -186,6 +187,19 @@ export default function TenantAccountsPage() {
           reason
         );
         setSuccess("Đã đặt mật khẩu tạm mới và thu hồi toàn bộ session.");
+      } else if (action.kind === "resetAuthenticators") {
+        const result = await cmsApi.resetTenantAccountAuthenticators(
+          organizationId,
+          action.account.id,
+          reason
+        );
+        setSuccess(
+          "Đã reset authenticator, xóa " +
+            String(result.removedPasskeys) +
+            " passkey và thu hồi " +
+            String(result.sessionsRevoked) +
+            " session."
+        );
       } else {
         await cmsApi.revokeTenantAccountSessions(
           organizationId,
@@ -390,6 +404,7 @@ export default function TenantAccountsPage() {
                   <th>Role</th>
                   <th>Trạng thái</th>
                   <th>Membership</th>
+                  <th>Bảo mật</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
@@ -410,6 +425,16 @@ export default function TenantAccountsPage() {
                       <StatusBadge tone={account.membershipStatus === "ACTIVE" ? "success" : "warning"}>
                         {account.membershipStatus}
                       </StatusBadge>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <small>
+                          TOTP: {account.totpEnabled ? "Bật" : "Tắt"}
+                        </small>
+                        <small>
+                          Passkey: {account.passkeyCount}
+                        </small>
+                      </div>
                     </td>
                     <td>
                       <div className="table-actions">
@@ -439,6 +464,19 @@ export default function TenantAccountsPage() {
                           onClick={() => setAction({ kind: "resetPassword", account })}
                         >
                           Reset mật khẩu
+                        </button>
+                        <button
+                          className="text-button text-button--danger"
+                          type="button"
+                          disabled={!account.totpEnabled && account.passkeyCount === 0}
+                          onClick={() =>
+                            setAction({
+                              kind: "resetAuthenticators",
+                              account
+                            })
+                          }
+                        >
+                          Reset MFA/passkey
                         </button>
                         <button
                           className="text-button"
@@ -474,8 +512,10 @@ export default function TenantAccountsPage() {
                     : action.kind === "featureReset"
                       ? "Trả về cấu hình theo plan: " + featureLabels[action.feature]
                       : action.kind === "resetPassword"
-                      ? "Reset mật khẩu"
-                      : "Thu hồi toàn bộ session"}
+                        ? "Reset mật khẩu"
+                        : action.kind === "resetAuthenticators"
+                          ? "Reset MFA & passkey"
+                          : "Thu hồi toàn bộ session"}
             </h2>
             <p className="modal-warning">
               {action.kind === "feature"
