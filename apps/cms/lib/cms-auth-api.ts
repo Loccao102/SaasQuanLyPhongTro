@@ -136,6 +136,9 @@ async function request<T>(
 }
 
 export const cmsAuthApi = {
+  config: () =>
+    request<{ passkeyPasswordlessEnabled: boolean }>("/auth/config"),
+
   passkeyLoginOptions: () =>
     request<{
       requestId: string;
