@@ -80,6 +80,7 @@ export class AuthenticationController {
       const result = await this.authentication.login({
         email,
         password: this.requiredString(body.password, "password"),
+        accountType: "TENANT",
         sessionContext: this.sessionContext(request)
       });
       if ("mfaRequired" in result) {
@@ -104,6 +105,58 @@ export class AuthenticationController {
     } catch (error) {
       await this.security.recordEvent({
         eventType: "PASSWORD_LOGIN",
+        outcome: "FAILURE",
+        email,
+        ip
+      });
+      if (error instanceof InvalidCredentialsError) {
+        throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
+      }
+      throw error;
+    }
+  }
+
+  @Post("platform/login")
+  async platformLogin(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+
+    const email = this.requiredString(body.email, "email");
+    const ip = this.requestIp(request);
+    await this.security.assertPasswordLoginAllowed(email, ip);
+
+    try {
+      const result = await this.authentication.login({
+        email,
+        password: this.requiredString(body.password, "password"),
+        accountType: "PLATFORM",
+        sessionContext: this.sessionContext(request)
+      });
+      if ("mfaRequired" in result) {
+        await this.security.recordEvent({
+          eventType: "PLATFORM_LOGIN_PRIMARY",
+          outcome: "SUCCESS",
+          email,
+          ip,
+          metadata: { mfaRequired: true }
+        });
+        return result;
+      }
+
+      await this.security.recordEvent({
+        eventType: "PLATFORM_LOGIN",
+        outcome: "SUCCESS",
+        email,
+        ip,
+        userId: result.user.id
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PLATFORM_LOGIN",
         outcome: "FAILURE",
         email,
         ip
