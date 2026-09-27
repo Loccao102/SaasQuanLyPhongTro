@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cmsAuthApi } from "../lib/cms-auth-api";
 
@@ -53,5 +54,55 @@ export function CmsAuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return children;
+  if (isLogin) return children;
+
+  return (
+    <>
+      <div
+        style={{
+          position: "fixed",
+          top: 14,
+          right: 18,
+          zIndex: 10000,
+          display: "flex",
+          gap: 8
+        }}
+      >
+        <Link
+          href="/security"
+          style={{
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "#ffffff",
+            border: "1px solid #cbd5e1",
+            color: "#25355C",
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 700
+          }}
+        >
+          Bảo mật
+        </Link>
+        <button
+          type="button"
+          onClick={() => {
+            void cmsAuthApi.logout().finally(() => {
+              router.replace("/login");
+              router.refresh();
+            });
+          }}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            cursor: "pointer"
+          }}
+        >
+          Đăng xuất
+        </button>
+      </div>
+      {children}
+    </>
+  );
 }
