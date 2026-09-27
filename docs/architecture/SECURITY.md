@@ -154,3 +154,59 @@ Development env user-ID fallbacks are forbidden in production and exist only as 
 Google Identity Services is supported as an external credential source, but successful Google verification is converted into the same opaque Habi session. Google ID tokens are verified server-side for signature, issuer, audience, expiry, stable subject and verified email.
 
 Before public launch, login abuse controls, email verification/password recovery, session-management UX and MFA policy must be completed.
+
+## Authentication abuse protection
+
+Public authentication endpoints are protected by database-backed, horizontally safe rate-limit buckets:
+
+- password login is limited by both normalized email and client IP;
+- tenant registration is limited by client IP;
+- Google challenge/token exchange is limited by client IP;
+- password-change attempts are rate-limited as authentication attempts.
+
+Rate-limit and authentication security telemetry stores HMAC-derived identifier/IP hashes instead of raw email/IP values. CMS operators with `platform.audit.read` can inspect recent authentication security events.
+
+Staff offline authorization is intentionally shorter than the browser session. A cached Staff authorization may be used offline for at most 24 hours after the last successful online verification. A reconnect refreshes account, tenant, membership and feature state before continuing online operations.
+
+## Google identity security
+
+Google Identity Services is used only as a federated identity source for tenant authentication.
+
+Rules:
+
+- Habi does not persist Google access or refresh tokens for sign-in;
+- every Google button flow first obtains a short-lived Habi nonce challenge;
+- the nonce is stored in a host-bound HttpOnly cookie and included in the Google ID token request;
+- backend verification requires signature, `iss`, `aud`, `exp`, verified email, stable `sub` and the expected nonce;
+- the nonce cookie is cleared after the Google authentication attempt;
+- Google identities are linked using the stable provider `sub`, never email as the provider primary key;
+- automatic email linking is allowed only when Google is authoritative for the email and only for `TENANT` accounts;
+- the public tenant Google flow cannot authenticate or link `PLATFORM`/CMS identities.
+
+If Habi later needs Google APIs, OAuth authorization for those scopes must be a separate consent/token-storage integration rather than expanding the login credential flow.
+
+## HTTP/browser security baseline
+
+Production startup fails closed when required security configuration is missing or unsafe:
+
+- `CORS_ORIGINS` is mandatory and must contain explicit HTTPS origins;
+- credentialed CORS never accepts wildcard origins;
+- authentication cookies use `__Host-` names, Secure, host-only Path=/ semantics;
+- development principal fallbacks are forbidden;
+- internal worker/metrics tokens and auth-security HMAC key must be non-placeholder secrets;
+- reverse-proxy trust is explicit through `TRUST_PROXY_HOPS`.
+
+API and browser surfaces send baseline anti-clickjacking/content-sniffing/referrer/permissions headers. Production enables HSTS. Sensitive auth/CMS API responses are marked `no-store`.
+
+## Supply-chain baseline
+
+CI installs exactly the committed pnpm lockfile with `--frozen-lockfile` and performs a production dependency audit that fails on critical advisories.
+
+Dependency scanning is one control, not proof that the software supply chain is safe. Changes to build actions, registries, lockfiles and deployment artifacts still require review.
+
+## Security events and exceptional conditions
+
+Authentication failures, successful authentication, rate limiting and password changes emit dedicated security events without raw credentials, tokens, email addresses or IP addresses.
+
+Unexpected errors must not cause the client to infer success. Worker/API integrations must treat empty or malformed responses explicitly, preserve durable failure state where relevant and avoid logging secrets.
+
