@@ -113,7 +113,9 @@ export function AdminAuthProvider({
 
   const applyAuthentication = useCallback(
     (result: AdminAuthenticationResult) =>
-      "mfaRequired" in result ? result : applySession(result),
+      "mfaRequired" in result || "mfaEnrollmentRequired" in result
+        ? result
+        : applySession(result),
     [applySession]
   );
 
