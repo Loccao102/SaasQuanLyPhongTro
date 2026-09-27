@@ -158,6 +158,29 @@ export function LoginClient() {
     [auth, handleAuthenticationResult]
   );
 
+  async function passwordlessPasskeyLogin() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const request = await adminAuthApi.passkeyLoginOptions();
+      const response = await authenticateWithPasskey(request.options);
+      const session = await adminAuthApi.verifyPasskeyLogin({
+        requestId: request.requestId,
+        response
+      });
+      await auth.refresh();
+      finish(session.memberships.length);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể đăng nhập bằng passkey."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function beginRequiredEnrollment() {
     if (!mfaEnrollment) return;
     setSubmitting(true);
@@ -512,6 +535,27 @@ export function LoginClient() {
           </form>
         ) : (
           <>
+            {passkeySupported ? (
+              <>
+                <button
+                  className="primary-button login-submit"
+                  type="button"
+                  disabled={
+                    submitting ||
+                    auth.status === "loading" ||
+                    auth.status === "authenticated"
+                  }
+                  onClick={() => void passwordlessPasskeyLogin()}
+                >
+                  {submitting
+                    ? "Đang mở passkey…"
+                    : "Đăng nhập bằng passkey"}
+                </button>
+                <div className="login-inline-state" aria-hidden="true">
+                  hoặc dùng Google / email
+                </div>
+              </>
+            ) : null}
             {config?.googleEnabled && config.googleClientId ? (
               <>
                 <GoogleIdentityButton
