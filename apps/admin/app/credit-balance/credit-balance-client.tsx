@@ -8,7 +8,7 @@ import {
   PlusOutlined,
   MinusOutlined
 } from "@ant-design/icons";
-import { MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
+import { PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   creditBalanceApi,
@@ -404,7 +404,9 @@ export function CreditBalanceClient() {
                     <select
                       className="form-select"
                       value={formRefundMethod}
-                      onChange={(e) => setFormRefundMethod(e.target.value as any)}
+                      onChange={(e) =>
+                        setFormRefundMethod(e.target.value as typeof formRefundMethod)
+                      }
                       disabled={saving}
                     >
                       <option value="CASH">Tiền mặt</option>
