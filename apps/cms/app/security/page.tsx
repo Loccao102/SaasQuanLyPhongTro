@@ -10,6 +10,7 @@ import {
 import {
   cmsAuthApi,
   type CmsPasskeyItem,
+  type CmsSecurityAlertItem,
   type CmsSessionItem
 } from "../../lib/cms-auth-api";
 
@@ -24,6 +25,8 @@ export default function CmsSecurityPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [sessions, setSessions] = useState<CmsSessionItem[]>([]);
   const [passkeys, setPasskeys] = useState<CmsPasskeyItem[]>([]);
+  const [securityAlerts, setSecurityAlerts] =
+    useState<CmsSecurityAlertItem[]>([]);
   const [stepUp, setStepUp] = useState<{
     recent: boolean;
     reauthenticatedAt: string;
@@ -40,18 +43,20 @@ export default function CmsSecurityPage() {
     setError(null);
     try {
       setPasskeySupported(browserSupportsPasskeys());
-      const [mfa, activeSessions, passkeyResult, recentAuth] =
+      const [mfa, activeSessions, passkeyResult, recentAuth, alertResult] =
         await Promise.all([
           cmsAuthApi.mfaStatus(),
           cmsAuthApi.sessions(),
           cmsAuthApi.passkeys(),
-          cmsAuthApi.stepUpStatus()
+          cmsAuthApi.stepUpStatus(),
+          cmsAuthApi.securityAlerts()
         ]);
       setEnabled(mfa.enabled);
       setRequiredByRole(mfa.required ? mfa.requiredByRole : null);
       setSessions(activeSessions.sessions);
       setPasskeys(passkeyResult.passkeys);
       setStepUp(recentAuth);
+      setSecurityAlerts(alertResult.alerts);
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -402,6 +407,56 @@ export default function CmsSecurityPage() {
               {busy ? "Đang tạo secret…" : "Thiết lập MFA"}
             </button>
           </>
+        )}
+      </section>
+
+      <section
+        style={{
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          borderRadius: 14,
+          padding: 20,
+          display: "grid",
+          gap: 12
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0 }}>Cảnh báo bảo mật gần đây</h2>
+          <p style={{ color: "#64748b", marginBottom: 0 }}>
+            Các thay đổi credential và pattern xác thực đáng chú ý của tài
+            khoản PLATFORM này.
+          </p>
+        </div>
+        {securityAlerts.length === 0 ? (
+          <small>Chưa có cảnh báo bảo mật nào.</small>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {securityAlerts.slice(0, 10).map((alert) => (
+              <article
+                key={alert.id}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  padding: 12,
+                  display: "grid",
+                  gap: 4
+                }}
+              >
+                <strong>
+                  {alert.severity === "HIGH"
+                    ? "Quan trọng"
+                    : alert.severity === "MEDIUM"
+                      ? "Cần chú ý"
+                      : "Thông tin"}
+                </strong>
+                <span>{alert.summary}</span>
+                <small style={{ color: "#64748b" }}>
+                  {new Date(alert.createdAt).toLocaleString("vi-VN")}
+                  {alert.deliveryStatus === "SENT" ? " · đã gửi email" : ""}
+                </small>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
