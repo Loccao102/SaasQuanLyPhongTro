@@ -489,9 +489,10 @@ export class MaintenanceService {
     const residentName = (input.residentName?.trim() || inv.recipient_name || "Khách thuê").trim();
     const residentPhone = input.residentPhone?.trim() || inv.recipient_phone || null;
 
-    const category = input.category && maintenanceTicketCategories.includes(input.category as any)
-      ? input.category
-      : "OTHER";
+    const category =
+      input.category && maintenanceTicketCategories.includes(input.category)
+        ? input.category
+        : "OTHER";
 
     const insertResult = await this.db.query<{ id: string }>(
       `INSERT INTO maintenance_tickets (
