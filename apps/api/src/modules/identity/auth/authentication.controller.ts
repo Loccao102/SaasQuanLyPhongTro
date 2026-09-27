@@ -20,6 +20,7 @@ import {
 } from "./auth-http.js";
 import { AuthSecurityService } from "./auth-security.service.js";
 import type { SessionIdentity } from "./authentication.repository.js";
+import { InvalidGoogleIdentityTokenError } from "./google-identity.js";
 import { generateOpaqueToken } from "./session-token.js";
 import {
   AuthenticationService,
@@ -210,6 +211,11 @@ export class AuthenticationController {
         ip,
         metadata: { mode }
       });
+      if (error instanceof InvalidGoogleIdentityTokenError) {
+        throw new UnauthorizedException(
+          "Google credential không hợp lệ hoặc đã hết hạn."
+        );
+      }
       if (error instanceof InvalidCredentialsError) {
         throw new UnauthorizedException("Tài khoản không còn hoạt động.");
       }
