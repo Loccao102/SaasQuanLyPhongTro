@@ -178,7 +178,8 @@ export function PropertyDetailClient({
   }
 
   function openAddRoom(floorId?: string | null) {
-    setTargetFloorIdForRoom(floorId ?? data?.floors[0]?.id ?? "");
+    const firstRealFloor = data?.floors.find((f) => Boolean(f.id))?.id ?? "";
+    setTargetFloorIdForRoom(floorId !== undefined && floorId !== null ? floorId : firstRealFloor);
     setMutationError(null);
     setShowAddRoomModal(true);
   }
@@ -362,18 +363,27 @@ export function PropertyDetailClient({
               <div style={{ fontSize: "40px", marginBottom: "12px" }}>🏢</div>
               <h3 style={{ margin: "0 0 8px", fontSize: "18px" }}>Cơ sở này chưa có tầng nào</h3>
               <p style={{ margin: "0 0 20px", color: "var(--color-text-muted)", fontSize: "14px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto" }}>
-                Để bắt đầu quản lý phòng, hãy thêm tầng trước (ví dụ: Tầng 1, Tầng 2, Tầng Trệt...)
+                Để bắt đầu quản lý phòng, hãy thêm tầng trước (ví dụ: Tầng 1, Tầng 2, Tầng Trệt...) hoặc tạo phòng trực tiếp.
               </p>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => {
-                  setMutationError(null);
-                  setShowAddFloorModal(true);
-                }}
-              >
-                + Thêm tầng đầu tiên
-              </button>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => {
+                    setMutationError(null);
+                    setShowAddFloorModal(true);
+                  }}
+                >
+                  + Thêm tầng đầu tiên
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => openAddRoom()}
+                >
+                  + Thêm phòng
+                </button>
+              </div>
             </div>
           ) : (
             <div className="floor-stack" style={{ gap: "20px" }}>
@@ -607,13 +617,19 @@ export function PropertyDetailClient({
                 <form className="asset-form" onSubmit={submitCreateRoom}>
                   <label className="asset-form__wide">
                     <span>Chọn tầng</span>
-                    <select name="floorId" defaultValue={targetFloorIdForRoom} required>
-                      <option value="">-- Chọn tầng đặt phòng --</option>
-                      {data.floors.map((floor) => (
-                        <option key={floor.id!} value={floor.id!}>
-                          {floor.name} ({floor.code})
-                        </option>
-                      ))}
+                    <select
+                      name="floorId"
+                      value={targetFloorIdForRoom}
+                      onChange={(e) => setTargetFloorIdForRoom(e.target.value)}
+                    >
+                      <option value="">-- Chưa gán tầng / Nhà trệt --</option>
+                      {data.floors
+                        .filter((floor) => Boolean(floor.id))
+                        .map((floor) => (
+                          <option key={floor.id!} value={floor.id!}>
+                            {floor.name} ({floor.code})
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label>
@@ -669,6 +685,9 @@ export function PropertyDetailClient({
                   <label>
                     <span>Mã tầng</span>
                     <input name="code" required placeholder="Ví dụ: T2" autoFocus />
+                    <small style={{ color: "var(--color-text-muted)", fontSize: "11px", marginTop: "4px" }}>
+                      Mã tầng là duy nhất trong cơ sở (ví dụ: T1, T2, G, B1...)
+                    </small>
                   </label>
                   <label>
                     <span>Tên tầng</span>

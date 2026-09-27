@@ -204,24 +204,48 @@ export class AssetReadService {
       throw new ForbiddenException("Property scope denied.");
     }
 
-    const roomResult = await this.db.query<FloorRoomRow>(
+    const floorResult = await this.db.query<{
+      id: string;
+      code: string;
+      name: string;
+      sort_order: number;
+    }>(
       `SELECT
-         f.id::text AS floor_id,
-         f.code AS floor_code,
-         f.name AS floor_name,
-         f.sort_order AS floor_sort_order,
+         id::text,
+         code,
+         name,
+         sort_order
+       FROM floors
+       WHERE organization_id = $1::uuid
+         AND property_id = $2::uuid
+         AND is_active = true
+       ORDER BY
+         sort_order,
+         name,
+         id`,
+      [principal.organizationId, propertyId]
+    );
+
+    const roomResult = await this.db.query<{
+      room_id: string;
+      room_code: string;
+      room_name: string;
+      room_sort_order: number;
+      floor_id: string | null;
+      lease_id: string | null;
+      lease_code: string | null;
+      lease_status: string | null;
+    }>(
+      `SELECT
          r.id::text AS room_id,
          r.code AS room_code,
          r.name AS room_name,
          r.sort_order AS room_sort_order,
+         r.floor_id::text AS floor_id,
          l.id::text AS lease_id,
          l.lease_code,
          l.status AS lease_status
        FROM rooms r
-       LEFT JOIN floors f
-         ON f.organization_id = r.organization_id
-        AND f.property_id = r.property_id
-        AND f.id = r.floor_id
        LEFT JOIN leases l
          ON l.organization_id = r.organization_id
         AND l.room_id = r.id
@@ -230,8 +254,6 @@ export class AssetReadService {
          AND r.property_id = $2::uuid
          AND r.is_active = true
        ORDER BY
-         f.sort_order NULLS LAST,
-         f.name NULLS LAST,
          r.sort_order,
          r.code,
          r.id`,
@@ -256,14 +278,30 @@ export class AssetReadService {
       }
     >();
 
+    // 1. Initialize all active floors so empty floors are always visible
+    for (const floor of floorResult.rows) {
+      floorMap.set(floor.id, {
+        id: floor.id,
+        code: floor.code,
+        name: floor.name,
+        sortOrder: floor.sort_order,
+        rooms: []
+      });
+    }
+
+    // 2. Add rooms to their assigned floors or to the unassigned bucket
     for (const row of roomResult.rows) {
-      const key = row.floor_id ?? "__NO_FLOOR__";
+      const key =
+        row.floor_id && floorMap.has(row.floor_id)
+          ? row.floor_id
+          : "__NO_FLOOR__";
+
       if (!floorMap.has(key)) {
         floorMap.set(key, {
-          id: row.floor_id,
-          code: row.floor_code ?? "NO_FLOOR",
-          name: row.floor_name ?? "Chưa gán tầng",
-          sortOrder: row.floor_sort_order ?? Number.MAX_SAFE_INTEGER,
+          id: null,
+          code: "CHƯA_GÁN",
+          name: "Chưa gán tầng",
+          sortOrder: Number.MAX_SAFE_INTEGER,
           rooms: []
         });
       }
@@ -284,13 +322,17 @@ export class AssetReadService {
       });
     }
 
+    const floors = [...floorMap.values()].sort(
+      (a, b) => a.sortOrder - b.sortOrder
+    );
+
     return {
       organization: {
         id: principal.organizationId,
         name: principal.organizationName
       },
       property: this.mapProperty(property),
-      floors: [...floorMap.values()]
+      floors
     };
   }
 
