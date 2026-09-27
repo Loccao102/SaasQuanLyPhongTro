@@ -50,6 +50,7 @@ export const adminAuthApi = {
 
   googleChallenge: () =>
     adminApiRequest<{ nonce: string }>("/auth/google/challenge", {
+      method: "POST",
       organization: false,
       csrf: false
     }),
