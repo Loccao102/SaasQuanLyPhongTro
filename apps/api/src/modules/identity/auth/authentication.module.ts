@@ -16,6 +16,6 @@ import { TenantOnboardingService } from "./tenant-onboarding.service.js";
     AuthSecurityService,
     TenantOnboardingService
   ],
-  exports: [AuthenticationService]
+  exports: [AuthenticationService, AuthSecurityService]
 })
 export class AuthenticationModule {}
