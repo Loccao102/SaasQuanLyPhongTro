@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.tsx",
     "./styles.css": "./src/styles.css",
-    "./date-input": "./src/date-input.tsx"
+    "./date-input": "./src/date-input.tsx",
+    "./totp-qr": "./src/totp-qr.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
