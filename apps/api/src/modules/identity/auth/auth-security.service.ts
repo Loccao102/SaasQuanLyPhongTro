@@ -616,6 +616,10 @@ export class AuthSecurityService {
       "AUTH_SECURITY_EVENT_RETENTION_DAYS",
       90
     );
+    const alertRetentionDays = this.positiveInteger(
+      "AUTH_SECURITY_ALERT_RETENTION_DAYS",
+      180
+    );
 
     try {
       await this.db.query(
@@ -626,6 +630,11 @@ export class AuthSecurityService {
         `DELETE FROM auth_security_events
          WHERE occurred_at < now() - ($1::int * interval '1 day')`,
         [retentionDays]
+      );
+      await this.db.query(
+        `DELETE FROM auth_security_alerts
+         WHERE created_at < now() - ($1::int * interval '1 day')`,
+        [alertRetentionDays]
       );
     } catch (error) {
       console.error(
