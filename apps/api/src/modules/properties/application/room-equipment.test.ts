@@ -50,7 +50,7 @@ test("room-equipment: defaults invalid quantity and fallback condition to GOOD",
   const result = normalizeEquipmentInput({
     name: "Tủ lạnh",
     quantity: -5,
-    conditionStatus: "INVALID_STATUS" as any,
+    conditionStatus: "INVALID_STATUS" as unknown as EquipmentConditionStatus,
     compensationValueVnd: -1000
   });
 
