@@ -845,9 +845,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             </label>
             <label>
               <span>Ngày bắt đầu mới (dd/mm/yyyy) *</span>
-              <input
+              <DateInput
                 name="startDate"
-                type="date"
                 required
                 defaultValue={
                   lease.plannedEndDate
@@ -858,13 +857,12 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                       })()
                     : new Date().toISOString().slice(0, 10)
                 }
-              />
+               />
             </label>
             <label>
               <span>Ngày kết thúc dự kiến (dd/mm/yyyy)</span>
-              <input
+              <DateInput
                 name="plannedEndDate"
-                type="date"
                 defaultValue={
                   lease.plannedEndDate
                     ? (() => {
@@ -874,7 +872,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                       })()
                     : ""
                 }
-              />
+               />
             </label>
             <label>
               <span>Tiền phòng / tháng (VND)</span>
