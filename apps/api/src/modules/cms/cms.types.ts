@@ -14,7 +14,7 @@ export interface CmsRequest {
 }
 
 export interface UpdateSettingInput { value: unknown; expectedVersion?: number; reason?: string; }
-export interface UpdatePlanInput { monthlyPriceVnd?: number; roomLimit?: number; staffLimit?: number; automationQuota?: number; expectedVersion?: number; effectiveAt?: string; reason?: string; }
+export interface UpdatePlanInput { monthlyPriceVnd?: number; roomLimit?: number; staffLimit?: number; automationQuota?: number; features?: Record<string, boolean>; expectedVersion?: number; effectiveAt?: string; reason?: string; }
 export interface UpdateEntitlementOverrideInput { value: unknown; expiresAt?: string | null; reason?: string; }
 export interface RevokeEntitlementOverrideInput { reason?: string; }
 export interface ProvisionSubscriptionInput { planCode?: string; status?: "TRIALING" | "ACTIVE"; billingInterval?: "MONTHLY" | "YEARLY"; trialEndsAt?: string | null; reason?: string; }
