@@ -30,6 +30,8 @@ type AccountRow = QueryResultRow & {
   user_status: "ACTIVE" | "SUSPENDED";
   role: Role;
   membership_status: "INVITED" | "ACTIVE" | "SUSPENDED";
+  totp_enabled: boolean;
+  passkey_count: number;
   created_at: Date;
   updated_at: Date;
 };
@@ -58,6 +60,17 @@ export class CmsTenantAccountsService {
            u.status AS user_status,
            om.role,
            om.status AS membership_status,
+           EXISTS (
+             SELECT 1
+             FROM user_totp_credentials utc
+             WHERE utc.user_id = u.id
+               AND utc.confirmed_at IS NOT NULL
+           ) AS totp_enabled,
+           (
+             SELECT count(*)::int
+             FROM user_passkeys up
+             WHERE up.user_id = u.id
+           ) AS passkey_count,
            u.created_at,
            u.updated_at
          FROM users u
@@ -217,7 +230,9 @@ export class CmsTenantAccountsService {
         displayName,
         userStatus: "ACTIVE" as const,
         role,
-        membershipStatus: "ACTIVE" as const
+        membershipStatus: "ACTIVE" as const,
+        totpEnabled: false,
+        passkeyCount: 0
       };
     });
   }
@@ -609,6 +624,17 @@ export class CmsTenantAccountsService {
          u.status AS user_status,
          om.role,
          om.status AS membership_status,
+         EXISTS (
+           SELECT 1
+           FROM user_totp_credentials utc
+           WHERE utc.user_id = u.id
+             AND utc.confirmed_at IS NOT NULL
+         ) AS totp_enabled,
+         (
+           SELECT count(*)::int
+           FROM user_passkeys up
+           WHERE up.user_id = u.id
+         ) AS passkey_count,
          u.created_at,
          u.updated_at
        FROM users u
@@ -634,6 +660,8 @@ export class CmsTenantAccountsService {
       userStatus: row.user_status,
       role: row.role,
       membershipStatus: row.membership_status,
+      totpEnabled: row.totp_enabled,
+      passkeyCount: row.passkey_count,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString()
     };
