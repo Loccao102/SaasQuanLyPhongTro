@@ -11,6 +11,15 @@ const plan: PlanEntitlements = {
   roomLimit: 60,
   staffLimit: 5,
   automationActionsMonthly: 1000,
+  properties: true,
+  leases: true,
+  metering: true,
+  billing: true,
+  payments: true,
+  maintenance: true,
+  notifications: true,
+  reports: true,
+  teamManagement: true,
   advancedReports: false,
   auditLog: false
 };
