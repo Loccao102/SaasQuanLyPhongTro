@@ -584,7 +584,9 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       try {
         const fileUrl = String(reader.result);
         await adminLeasesApi.addAttachment(leaseId, {
-          attachmentType: String(form.get("attachmentType") ?? "OTHER") as any,
+          attachmentType: String(
+            form.get("attachmentType") ?? "OTHER"
+          ) as LeaseAttachment["attachmentType"],
           fileName: file.name,
           fileUrl,
           fileSizeBytes: file.size,
