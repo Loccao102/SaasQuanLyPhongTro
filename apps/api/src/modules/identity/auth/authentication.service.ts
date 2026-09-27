@@ -31,6 +31,16 @@ import {
 import { verifyGoogleIdentityToken } from "./google-identity.js";
 import { AuthEmailDeliveryService } from "./auth-email-delivery.service.js";
 import { TenantOnboardingService } from "./tenant-onboarding.service.js";
+import {
+  decryptTotpSecret,
+  encryptTotpSecret,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashRecoveryCode,
+  looksLikeRecoveryCode,
+  totpProvisioningUri,
+  verifyTotpCode
+} from "./totp.js";
 
 const DUMMY_CREDENTIAL: PasswordCredential = {
   hash: Buffer.alloc(PASSWORD_KEY_LENGTH),
@@ -46,6 +56,18 @@ export class InvalidCredentialsError extends Error {
     this.name = "InvalidCredentialsError";
   }
 }
+
+export type SessionContext = {
+  userAgent?: string | null;
+};
+
+export interface MfaRequiredResult {
+  mfaRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+}
+
+export type AuthenticationResult = LoginResult | MfaRequiredResult;
 
 export interface LoginResult {
   user: {
@@ -87,7 +109,11 @@ export class AuthenticationService {
     };
   }
 
-  async login(input: { email: string; password: string }): Promise<LoginResult> {
+  async login(input: {
+    email: string;
+    password: string;
+    sessionContext?: SessionContext;
+  }): Promise<AuthenticationResult> {
     const email = input.email.trim();
 
     if (email.length === 0 || email.length > 320 || !email.includes("@")) {
@@ -105,7 +131,7 @@ export class AuthenticationService {
       throw new InvalidCredentialsError();
     }
 
-    return this.issueSession(identity);
+    return this.completePrimaryAuthentication(identity, input.sessionContext);
   }
 
   async register(input: {
@@ -150,7 +176,10 @@ export class AuthenticationService {
     return { pendingVerification: true, email };
   }
 
-  async verifyEmail(token: string): Promise<LoginResult> {
+  async verifyEmail(
+    token: string,
+    sessionContext?: SessionContext
+  ): Promise<LoginResult> {
     const tokenHash = safeTokenHash(token);
     if (!tokenHash) {
       throw new BadRequestException(
@@ -172,7 +201,7 @@ export class AuthenticationService {
     if (!identity) {
       throw new Error("Verified account could not be loaded.");
     }
-    return this.issueSession(identity);
+    return this.issueSession(identity, sessionContext);
   }
 
   async requestPasswordReset(emailInput: string): Promise<void> {
@@ -227,7 +256,8 @@ export class AuthenticationService {
     mode: "LOGIN" | "REGISTER";
     expectedNonce: string;
     organizationName?: string;
-  }): Promise<LoginResult> {
+    sessionContext?: SessionContext;
+  }): Promise<AuthenticationResult> {
     const config = await this.authConfig();
     if (!config.googleEnabled || !config.googleClientId) {
       throw new ConflictException("Đăng nhập Google hiện đang tắt.");
@@ -249,7 +279,7 @@ export class AuthenticationService {
       ) {
         throw new InvalidCredentialsError();
       }
-      return this.issueSession(linked);
+      return this.completePrimaryAuthentication(linked, input.sessionContext);
     }
 
     const existing = await this.repository.findAccountByEmail(google.email);
@@ -272,7 +302,7 @@ export class AuthenticationService {
         subject: google.subject,
         providerEmail: google.email
       });
-      return this.issueSession(existing);
+      return this.completePrimaryAuthentication(existing, input.sessionContext);
     }
 
     if (input.mode !== "REGISTER") {
@@ -302,7 +332,102 @@ export class AuthenticationService {
     if (!created) {
       throw new Error("Google account could not be loaded after registration.");
     }
-    return this.issueSession(created);
+    return this.completePrimaryAuthentication(created, input.sessionContext);
+  }
+
+  async mfaStatus(userId: string): Promise<{ enabled: boolean }> {
+    return {
+      enabled: Boolean(await this.repository.getMfaCredential(userId))
+    };
+  }
+
+  async beginMfaSetup(userId: string, email: string): Promise<{
+    secret: string;
+    provisioningUri: string;
+  }> {
+    const secret = generateTotpSecret();
+    const encrypted = encryptTotpSecret(secret);
+    await this.repository.upsertMfaSetup({
+      userId,
+      ciphertext: encrypted.ciphertext,
+      iv: encrypted.iv,
+      tag: encrypted.tag
+    });
+
+    return {
+      secret,
+      provisioningUri: totpProvisioningUri({ secret, email })
+    };
+  }
+
+  async confirmMfaSetup(
+    userId: string,
+    code: string
+  ): Promise<{ recoveryCodes: string[] }> {
+    const credential = await this.repository.getMfaCredential(userId, false);
+    if (
+      !credential ||
+      credential.confirmed ||
+      !verifyTotpCode(
+        decryptTotpSecret({
+          ciphertext: credential.ciphertext,
+          iv: credential.iv,
+          tag: credential.tag
+        }),
+        code
+      )
+    ) {
+      throw new BadRequestException("Mã xác thực không hợp lệ.");
+    }
+
+    const recoveryCodes = generateRecoveryCodes();
+    const confirmed = await this.repository.confirmMfaSetup(
+      userId,
+      recoveryCodes.map(hashRecoveryCode)
+    );
+    if (!confirmed) {
+      throw new BadRequestException("Thiết lập MFA đã thay đổi. Hãy thử lại.");
+    }
+    return { recoveryCodes };
+  }
+
+  async disableMfa(
+    userId: string,
+    currentSessionId: string,
+    code: string
+  ): Promise<void> {
+    if (!(await this.verifySecondFactor(userId, code))) {
+      throw new BadRequestException("Mã xác thực không hợp lệ.");
+    }
+    await this.repository.disableMfa(userId, currentSessionId);
+  }
+
+  async verifyMfaChallenge(input: {
+    challengeToken: string;
+    code: string;
+    sessionContext?: SessionContext;
+  }): Promise<LoginResult> {
+    const tokenHash = safeTokenHash(input.challengeToken);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Phiên xác thực hai bước không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findMfaChallenge(tokenHash);
+    if (!identity || !(await this.verifySecondFactor(identity.userId, input.code))) {
+      throw new BadRequestException("Mã xác thực không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (
+      !(await this.repository.consumeMfaChallenge(identity.userId, tokenHash))
+    ) {
+      throw new BadRequestException(
+        "Phiên xác thực hai bước đã được sử dụng hoặc đã hết hạn."
+      );
+    }
+
+    return this.issueSession(identity, input.sessionContext);
   }
 
   async authenticateSession(
@@ -380,6 +505,8 @@ export class AuthenticationService {
     createdAt: string;
     lastSeenAt: string;
     expiresAt: string;
+    userAgent: string | null;
+    deviceLabel: string | null;
   }>> {
     const sessions = await this.repository.listActiveSessions(userId);
     return sessions.map((session) => ({
@@ -387,7 +514,9 @@ export class AuthenticationService {
       current: session.id === currentSessionId,
       createdAt: session.createdAt.toISOString(),
       lastSeenAt: session.lastSeenAt.toISOString(),
-      expiresAt: session.expiresAt.toISOString()
+      expiresAt: session.expiresAt.toISOString(),
+      userAgent: session.userAgent,
+      deviceLabel: session.deviceLabel
     }));
   }
 
@@ -443,6 +572,55 @@ export class AuthenticationService {
     return this.sessionTtlDays() * 24 * 60 * 60;
   }
 
+  private async completePrimaryAuthentication(
+    identity: AccountIdentity,
+    sessionContext?: SessionContext
+  ): Promise<AuthenticationResult> {
+    const mfa = await this.repository.getMfaCredential(identity.userId);
+    if (!mfa) {
+      return this.issueSession(identity, sessionContext);
+    }
+
+    const challengeToken = generateOpaqueToken();
+    const expiresAt = new Date(
+      Date.now() + this.mfaChallengeTtlMinutes() * 60 * 1000
+    );
+    await this.repository.createMfaChallenge({
+      userId: identity.userId,
+      tokenHash: hashOpaqueToken(challengeToken),
+      expiresAt
+    });
+    return {
+      mfaRequired: true,
+      challengeToken,
+      expiresAt: expiresAt.toISOString()
+    };
+  }
+
+  private async verifySecondFactor(
+    userId: string,
+    code: string
+  ): Promise<boolean> {
+    const credential = await this.repository.getMfaCredential(userId);
+    if (!credential) return false;
+
+    const secret = decryptTotpSecret({
+      ciphertext: credential.ciphertext,
+      iv: credential.iv,
+      tag: credential.tag
+    });
+    if (verifyTotpCode(secret, code)) return true;
+
+    if (looksLikeRecoveryCode(code)) {
+      return this.repository.consumeRecoveryCode(
+        userId,
+        hashRecoveryCode(code)
+      );
+    }
+
+    return false;
+  }
+
   private async passwordCredential(password: string): Promise<PasswordCredential> {
     try {
       return await hashPassword(password);
@@ -455,7 +633,8 @@ export class AuthenticationService {
   }
 
   private async issueSession(
-    identity: AccountIdentity
+    identity: AccountIdentity,
+    sessionContext?: SessionContext
   ): Promise<LoginResult> {
     const sessionToken = generateOpaqueToken();
     const csrfToken = generateOpaqueToken();
@@ -469,7 +648,9 @@ export class AuthenticationService {
       authVersion: identity.authVersion,
       tokenHash: hashOpaqueToken(sessionToken),
       csrfHash: hashOpaqueToken(csrfToken),
-      expiresAt
+      expiresAt,
+      userAgent: this.normalizedUserAgent(sessionContext?.userAgent),
+      deviceLabel: this.deviceLabel(sessionContext?.userAgent)
     });
 
     return {
@@ -521,6 +702,40 @@ export class AuthenticationService {
       throw new Error("Tenant onboarding service is not configured.");
     }
     return this.onboarding;
+  }
+
+  private normalizedUserAgent(userAgent: string | null | undefined): string | null {
+    const normalized = userAgent?.trim();
+    return normalized ? normalized.slice(0, 512) : null;
+  }
+
+  private deviceLabel(userAgent: string | null | undefined): string | null {
+    const ua = userAgent ?? "";
+    if (!ua.trim()) return null;
+
+    const browser =
+      /Edg\//.test(ua) ? "Edge" :
+      /Firefox\//.test(ua) ? "Firefox" :
+      /Chrome\//.test(ua) || /CriOS\//.test(ua) ? "Chrome" :
+      /Safari\//.test(ua) ? "Safari" : "Trình duyệt";
+    const os =
+      /iPhone/.test(ua) ? "iPhone" :
+      /iPad/.test(ua) ? "iPad" :
+      /Android/.test(ua) ? "Android" :
+      /Windows/.test(ua) ? "Windows" :
+      /Macintosh|Mac OS X/.test(ua) ? "macOS" :
+      /Linux/.test(ua) ? "Linux" : "Thiết bị";
+    return browser + " · " + os;
+  }
+
+  private mfaChallengeTtlMinutes(): number {
+    const value = Number(process.env.AUTH_MFA_CHALLENGE_TTL_MINUTES ?? "5");
+    if (!Number.isInteger(value) || value < 1 || value > 30) {
+      throw new Error(
+        "AUTH_MFA_CHALLENGE_TTL_MINUTES must be between 1 and 30."
+      );
+    }
+    return value;
   }
 
   private verificationTtlHours(): number {
