@@ -85,6 +85,13 @@ type MembershipRow = QueryResultRow & {
   role: string;
 };
 
+type UserSessionRow = QueryResultRow & {
+  id: string;
+  created_at: Date;
+  last_seen_at: Date;
+  expires_at: Date;
+};
+
 @Injectable()
 export class AuthenticationRepository {
   constructor(private readonly db: DatabaseService) {}
@@ -372,6 +379,64 @@ export class AuthenticationRepository {
        WHERE token_hash = $1`,
       [tokenHash]
     );
+  }
+
+  async listActiveSessions(userId: string): Promise<Array<{
+    id: string;
+    createdAt: Date;
+    lastSeenAt: Date;
+    expiresAt: Date;
+  }>> {
+    const result = await this.db.query<UserSessionRow>(
+      `SELECT
+         id::text,
+         created_at,
+         last_seen_at,
+         expires_at
+       FROM auth_sessions
+       WHERE user_id = $1::uuid
+         AND revoked_at IS NULL
+         AND expires_at > now()
+       ORDER BY last_seen_at DESC, created_at DESC`,
+      [userId]
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      lastSeenAt: row.last_seen_at,
+      expiresAt: row.expires_at
+    }));
+  }
+
+  async revokeSessionForUser(
+    userId: string,
+    sessionId: string
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, now())
+       WHERE id = $1::uuid
+         AND user_id = $2::uuid
+         AND revoked_at IS NULL`,
+      [sessionId, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string
+  ): Promise<number> {
+    const result = await this.db.query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, now())
+       WHERE user_id = $1::uuid
+         AND id <> $2::uuid
+         AND revoked_at IS NULL`,
+      [userId, currentSessionId]
+    );
+    return result.rowCount ?? 0;
   }
 
   private mapAccount(row: AccountRow): AccountIdentity {
