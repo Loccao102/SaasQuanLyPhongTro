@@ -1,5 +1,6 @@
 "use client";
-import { DateInput } from "@propops/ui/date-input";
+import {
+  DateInput } from "@propops/ui/date-input";
 
 import {
   useCallback,
@@ -11,7 +12,8 @@ import {
   MoneyDisplay,
   PageHeader,
   SectionHeader,
-  StatusBadge
+  StatusBadge,
+  formatDateVi
 } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -72,8 +74,8 @@ function readOptionalMoney(form: FormData, field: string): number | null {
 
 function policyRange(effectiveFrom: string, effectiveTo: string | null) {
   return effectiveTo
-    ? effectiveFrom + " → " + effectiveTo
-    : effectiveFrom + " → không thời hạn";
+    ? formatDateVi(effectiveFrom) + " → " + formatDateVi(effectiveTo)
+    : formatDateVi(effectiveFrom) + " → không thời hạn";
 }
 
 function PolicyItems({ items }: { items: PricingItem[] }) {
