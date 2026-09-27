@@ -640,9 +640,16 @@ export class AuthenticationRepository {
   }): Promise<string> {
     const result = await this.db.query<QueryResultRow & { id: string }>(
       `INSERT INTO auth_sessions (
-         user_id, organization_id, auth_version, token_hash, csrf_hash, expires_at
+         user_id,
+         organization_id,
+         auth_version,
+         token_hash,
+         csrf_hash,
+         expires_at,
+         user_agent,
+         device_label
        )
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id::text`,
       [
         input.userId,
@@ -650,7 +657,9 @@ export class AuthenticationRepository {
         input.authVersion,
         input.tokenHash,
         input.csrfHash,
-        input.expiresAt
+        input.expiresAt,
+        input.userAgent ?? null,
+        input.deviceLabel ?? null
       ]
     );
     return result.rows[0]!.id;
@@ -727,6 +736,8 @@ export class AuthenticationRepository {
     createdAt: Date;
     lastSeenAt: Date;
     expiresAt: Date;
+    userAgent: string | null;
+    deviceLabel: string | null;
   }>> {
     const result = await this.db.query<UserSessionRow>(
       `SELECT
