@@ -11,6 +11,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -75,6 +76,7 @@ const validMovementTypes: CreditMovementType[] = [
 
 const validRefundMethods = ["CASH", "BANK_TRANSFER", "OTHER"] as const;
 
+@RequireTenantFeature("payments")
 @Controller("admin/credit-balance")
 @UseGuards(TenantPrincipalGuard)
 export class CreditBalanceController {
