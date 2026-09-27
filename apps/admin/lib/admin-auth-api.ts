@@ -105,7 +105,7 @@ export const adminAuthApi = {
     }),
 
   verifyEmail: (token: string) =>
-    adminApiRequest<AdminSession>("/auth/verify-email", {
+    adminApiRequest<AdminAuthenticationResult>("/auth/verify-email", {
       method: "POST",
       body: { token },
       organization: false,
