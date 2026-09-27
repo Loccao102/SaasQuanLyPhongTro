@@ -30,6 +30,14 @@ ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["pnpm", "--filter", "@propops/admin", "start", "-p", "3000"]
 
+# Target: CMS Control Plane
+FROM base AS cms
+WORKDIR /app
+COPY --from=builder /app ./
+ENV NODE_ENV=production
+EXPOSE 3003
+CMD ["pnpm", "--filter", "@propops/cms", "start", "-p", "3003"]
+
 # Target: Public Invoice Web
 FROM base AS public-invoice
 WORKDIR /app
