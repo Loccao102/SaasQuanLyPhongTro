@@ -12,6 +12,8 @@ import { CmsBillingDetailService } from "./cms-billing-detail.service.js";
 import { CmsOrganizationDirectoryController } from "./cms-organization-directory.controller.js";
 import { CmsOrganizationDirectoryService } from "./cms-organization-directory.service.js";
 import { CmsPlatformGuard } from "./cms-platform.guard.js";
+import { CmsTenantAccountsController } from "./cms-tenant-accounts.controller.js";
+import { CmsTenantAccountsService } from "./cms-tenant-accounts.service.js";
 import { CmsService } from "./cms.service.js";
 
 @Module({
@@ -26,14 +28,16 @@ import { CmsService } from "./cms.service.js";
     CmsController,
     CmsOrganizationDirectoryController,
     CmsBillingDetailController,
-    CmsGlobalSearchController
+    CmsGlobalSearchController,
+    CmsTenantAccountsController
   ],
   providers: [
     CmsPlatformGuard,
     CmsService,
     CmsOrganizationDirectoryService,
     CmsBillingDetailService,
-    CmsGlobalSearchService
+    CmsGlobalSearchService,
+    CmsTenantAccountsService
   ]
 })
 export class CmsModule {}
