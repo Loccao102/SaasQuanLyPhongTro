@@ -77,8 +77,8 @@ async function cleanup(pool: Pool): Promise<void> {
     "DELETE FROM notification_provider_controls WHERE provider = $1",
     ["PLAYWRIGHT_ZALO"]
   );
-    await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [actorUserId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("notification campaign and worker flow is durable, quota-safe and evidence-aware", async () => {
