@@ -18,20 +18,26 @@ import {
 } from "./auth-http.js";
 import {
   AuthenticationService,
-  InvalidCredentialsError
+  InvalidCredentialsError,
+  type LoginResult
 } from "./authentication.service.js";
 
-type LoginBody = Record<string, unknown>;
+type BodyInput = Record<string, unknown>;
 
 @Controller("auth")
 export class AuthenticationController {
   constructor(private readonly authentication: AuthenticationService) {}
 
+  @Get("config")
+  config() {
+    return this.authentication.authConfig();
+  }
+
   @Post("login")
   async login(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-    @Body() body: LoginBody
+    @Body() body: BodyInput
   ) {
     assertTrustedBrowserOrigin(request);
 
@@ -40,28 +46,62 @@ export class AuthenticationController {
         email: this.requiredString(body.email, "email"),
         password: this.requiredString(body.password, "password")
       });
-      const names = authCookieNames();
-      const maxAgeSeconds = this.authentication.sessionTtlSeconds();
-
-      response.setHeader("Set-Cookie", [
-        serializeAuthCookie(names.session, result.sessionToken, {
-          httpOnly: true,
-          maxAgeSeconds
-        }),
-        serializeAuthCookie(names.csrf, result.csrfToken, {
-          httpOnly: false,
-          maxAgeSeconds
-        })
-      ]);
-
-      return {
-        user: result.user,
-        memberships: result.memberships,
-        expiresAt: result.expiresAt.toISOString()
-      };
+      return this.finishAuthentication(response, result);
     } catch (error) {
       if (error instanceof InvalidCredentialsError) {
-        throw new UnauthorizedException("Email or password is invalid.");
+        throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
+      }
+      throw error;
+    }
+  }
+
+  @Post("register")
+  async register(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+
+    const result = await this.authentication.register({
+      email: this.requiredString(body.email, "email"),
+      password: this.requiredString(body.password, "password"),
+      displayName: this.requiredString(body.displayName, "displayName"),
+      organizationName: this.requiredString(
+        body.organizationName,
+        "organizationName"
+      )
+    });
+
+    return this.finishAuthentication(response, result);
+  }
+
+  @Post("google")
+  async google(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+
+    const mode = body.mode;
+    if (mode !== "LOGIN" && mode !== "REGISTER") {
+      throw new BadRequestException("mode must be LOGIN or REGISTER.");
+    }
+
+    try {
+      const result = await this.authentication.google({
+        credential: this.requiredString(body.credential, "credential"),
+        mode,
+        organizationName:
+          typeof body.organizationName === "string"
+            ? body.organizationName
+            : undefined
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      if (error instanceof InvalidCredentialsError) {
+        throw new UnauthorizedException("Tài khoản không còn hoạt động.");
       }
       throw error;
     }
@@ -81,7 +121,9 @@ export class AuthenticationController {
       user: {
         id: session.userId,
         email: session.email,
-        displayName: session.displayName
+        displayName: session.displayName,
+        organizationId: session.organizationId,
+        accountType: session.accountType
       },
       memberships: await this.authentication.membershipsForUser(
         session.userId
@@ -97,9 +139,7 @@ export class AuthenticationController {
   ) {
     assertTrustedBrowserOrigin(request);
     const sessionToken = this.sessionCookie(request);
-    const session = await this.authentication.authenticateSession(
-      sessionToken
-    );
+    const session = await this.authentication.authenticateSession(sessionToken);
 
     if (
       session &&
@@ -128,31 +168,52 @@ export class AuthenticationController {
   @Post("change-password")
   async changePassword(
     @Req() request: Request,
-    @Body() body: Record<string, unknown>
+    @Body() body: BodyInput
   ) {
     assertTrustedBrowserOrigin(request);
     const sessionToken = this.sessionCookie(request);
     const session = await this.authentication.authenticateSession(sessionToken);
 
     if (!session) {
-      throw new UnauthorizedException("Phiên đăng nhập đã hết hạn hoặc không hợp lệ.");
+      throw new UnauthorizedException(
+        "Phiên đăng nhập đã hết hạn hoặc không hợp lệ."
+      );
     }
 
     if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
       throw new UnauthorizedException("CSRF token không hợp lệ.");
     }
 
-    const currentPassword = this.requiredString(body.currentPassword, "currentPassword");
-    const newPassword = this.requiredString(body.newPassword, "newPassword");
-
     await this.authentication.changePassword(
       session.userId,
       session.sessionId,
-      currentPassword,
-      newPassword
+      this.requiredString(body.currentPassword, "currentPassword"),
+      this.requiredString(body.newPassword, "newPassword")
     );
 
     return { success: true, message: "Đổi mật khẩu thành công." };
+  }
+
+  private finishAuthentication(response: Response, result: LoginResult) {
+    const names = authCookieNames();
+    const maxAgeSeconds = this.authentication.sessionTtlSeconds();
+
+    response.setHeader("Set-Cookie", [
+      serializeAuthCookie(names.session, result.sessionToken, {
+        httpOnly: true,
+        maxAgeSeconds
+      }),
+      serializeAuthCookie(names.csrf, result.csrfToken, {
+        httpOnly: false,
+        maxAgeSeconds
+      })
+    ]);
+
+    return {
+      user: result.user,
+      memberships: result.memberships,
+      expiresAt: result.expiresAt.toISOString()
+    };
   }
 
   private sessionCookie(request: Request): string | undefined {
@@ -160,9 +221,9 @@ export class AuthenticationController {
   }
 
   private requiredString(value: unknown, field: string): string {
-    if (typeof value !== "string" || value.length === 0) {
+    if (typeof value !== "string" || value.trim().length === 0) {
       throw new BadRequestException(`${field} is required.`);
     }
-    return value;
+    return value.trim();
   }
 }
