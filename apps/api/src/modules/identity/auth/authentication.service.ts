@@ -142,6 +142,7 @@ export class AuthenticationService {
   async google(input: {
     credential: string;
     mode: "LOGIN" | "REGISTER";
+    expectedNonce: string;
     organizationName?: string;
   }): Promise<LoginResult> {
     const config = await this.authConfig();
@@ -151,7 +152,8 @@ export class AuthenticationService {
 
     const google = await verifyGoogleIdentityToken(
       this.required(input.credential, "credential"),
-      config.googleClientId
+      config.googleClientId,
+      this.required(input.expectedNonce, "expectedNonce")
     );
 
     const linked = await this.repository.findAccountByGoogleSubject(
