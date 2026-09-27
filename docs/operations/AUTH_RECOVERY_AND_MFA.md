@@ -57,6 +57,41 @@ A confirmed MFA secret cannot be replaced through the setup endpoint. The user
 must prove possession of the existing TOTP/recovery code and disable MFA before
 starting a new enrollment.
 
+## Mandatory MFA role policy
+
+The database seeds two editable system settings:
+
+```json
+mfa_required_tenant_roles   = ["OWNER"]
+mfa_required_platform_roles = ["PLATFORM_ADMIN"]
+```
+
+They are ordinary CMS system settings and can be edited without a code deploy.
+An empty array disables mandatory enrollment for that account class. Invalid
+non-array values fail back to the secure defaults above.
+
+When a matching role passes primary authentication without an enrolled TOTP
+credential, Habi creates a short-lived `ENROLL` challenge. No browser session,
+CSRF cookie, tenant features or Control Plane principal is issued yet. The
+enrollment endpoints accept only that challenge, create the TOTP secret, verify
+the first TOTP code, generate recovery codes, consume the challenge and then
+issue the normal session.
+
+A user whose current role remains in the mandatory policy cannot disable MFA.
+Change the policy/role first if MFA must be removed as part of an audited
+account-recovery process.
+
+Existing sessions created before policy rollout are not force-revoked by the
+migration. They age out or can be revoked from the session screen. This avoids
+an unplanned mass logout during deployment.
+
+## Local QR enrollment
+
+Admin and CMS render the `otpauth://` provisioning URI into an SVG QR code
+locally in the browser. No Google Chart, QRServer or other third-party QR
+endpoint receives the TOTP secret. The manual Base32 secret remains available
+behind a fallback disclosure for authenticator apps that cannot scan the QR.
+
 ## Login behavior
 
 Tenant browser login:
@@ -64,8 +99,9 @@ Tenant browser login:
 ```text
 POST /api/auth/login
   -> primary credentials valid
-  -> no MFA: session + CSRF cookies
-  -> MFA enrolled: short-lived challenge, no session
+  -> role not covered by policy and no MFA: session + CSRF cookies
+  -> MFA enrolled: short-lived VERIFY challenge, no session
+  -> MFA required by role but not enrolled: short-lived ENROLL challenge, no session
 
 POST /api/auth/mfa/verify
   -> TOTP or one recovery code
