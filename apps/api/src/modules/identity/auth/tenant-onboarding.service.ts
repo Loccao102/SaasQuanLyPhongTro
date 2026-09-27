@@ -57,7 +57,7 @@ export class TenantOnboardingService {
         [email]
       );
       if ((existing.rowCount ?? 0) > 0) {
-        throw new ConflictException("Email này đã có tài khoản Habi.");
+        throw new ConflictException("Không thể sử dụng email này để đăng ký.");
       }
 
       const organizationName = input.organizationName.trim();
