@@ -32,6 +32,31 @@ export class BillingWebhookIngressRejectedError extends Error {
   }
 }
 
+export function assertWebhookBodySize(rawBody: Buffer): void {
+  if (!Buffer.isBuffer(rawBody) || rawBody.length === 0) {
+    throw new BillingWebhookIngressRejectedError(
+      "Webhook raw body is required."
+    );
+  }
+
+  const configured = Number(process.env.WEBHOOK_MAX_BODY_BYTES ?? "262144");
+  if (
+    !Number.isSafeInteger(configured) ||
+    configured < 1024 ||
+    configured > 2 * 1024 * 1024
+  ) {
+    throw new Error(
+      "WEBHOOK_MAX_BODY_BYTES must be an integer between 1024 and 2097152."
+    );
+  }
+
+  if (rawBody.length > configured) {
+    throw new BillingWebhookIngressRejectedError(
+      "Webhook payload exceeds the configured size limit."
+    );
+  }
+}
+
 @Injectable()
 export class BillingWebhookIngressService {
   constructor(
@@ -43,11 +68,7 @@ export class BillingWebhookIngressService {
     rawBody: Buffer,
     headers: BillingWebhookHeaders
   ): Promise<SaasBillingWebhookEventView> {
-    if (!Buffer.isBuffer(rawBody) || rawBody.length === 0) {
-      throw new BillingWebhookIngressRejectedError(
-        "Webhook raw body is required."
-      );
-    }
+    assertWebhookBodySize(rawBody);
 
     const inspection = await adapter.inspect({
       rawBody,
