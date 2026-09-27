@@ -18,6 +18,7 @@ CREATE TABLE auth_pending_registrations (
   scrypt_p integer NOT NULL CHECK (scrypt_p > 0),
   token_hash bytea NOT NULL UNIQUE,
   expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (expires_at > created_at)
@@ -27,7 +28,8 @@ CREATE UNIQUE INDEX auth_pending_registrations_email_ci_uidx
   ON auth_pending_registrations (lower(email));
 
 CREATE INDEX auth_pending_registrations_expiry_idx
-  ON auth_pending_registrations (expires_at);
+  ON auth_pending_registrations (expires_at)
+  WHERE consumed_at IS NULL;
 
 CREATE TABLE auth_password_reset_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
