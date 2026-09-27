@@ -97,6 +97,21 @@ export class CmsTenantAccountsController {
     );
   }
 
+  @Post(":userId/reset-authenticators")
+  resetAuthenticators(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Param("userId") userId: string,
+    @Body() body: BodyInput
+  ) {
+    return this.accounts.resetAuthenticators(
+      this.principal(request),
+      organizationId,
+      userId,
+      this.string(body.reason, "reason")
+    );
+  }
+
   @Post(":userId/revoke-sessions")
   revokeSessions(
     @Req() request: CmsRequest,
