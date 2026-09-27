@@ -21,7 +21,17 @@ export type CmsMfaRequired = {
   expiresAt: string;
 };
 
-export type CmsAuthenticationResult = CmsAuthSession | CmsMfaRequired;
+export type CmsMfaEnrollmentRequired = {
+  mfaEnrollmentRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  requiredByRole: string;
+};
+
+export type CmsAuthenticationResult =
+  | CmsAuthSession
+  | CmsMfaRequired
+  | CmsMfaEnrollmentRequired;
 
 export type CmsSessionItem = {
   id: string;
@@ -101,6 +111,25 @@ export const cmsAuthApi = {
       body: JSON.stringify(input)
     }),
 
+  setupRequiredMfa: (challengeToken: string) =>
+    request<{
+      secret: string;
+      provisioningUri: string;
+      requiredByRole: string;
+    }>("/auth/mfa/enrollment/setup", {
+      method: "POST",
+      body: JSON.stringify({ challengeToken })
+    }),
+
+  confirmRequiredMfa: (input: { challengeToken: string; code: string }) =>
+    request<CmsAuthSession & { recoveryCodes: string[] }>(
+      "/auth/mfa/enrollment/confirm",
+      {
+        method: "POST",
+        body: JSON.stringify(input)
+      }
+    ),
+
   verifyMfa: (input: { challengeToken: string; code: string }) =>
     request<CmsAuthSession>("/auth/mfa/verify", {
       method: "POST",
@@ -116,7 +145,12 @@ export const cmsAuthApi = {
       true
     ),
 
-  mfaStatus: () => request<{ enabled: boolean }>("/auth/mfa"),
+  mfaStatus: () =>
+    request<{
+      enabled: boolean;
+      required: boolean;
+      requiredByRole: string | null;
+    }>("/auth/mfa"),
 
   setupMfa: () =>
     request<{ secret: string; provisioningUri: string }>(
