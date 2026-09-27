@@ -260,23 +260,21 @@ export function FinancesClient() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
             <span style={{ fontWeight: 600 }}>Từ ngày (dd/mm/yyyy)</span>
-            <input
-              type="date"
+            <DateInput
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
               style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
-            />
+             />
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
             <span style={{ fontWeight: 600 }}>Đến ngày (dd/mm/yyyy)</span>
-            <input
-              type="date"
+            <DateInput
               value={toDate}
               min={fromDate || undefined}
               onChange={(e) => setToDate(e.target.value)}
               style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
-            />
+             />
           </label>
 
           <button
