@@ -1,3 +1,7 @@
+import type {
+  PasskeyAuthenticationOptionsJSON,
+  PasskeyRegistrationOptionsJSON
+} from "@propops/ui/passkey";
 export type CmsAuthSession = {
   user: {
     id: string;
@@ -32,6 +36,16 @@ export type CmsAuthenticationResult =
   | CmsAuthSession
   | CmsMfaRequired
   | CmsMfaEnrollmentRequired;
+
+export type CmsPasskeyItem = {
+  id: string;
+  name: string;
+  deviceType: string;
+  backedUp: boolean;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
+};
 
 export type CmsSessionItem = {
   id: string;
@@ -130,6 +144,24 @@ export const cmsAuthApi = {
       }
     ),
 
+  passkeyMfaOptions: (challengeToken: string) =>
+    request<PasskeyAuthenticationOptionsJSON>(
+      "/auth/mfa/passkey/options",
+      {
+        method: "POST",
+        body: JSON.stringify({ challengeToken })
+      }
+    ),
+
+  verifyPasskeyMfa: (input: {
+    challengeToken: string;
+    response: unknown;
+  }) =>
+    request<CmsAuthSession>("/auth/mfa/passkey/verify", {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+
   verifyMfa: (input: { challengeToken: string; code: string }) =>
     request<CmsAuthSession>("/auth/mfa/verify", {
       method: "POST",
@@ -142,6 +174,42 @@ export const cmsAuthApi = {
     request<{ loggedOut: true }>(
       "/auth/logout",
       { method: "POST", body: JSON.stringify({}) },
+      true
+    ),
+
+  passkeys: () =>
+    request<{ passkeys: CmsPasskeyItem[] }>("/auth/passkeys"),
+
+  passkeyRegistrationOptions: () =>
+    request<PasskeyRegistrationOptionsJSON>(
+      "/auth/passkeys/registration/options",
+      {
+        method: "POST",
+        body: JSON.stringify({})
+      },
+      true
+    ),
+
+  verifyPasskeyRegistration: (input: {
+    response: unknown;
+    name?: string;
+  }) =>
+    request<CmsPasskeyItem>(
+      "/auth/passkeys/registration/verify",
+      {
+        method: "POST",
+        body: JSON.stringify(input)
+      },
+      true
+    ),
+
+  revokePasskey: (passkeyId: string) =>
+    request<{ revoked: boolean }>(
+      "/auth/passkeys/" + encodeURIComponent(passkeyId) + "/revoke",
+      {
+        method: "POST",
+        body: JSON.stringify({})
+      },
       true
     ),
 
