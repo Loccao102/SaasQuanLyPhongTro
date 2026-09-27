@@ -21,6 +21,7 @@ export function RegisterClient() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [organizationName, setOrganizationName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,13 +68,13 @@ export function RegisterClient() {
         );
       }
 
-      const session = await auth.register({
+      const pending = await auth.register({
         displayName: String(form.get("displayName") ?? ""),
         organizationName: String(form.get("organizationName") ?? ""),
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? "")
       });
-      finish(session.memberships.length);
+      setPendingEmail(pending.email);
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -157,6 +158,13 @@ export function RegisterClient() {
             Tài khoản đầu tiên sẽ là OWNER và tenant được cấp STARTER trial theo cấu hình CMS.
           </p>
         </div>
+
+        {pendingEmail ? (
+          <div className="login-inline-state" role="status">
+            Habi đã gửi liên kết xác minh tới <strong>{pendingEmail}</strong>.
+            Mở email và xác minh để hoàn tất tạo tenant.
+          </div>
+        ) : null}
 
         <form className="login-form" onSubmit={(event) => void submit(event)}>
           <label>
