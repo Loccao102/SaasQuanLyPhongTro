@@ -5,6 +5,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useAdminAuth } from "./admin-auth-provider";
 import {
   adminAuthApi,
+  type AdminAuthSessionItem,
   type AdminTenantFeatureKey
 } from "../lib/admin-auth-api";
 
@@ -62,6 +63,87 @@ export function AdminShell({
   const [changingPassword, setChangingPassword] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessions, setSessions] = useState<AdminAuthSessionItem[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsSuccess, setSessionsSuccess] = useState<string | null>(null);
+
+  async function loadSessions() {
+    setSessionsLoading(true);
+    setSessionsError(null);
+    try {
+      const result = await adminAuthApi.sessions();
+      setSessions(result.sessions);
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error ? err.message : "Không thể tải danh sách phiên."
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  async function openSessions() {
+    setSessionsOpen(true);
+    setSessionsSuccess(null);
+    await loadSessions();
+  }
+
+  async function revokeSession(session: AdminAuthSessionItem) {
+    const message = session.current
+      ? "Thu hồi phiên hiện tại? Bạn sẽ phải đăng nhập lại."
+      : "Thu hồi phiên đăng nhập này? Thiết bị đó sẽ phải đăng nhập lại.";
+    if (!window.confirm(message)) return;
+
+    setSessionsLoading(true);
+    setSessionsError(null);
+    setSessionsSuccess(null);
+    try {
+      const result = await adminAuthApi.revokeSession(session.id);
+      if (result.currentSessionRevoked) {
+        window.location.assign("/login");
+        return;
+      }
+      setSessionsSuccess("Đã thu hồi phiên đăng nhập.");
+      await loadSessions();
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error ? err.message : "Không thể thu hồi phiên."
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  async function revokeOtherSessions() {
+    if (
+      !window.confirm(
+        "Thu hồi tất cả phiên khác? Các thiết bị khác sẽ phải đăng nhập lại."
+      )
+    ) {
+      return;
+    }
+
+    setSessionsLoading(true);
+    setSessionsError(null);
+    setSessionsSuccess(null);
+    try {
+      const result = await adminAuthApi.revokeOtherSessions();
+      setSessionsSuccess(
+        result.revokedSessions > 0
+          ? "Đã thu hồi " + String(result.revokedSessions) + " phiên khác."
+          : "Không có phiên khác cần thu hồi."
+      );
+      await loadSessions();
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error ? err.message : "Không thể thu hồi các phiên khác."
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
 
   async function handleChangePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -257,6 +339,13 @@ export function AdminShell({
               </button>
               <button
                 type="button"
+                className="secondary-button secondary-button--compact"
+                onClick={() => void openSessions()}
+              >
+                Phiên
+              </button>
+              <button
+                type="button"
                 onClick={() => void auth.logout()}
               >
                 Đăng xuất
@@ -413,6 +502,156 @@ export function AdminShell({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {sessionsOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sessions-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px"
+          }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSessionsOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: "var(--color-surface, #ffffff)",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "620px",
+              width: "100%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+              border: "1px solid var(--color-border, #e2e8f0)"
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "12px"
+              }}
+            >
+              <div>
+                <span className="eyebrow">BẢO MẬT TÀI KHOẢN</span>
+                <h3 id="sessions-title" style={{ margin: "4px 0 0" }}>
+                  Phiên đăng nhập
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="secondary-button secondary-button--compact"
+                onClick={() => setSessionsOpen(false)}
+              >
+                Đóng
+              </button>
+            </div>
+
+            <p style={{ color: "var(--color-muted)", fontSize: "13px" }}>
+              Phiên không hoạt động quá thời gian idle sẽ tự hết hạn. Nếu thấy
+              phiên lạ, hãy thu hồi phiên đó và đổi mật khẩu.
+            </p>
+
+            {sessionsError ? (
+              <div className="admin-state admin-state--error" role="alert">
+                <span>{sessionsError}</span>
+              </div>
+            ) : null}
+
+            {sessionsSuccess ? (
+              <div className="admin-state admin-state--success">
+                <span>{sessionsSuccess}</span>
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                margin: "14px 0"
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={sessionsLoading || sessions.length <= 1}
+                onClick={() => void revokeOtherSessions()}
+              >
+                Thu hồi tất cả phiên khác
+              </button>
+            </div>
+
+            {sessionsLoading && sessions.length === 0 ? (
+              <div className="admin-state">Đang tải phiên đăng nhập…</div>
+            ) : sessions.length === 0 ? (
+              <div className="admin-state">Không có phiên đăng nhập đang hoạt động.</div>
+            ) : (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {sessions.map((session) => (
+                  <article
+                    key={session.id}
+                    style={{
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "10px",
+                      padding: "14px",
+                      display: "grid",
+                      gap: "6px"
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        alignItems: "center"
+                      }}
+                    >
+                      <strong>
+                        {session.current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
+                      </strong>
+                      <button
+                        type="button"
+                        className={
+                          session.current
+                            ? "text-button text-button--danger"
+                            : "text-button"
+                        }
+                        disabled={sessionsLoading}
+                        onClick={() => void revokeSession(session)}
+                      >
+                        {session.current ? "Đăng xuất phiên này" : "Thu hồi"}
+                      </button>
+                    </div>
+                    <small>
+                      Hoạt động gần nhất:{" "}
+                      {new Date(session.lastSeenAt).toLocaleString("vi-VN")}
+                    </small>
+                    <small>
+                      Tạo lúc: {new Date(session.createdAt).toLocaleString("vi-VN")}
+                    </small>
+                    <small>
+                      Hết hạn: {new Date(session.expiresAt).toLocaleString("vi-VN")}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : null}
