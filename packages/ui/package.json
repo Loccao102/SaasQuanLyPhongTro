@@ -6,7 +6,8 @@
     ".": "./src/index.tsx",
     "./styles.css": "./src/styles.css",
     "./date-input": "./src/date-input.tsx",
-    "./totp-qr": "./src/totp-qr.tsx"
+    "./totp-qr": "./src/totp-qr.tsx",
+    "./passkey": "./src/passkey.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
