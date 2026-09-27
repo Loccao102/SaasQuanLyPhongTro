@@ -215,10 +215,23 @@ export class TeamManagementService {
     this.assertRole(principal, input.role);
 
     return this.db.withTransaction(async (client) => {
-      await this.commercialPolicy.assertTenantWriteAllowed(
+      const policy = await this.commercialPolicy.assertTenantWriteAllowed(
         client,
         principal.organizationId
       );
+      const accountUsage = await client.query<QueryResultRow & { count: number }>(
+        `SELECT count(*)::int AS count
+         FROM organization_memberships
+         WHERE organization_id = $1::uuid`,
+        [principal.organizationId]
+      );
+      this.commercialPolicy.assertResourceIncreaseAllowed(
+        policy,
+        "STAFF",
+        accountUsage.rows[0]?.count ?? 0,
+        1
+      );
+
       const scopes = await this.validateScopes(
         client,
         principal.organizationId,
@@ -229,8 +242,10 @@ export class TeamManagementService {
       const userResult = await client.query<QueryResultRow & {
         id: string;
         status: string;
+        organization_id: string | null;
+        account_type: string;
       }>(
-        `SELECT id::text, status
+        `SELECT id::text, status, organization_id::text, account_type
          FROM users
          WHERE lower(email) = lower($1)
          LIMIT 1`,
@@ -243,14 +258,24 @@ export class TeamManagementService {
         if (userResult.rows[0].status !== "ACTIVE") {
           throw new ConflictException("User account is suspended.");
         }
+        if (
+          userResult.rows[0].account_type !== "TENANT" ||
+          userResult.rows[0].organization_id !== principal.organizationId
+        ) {
+          throw new ConflictException(
+            "Email này đã thuộc một tenant hoặc tài khoản nền tảng khác."
+          );
+        }
         userId = userResult.rows[0].id;
         reusedUser = true;
       } else {
         const createdUser = await client.query<QueryResultRow & { id: string }>(
-          `INSERT INTO users (email, display_name)
-           VALUES ($1, $2)
+          `INSERT INTO users (
+             organization_id, account_type, email, display_name
+           )
+           VALUES ($1, 'TENANT', $2, $3)
            RETURNING id::text`,
-          [email, displayName]
+          [principal.organizationId, email, displayName]
         );
         userId = createdUser.rows[0]!.id;
       }
