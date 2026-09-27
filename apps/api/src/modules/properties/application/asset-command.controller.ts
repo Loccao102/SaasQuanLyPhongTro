@@ -252,7 +252,7 @@ export class AssetCommandController {
       brand: optionalString(input, "brand"),
       modelOrSerial: optionalString(input, "modelOrSerial"),
       quantity: optionalInteger(input, "quantity"),
-      conditionStatus: optionalString(input, "conditionStatus") as any,
+      conditionStatus: optionalEquipmentCondition(input, "conditionStatus"),
       compensationValueVnd:
         input.compensationValueVnd !== undefined
           ? Number(input.compensationValueVnd)
