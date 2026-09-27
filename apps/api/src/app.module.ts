@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CacheModule } from "./modules/cache/cache.module.js";
 import { CmsModule } from "./modules/cms/cms.module.js";
 import { CommercialModule } from "./modules/commercial/commercial.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
@@ -17,6 +18,7 @@ import { MaintenanceModule } from "./modules/maintenance/maintenance.module.js";
 
 @Module({
   imports: [
+    CacheModule,
     HealthModule,
     IdentityModule,
     PropertiesModule,

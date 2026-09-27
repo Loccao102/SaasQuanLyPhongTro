@@ -24,6 +24,7 @@ import {
   SubscriptionPlanNotFoundError
 } from "../commercial/application/subscription-management.service.js";
 import { InvalidSubscriptionTransitionError } from "../commercial/domain/subscription-lifecycle.js";
+import { CacheService } from "../cache/cache.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { ObservabilityService } from "../observability/observability.service.js";
 import {
@@ -199,6 +200,107 @@ type EntitlementOverrideRow = QueryResultRow & {
   revoked_at: Date | null;
 };
 
+export type CmsDashboardView = {
+  branding: {
+    productName: string;
+    descriptor: string;
+    tagline: string;
+    palette: Record<string, unknown>;
+  };
+  display: {
+    locale: string;
+    timezone: string;
+    currencyCode: string;
+    dateFormat: string;
+    dateTimeFormat: string;
+    presets: Record<string, unknown>;
+  };
+  windows: {
+    leaseExpiryDays: number;
+    recentHours: number;
+    workerStaleAfterSeconds: number;
+    webhookStaleAfterSeconds: number;
+  };
+  organizations: {
+    total: number;
+    active: number;
+    suspended: number;
+    activeMemberships: number;
+  };
+  assets: {
+    activeProperties: number;
+    activeRooms: number;
+    occupiedRooms: number;
+    vacantRooms: number;
+    occupancyRatePercent: number;
+    activeResidents: number;
+    activeLeases: number;
+    terminationScheduledLeases: number;
+    expiringLeases: number;
+  };
+  commercial: {
+    trialingSubscriptions: number;
+    activeSubscriptions: number;
+    pastDueSubscriptions: number;
+    gracePeriodSubscriptions: number;
+    suspendedSubscriptions: number;
+    cancelledSubscriptions: number;
+    cancelAtPeriodEndSubscriptions: number;
+    delinquentOrganizationCount: number | null;
+    unpaidInvoiceCount: number | null;
+    overdueInvoiceCount: number | null;
+    outstandingVnd: number | null;
+    overdueVnd: number | null;
+    successfulPaymentCountRecent: number | null;
+    successfulPaymentVndRecent: number | null;
+    activePlans: number;
+  };
+  automation: {
+    queuedJobs: number;
+    runningJobs: number;
+    retryWaitJobs: number;
+    manualReviewJobs: number;
+    failedJobs: number;
+    sentJobsRecent: number;
+    healthyWorkers: number;
+    degradedWorkers: number;
+    staleWorkers: number;
+    pausedProviders: number;
+    webhookReceived: number;
+    webhookProcessing: number;
+    webhookReviewRequired: number;
+    webhookFailed: number;
+    webhookStaleProcessing: number;
+    webhookProcessedRecent: number;
+  };
+  platform: {
+    settingCount: number;
+    auditRecent: number;
+  };
+  topOrganizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    activeRooms: number;
+    currentLeases: number;
+  }>;
+  planDistribution: Array<{
+    planCode: string;
+    planName: string;
+    subscriptions: number;
+  }>;
+  organizationCount: number;
+  activeRoomCount: number;
+  settingCount: number;
+  activePlanCount: number;
+  platformAudit24h: number;
+  delinquentOrganizationCount: number | null;
+  unpaidInvoiceCount: number | null;
+  overdueInvoiceCount: number | null;
+  outstandingVnd: number | null;
+  overdueVnd: number | null;
+};
+
 @Injectable()
 export class CmsService {
   constructor(
@@ -207,7 +309,8 @@ export class CmsService {
     private readonly subscriptionBilling: SubscriptionBillingService,
     private readonly notificationOperations: NotificationOperationsService,
     private readonly billingWebhookInbox: SaasBillingWebhookInboxService,
-    private readonly observability?: ObservabilityService
+    private readonly observability?: ObservabilityService,
+    private readonly cache?: CacheService
   ) {}
 
   getBootstrap(principal: PlatformPrincipal) {
@@ -219,8 +322,14 @@ export class CmsService {
     };
   }
 
-  async getDashboard(principal: PlatformPrincipal) {
+  async getDashboard(principal: PlatformPrincipal): Promise<CmsDashboardView> {
     this.requirePermission(principal, "platform.cms.read");
+
+    const cacheKey = "cms:dashboard:overview";
+    if (this.cache) {
+      const cached = await this.cache.get<CmsDashboardView>(cacheKey);
+      if (cached) return cached;
+    }
 
     const settingKeys = [
       "brand_product_name",
@@ -676,7 +785,7 @@ export class CmsService {
       presets: jsonSetting("display_format_presets", {})
     };
 
-    return {
+    const response = {
       branding,
       display,
       windows: {
@@ -808,16 +917,61 @@ export class CmsService {
         ? Number(commercial.overdue_vnd ?? 0)
         : null
     };
+
+    if (this.cache) {
+      await this.cache.set(cacheKey, response, 15);
+    }
+    return response;
+  }
+
+  async getSystemPerformance(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.cms.read");
+
+    const mem = process.memoryUsage();
+    return {
+      database: this.db.getRuntimeStats(),
+      cache: this.cache
+        ? this.cache.getStats()
+        : {
+            connected: false,
+            hits: 0,
+            misses: 0,
+            hitRatioPercent: 0,
+            totalReads: 0,
+            totalWrites: 0
+          },
+      process: {
+        uptimeSeconds: Math.floor(process.uptime()),
+        memoryUsageBytes: {
+          rss: mem.rss,
+          heapTotal: mem.heapTotal,
+          heapUsed: mem.heapUsed,
+          external: mem.external
+        },
+        nodeVersion: process.version
+      },
+      timestamp: new Date().toISOString()
+    };
   }
 
   async listSettings(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
+    const cacheKey = "cms:system_settings:list";
+    if (this.cache) {
+      const cached = await this.cache.get<Array<ReturnType<typeof this.mapSetting>>>(cacheKey);
+      if (cached) return cached;
+    }
+
     const result = await this.db.query<SettingRow>(
       `SELECT key, group_key, label, description, value, value_type, version, updated_at
        FROM system_settings
        ORDER BY group_key, key`
     );
-    return result.rows.map((row) => this.mapSetting(row));
+    const mapped = result.rows.map((row) => this.mapSetting(row));
+    if (this.cache) {
+      await this.cache.set(cacheKey, mapped, 300);
+    }
+    return mapped;
   }
 
   async updateSetting(
@@ -837,7 +991,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.withTransaction(async (client) => {
+    const res = await this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,
@@ -917,12 +1071,28 @@ export class CmsService {
       );
       return response;
     });
+
+    if (this.cache) {
+      await this.cache.del("cms:system_settings:list");
+      await this.cache.del("cms:dashboard:overview");
+    }
+    return res;
   }
 
   async listPlans(principal: PlatformPrincipal) {
     this.requirePermission(principal, "platform.cms.read");
+    const cacheKey = "cms:commercial_plans:list";
+    if (this.cache) {
+      const cached = await this.cache.get<Array<ReturnType<typeof this.mapPlan>>>(cacheKey);
+      if (cached) return cached;
+    }
+
     const result = await this.db.query<PlanRow>(this.planSelectSql());
-    return result.rows.map((row) => this.mapPlan(row));
+    const mapped = result.rows.map((row) => this.mapPlan(row));
+    if (this.cache) {
+      await this.cache.set(cacheKey, mapped, 600);
+    }
+    return mapped;
   }
 
   async updatePlan(
@@ -959,7 +1129,7 @@ export class CmsService {
       reason
     });
 
-    return this.db.withTransaction(async (client) => {
+    const res = await this.db.withTransaction(async (client) => {
       const receipt = await this.readReceipt(
         client,
         principal.userId,
@@ -1066,10 +1236,26 @@ export class CmsService {
       );
       return response;
     });
+
+    if (this.cache) {
+      await this.cache.del("cms:commercial_plans:list");
+      await this.cache.del("cms:dashboard:overview");
+    }
+    return res;
   }
 
-  async listOrganizations(principal: PlatformPrincipal) {
+  async listOrganizations(
+    principal: PlatformPrincipal,
+    filters?: {
+      search?: string;
+      status?: string;
+      plan?: string;
+    }
+  ) {
     this.requirePermission(principal, "platform.organizations.inspect");
+    const searchVal = filters?.search?.trim() || null;
+    const statusVal = filters?.status?.trim() || null;
+    const planVal = filters?.plan?.trim() || null;
     const result = await this.db.query<OrganizationRow>(
       `SELECT
          o.id::text,
@@ -1224,7 +1410,11 @@ export class CmsService {
          ORDER BY aqp.period_start DESC
          LIMIT 1
        ) automation_usage ON true
-       ORDER BY o.created_at DESC, o.id DESC`
+       WHERE ($1::text IS NULL OR o.name ILIKE '%' || $1 || '%' OR o.slug ILIKE '%' || $1 || '%' OR owner.display_name ILIKE '%' || $1 || '%')
+         AND ($2::text IS NULL OR o.status = $2)
+         AND ($3::text IS NULL OR p.code = $3)
+       ORDER BY o.created_at DESC, o.id DESC`,
+      [searchVal, statusVal, planVal]
     );
 
     return result.rows.map((row) => ({

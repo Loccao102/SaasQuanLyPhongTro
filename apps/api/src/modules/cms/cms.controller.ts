@@ -45,6 +45,11 @@ export class CmsController {
     return this.cms.getDashboard(this.principal(request));
   }
 
+  @Get("performance")
+  getPerformance(@Req() request: CmsRequest) {
+    return this.cms.getSystemPerformance(this.principal(request));
+  }
+
   @Get("settings")
   listSettings(@Req() request: CmsRequest) {
     return this.cms.listSettings(this.principal(request));
@@ -86,8 +91,17 @@ export class CmsController {
   }
 
   @Get("organizations")
-  listOrganizations(@Req() request: CmsRequest) {
-    return this.cms.listOrganizations(this.principal(request));
+  listOrganizations(
+    @Req() request: CmsRequest,
+    @Query("q") search?: string,
+    @Query("status") status?: string,
+    @Query("plan") plan?: string
+  ) {
+    return this.cms.listOrganizations(this.principal(request), {
+      search,
+      status,
+      plan
+    });
   }
 
   @Post("organizations/:organizationId/subscription")

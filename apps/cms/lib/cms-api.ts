@@ -541,6 +541,44 @@ export type CmsOperationalSnapshot = {
   };
 };
 
+export type CmsPerformance = {
+  database: {
+    pool: {
+      max: number;
+      total: number;
+      idle: number;
+      waiting: number;
+    };
+    operations: {
+      queryCount: number;
+      transactionCount: number;
+      slowOperationCount: number;
+      durationSumMs: number;
+      durationMaxMs: number;
+      slowThresholdMs: number;
+    };
+  };
+  cache: {
+    connected: boolean;
+    hits: number;
+    misses: number;
+    hitRatioPercent: number;
+    totalReads: number;
+    totalWrites: number;
+  };
+  process: {
+    uptimeSeconds: number;
+    memoryUsageBytes: {
+      rss: number;
+      heapTotal: number;
+      heapUsed: number;
+      external: number;
+    };
+    nodeVersion: string;
+  };
+  timestamp: string;
+};
+
 export type IntegrationStatus = {
   connected: boolean;
   reason: string;
@@ -574,9 +612,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const cmsApi = {
   bootstrap: () => request<CmsBootstrap>("/bootstrap"),
   dashboard: () => request<CmsDashboard>("/dashboard"),
+  performance: () => request<CmsPerformance>("/performance"),
   settings: () => request<CmsSetting[]>("/settings"),
   plans: () => request<CmsPlan[]>("/plans"),
-  organizations: () => request<CmsOrganization[]>("/organizations"),
+  organizations: (filters?: { search?: string; status?: string; plan?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("q", filters.search);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.plan) params.set("plan", filters.plan);
+    const suffix = params.size > 0 ? "?" + params.toString() : "";
+    return request<CmsOrganization[]>("/organizations" + suffix);
+  },
   entitlementOverrides: () =>
     request<CmsEntitlementOverride[]>("/entitlement-overrides"),
   audit: () => request<CmsAuditEvent[]>("/audit"),

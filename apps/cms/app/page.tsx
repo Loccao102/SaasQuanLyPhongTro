@@ -29,6 +29,7 @@ import {
   type CmsProviderPaymentDetail,
   type CmsProviderPaymentReview,
   type CmsPlan,
+  type CmsPerformance,
   type CmsSetting,
   type CmsSubscriptionStatus,
   type IntegrationStatus
@@ -227,10 +228,34 @@ export default function CmsPage() {
   const [providerPaymentCopyNotice, setProviderPaymentCopyNotice] =
     useState<string | null>(null);
   const [logsStatus, setLogsStatus] = useState<IntegrationStatus | null>(null);
+  const [performance, setPerformance] = useState<CmsPerformance | null>(null);
+  const [orgSearch, setOrgSearch] = useState("");
+  const [orgFilterStatus, setOrgFilterStatus] = useState("ALL");
+  const [orgFilterPlan, setOrgFilterPlan] = useState("ALL");
   const [modal, setModal] = useState<ModalState>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredOrganizations = useMemo(() => {
+    return organizations.filter((org) => {
+      if (orgFilterStatus !== "ALL" && org.subscriptionStatus !== orgFilterStatus) {
+        return false;
+      }
+      if (orgFilterPlan !== "ALL" && (org.planCode ?? "UNASSIGNED") !== orgFilterPlan) {
+        return false;
+      }
+      if (!orgSearch.trim()) return true;
+      const q = orgSearch.trim().toLowerCase();
+      return (
+        org.name.toLowerCase().includes(q) ||
+        org.slug.toLowerCase().includes(q) ||
+        (org.ownerName && org.ownerName.toLowerCase().includes(q)) ||
+        (org.planCode && org.planCode.toLowerCase().includes(q)) ||
+        org.id.toLowerCase().includes(q)
+      );
+    });
+  }, [organizations, orgSearch, orgFilterStatus, orgFilterPlan]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -251,7 +276,8 @@ export default function CmsPage() {
         nextAudit,
         nextJobs,
         nextBillingReconciliation,
-        nextLogs
+        nextLogs,
+        nextPerformance
       ] = await Promise.all([
         cmsApi.dashboard(),
         cmsApi.settings(),
@@ -273,6 +299,9 @@ export default function CmsPage() {
           : Promise.resolve(null),
         can("platform.logs.read")
           ? cmsApi.logs()
+          : Promise.resolve(null),
+        can("platform.cms.read")
+          ? cmsApi.performance().catch(() => null)
           : Promise.resolve(null)
       ]);
 
@@ -285,6 +314,7 @@ export default function CmsPage() {
       setJobsStatus(nextJobs);
       setBillingReconciliation(nextBillingReconciliation);
       setLogsStatus(nextLogs);
+      setPerformance(nextPerformance);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -1481,22 +1511,76 @@ export default function CmsPage() {
               {organizations.length === 0 ? (
                 <div className="empty-state">Chưa có organization.</div>
               ) : (
-                <div className="cms-table-wrap">
-                  <table className="cms-table">
-                    <thead>
-                      <tr>
-                        <th>Organization</th>
-                        <th>Plan</th>
-                        <th>Subscription</th>
-                        <th>Billing</th>
-                        <th>Rooms</th>
-                        <th>Staff</th>
-                        <th>Automation quota</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {organizations.map((org) => {
+                <>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", margin: "14px 0 16px" }}>
+                    <input
+                      type="search"
+                      placeholder="Tìm theo tên, slug, chủ nhà, mã gói..."
+                      value={orgSearch}
+                      onChange={(e) => setOrgSearch(e.target.value)}
+                      style={{ minWidth: "260px", flex: "1 1 260px", minHeight: "38px", padding: "8px 12px", border: "1px solid var(--color-border)", borderRadius: "8px", fontSize: "13px" }}
+                    />
+                    <select
+                      value={orgFilterStatus}
+                      onChange={(e) => setOrgFilterStatus(e.target.value)}
+                      style={{ minHeight: "38px", padding: "8px 12px", border: "1px solid var(--color-border)", borderRadius: "8px", fontSize: "13px", background: "white" }}
+                    >
+                      <option value="ALL">Tất cả subscription status</option>
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="TRIALING">TRIALING</option>
+                      <option value="PAST_DUE">PAST_DUE</option>
+                      <option value="GRACE_PERIOD">GRACE_PERIOD</option>
+                      <option value="SUSPENDED">SUSPENDED</option>
+                      <option value="CANCELLED">CANCELLED</option>
+                    </select>
+                    <select
+                      value={orgFilterPlan}
+                      onChange={(e) => setOrgFilterPlan(e.target.value)}
+                      style={{ minHeight: "38px", padding: "8px 12px", border: "1px solid var(--color-border)", borderRadius: "8px", fontSize: "13px", background: "white" }}
+                    >
+                      <option value="ALL">Tất cả gói (Plans)</option>
+                      {plans.map((p) => (
+                        <option key={p.code} value={p.code}>{p.name} ({p.code})</option>
+                      ))}
+                      <option value="UNASSIGNED">Chưa gán gói</option>
+                    </select>
+                    {(orgSearch || orgFilterStatus !== "ALL" || orgFilterPlan !== "ALL") && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setOrgSearch("");
+                          setOrgFilterStatus("ALL");
+                          setOrgFilterPlan("ALL");
+                        }}
+                      >
+                        Xóa lọc
+                      </button>
+                    )}
+                    <span className="cms-note" style={{ marginLeft: "auto" }}>
+                      Hiển thị {filteredOrganizations.length} / {organizations.length} organizations
+                    </span>
+                  </div>
+
+                  {filteredOrganizations.length === 0 ? (
+                    <div className="empty-state">Không tìm thấy organization nào phù hợp điều kiện lọc.</div>
+                  ) : (
+                    <div className="cms-table-wrap">
+                      <table className="cms-table">
+                        <thead>
+                          <tr>
+                            <th>Organization</th>
+                            <th>Plan</th>
+                            <th>Subscription</th>
+                            <th>Billing</th>
+                            <th>Rooms</th>
+                            <th>Staff</th>
+                            <th>Automation quota</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredOrganizations.map((org) => {
                         const roomOver =
                           org.roomLimit !== null && org.rooms > org.roomLimit;
                         return (
@@ -1767,8 +1851,10 @@ export default function CmsPage() {
                   </table>
                 </div>
               )}
-            </section>
-          )}
+              </>
+            )}
+          </section>
+        )}
 
           {!loading && view === "billing" && (
             <>
@@ -3158,6 +3244,59 @@ export default function CmsPage() {
                   />
                 </section>
               ) : null}
+
+              <section className="cms-panel">
+                <SectionHeader
+                  title="Hiệu năng hệ thống & Redis Cache"
+                  action={
+                    performance?.timestamp ? (
+                      <span className="cms-note">
+                        Cập nhật {new Date(performance.timestamp).toLocaleString("vi-VN")}
+                      </span>
+                    ) : undefined
+                  }
+                />
+                <div className="provider-payment-detail__summary" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: "12px" }}>
+                  <div>
+                    <span>Redis Caching</span>
+                    <strong>
+                      <StatusBadge tone={performance?.cache.connected ? "success" : "warning"}>
+                        {performance?.cache.connected ? "CONNECTED" : "FALLBACK_DB"}
+                      </StatusBadge>
+                    </strong>
+                    <small>
+                      Hit ratio: <strong>{performance?.cache.hitRatioPercent ?? 0}%</strong> ({performance?.cache.hits ?? 0} hits / {performance?.cache.misses ?? 0} misses)
+                    </small>
+                  </div>
+                  <div>
+                    <span>Cache Throughput</span>
+                    <strong>
+                      {((performance?.cache.totalReads ?? 0) + (performance?.cache.totalWrites ?? 0)).toLocaleString("vi-VN")} ops
+                    </strong>
+                    <small>
+                      {performance?.cache.totalReads ?? 0} reads · {performance?.cache.totalWrites ?? 0} writes
+                    </small>
+                  </div>
+                  <div>
+                    <span>PostgreSQL Pool</span>
+                    <strong>
+                      {performance?.database.pool.total ?? 0} / {performance?.database.pool.max ?? 10} conns
+                    </strong>
+                    <small>
+                      {performance?.database.pool.idle ?? 0} idle · {performance?.database.pool.waiting ?? 0} waiting
+                    </small>
+                  </div>
+                  <div>
+                    <span>Memory & Uptime</span>
+                    <strong>
+                      {performance?.process.memoryUsageBytes ? Math.round(performance.process.memoryUsageBytes.rss / (1024 * 1024)) : 0} MB RSS
+                    </strong>
+                    <small>
+                      Uptime {durationLabel(performance?.process.uptimeSeconds ?? 0)} · Node {performance?.process.nodeVersion ?? "v22"}
+                    </small>
+                  </div>
+                </div>
+              </section>
 
               <section className="cms-panel">
                 <SectionHeader

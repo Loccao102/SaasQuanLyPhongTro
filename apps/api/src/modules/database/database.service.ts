@@ -1,10 +1,14 @@
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import {
   Pool,
+  types,
   type PoolClient,
   type QueryResult,
   type QueryResultRow
 } from "pg";
+
+// Postgres OID 1082 is DATE. Parse directly as string to preserve calendar date across all timezones.
+types.setTypeParser(1082, (val: string) => val);
 
 export type DatabaseRuntimeStats = {
   pool: {
