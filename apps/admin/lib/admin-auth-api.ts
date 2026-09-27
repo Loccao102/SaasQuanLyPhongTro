@@ -45,6 +45,7 @@ export type AdminAuthSessionItem = {
 
 export type AuthConfig = {
   registrationEnabled: boolean;
+  passwordRegistrationEnabled: boolean;
   googleEnabled: boolean;
   googleClientId: string | null;
 };
