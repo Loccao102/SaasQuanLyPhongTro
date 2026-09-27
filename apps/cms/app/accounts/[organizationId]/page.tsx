@@ -8,13 +8,21 @@ import {
   cmsApi,
   type CmsOrganization,
   type CmsTenantAccount,
-  type CmsTenantAccountsView
+  type CmsTenantAccountsView,
+  type CmsTenantFeatureKey
 } from "../../../lib/cms-api";
 
 type AccountAction =
   | { kind: "status"; account: CmsTenantAccount; status: "ACTIVE" | "SUSPENDED" }
+  | { kind: "role"; account: CmsTenantAccount }
   | { kind: "resetPassword"; account: CmsTenantAccount }
   | { kind: "revokeSessions"; account: CmsTenantAccount }
+  | {
+      kind: "feature";
+      feature: CmsTenantFeatureKey;
+      enabled: boolean;
+      source: "PLAN" | "OVERRIDE";
+    }
   | null;
 
 const roles: CmsTenantAccount["role"][] = [
@@ -25,6 +33,23 @@ const roles: CmsTenantAccount["role"][] = [
   "ACCOUNTANT",
   "VIEWER"
 ];
+
+const featureLabels: Record<CmsTenantFeatureKey, string> = {
+  properties: "Tài sản / cơ sở",
+  leases: "Hợp đồng",
+  metering: "Điện nước",
+  pricing: "Biểu giá",
+  billing: "Hóa đơn",
+  payments: "Thanh toán",
+  credit_balance: "Số dư khách thuê",
+  finances: "Sổ quỹ",
+  maintenance: "Bảo trì",
+  notifications: "Thông báo",
+  reports: "Báo cáo",
+  team_management: "Đội ngũ & phân quyền",
+  advanced_reports: "Báo cáo nâng cao",
+  audit_log: "Nhật ký kiểm toán"
+};
 
 export default function TenantAccountsPage() {
   const params = useParams<{ organizationId: string }>();
@@ -116,6 +141,29 @@ export default function TenantAccountsPage() {
           action.status === "SUSPENDED"
             ? "Đã khóa tài khoản và thu hồi session đang hoạt động."
             : "Đã mở lại tài khoản."
+        );
+      } else if (action.kind === "role") {
+        await cmsApi.setTenantAccountRole(
+          organizationId,
+          action.account.id,
+          String(form.get("role") ?? action.account.role) as CmsTenantAccount["role"],
+          reason
+        );
+        setSuccess("Đã cập nhật role tài khoản và ghi audit.");
+      } else if (action.kind === "feature") {
+        await cmsApi.setEntitlementOverride(
+          organizationId,
+          action.feature,
+          {
+            value: !action.enabled,
+            expiresAt: null,
+            reason
+          }
+        );
+        setSuccess(
+          (!action.enabled ? "Đã bật " : "Đã tắt ") +
+            featureLabels[action.feature] +
+            " cho tenant."
         );
       } else if (action.kind === "resetPassword") {
         await cmsApi.resetTenantAccountPassword(
@@ -222,6 +270,77 @@ export default function TenantAccountsPage() {
         </section>
       ) : null}
 
+      {data ? (
+        <section className="cms-panel" style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 16,
+              alignItems: "center",
+              marginBottom: 16
+            }}
+          >
+            <div>
+              <span className="cms-eyebrow">TENANT FEATURES</span>
+              <h2>Quyền chức năng hiệu lực</h2>
+              <p className="cms-note">
+                {data.planCode} · {data.subscriptionStatus}. PLAN là mặc định của gói;
+                OVERRIDE là ngoại lệ CMS áp riêng cho tenant này.
+              </p>
+            </div>
+            <strong>{quotaLabel} tài khoản</strong>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12
+            }}
+          >
+            {(Object.entries(data.features) as Array<
+              [
+                CmsTenantFeatureKey,
+                { enabled: boolean; source: "PLAN" | "OVERRIDE" }
+              ]
+            >).map(([feature, state]) => (
+              <article
+                key={feature}
+                style={{
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 10,
+                  padding: 14,
+                  display: "grid",
+                  gap: 10
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <strong>{featureLabels[feature]}</strong>
+                  <StatusBadge tone={state.enabled ? "success" : "neutral"}>
+                    {state.enabled ? "BẬT" : "TẮT"}
+                  </StatusBadge>
+                </div>
+                <small>Nguồn: {state.source}</small>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() =>
+                    setAction({
+                      kind: "feature",
+                      feature,
+                      enabled: state.enabled,
+                      source: state.source
+                    })
+                  }
+                >
+                  {state.enabled ? "Tắt cho tenant" : "Bật cho tenant"}
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="cms-panel">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}>
           <div>
@@ -265,6 +384,13 @@ export default function TenantAccountsPage() {
                     </td>
                     <td>
                       <div className="table-actions">
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => setAction({ kind: "role", account })}
+                        >
+                          Đổi role
+                        </button>
                         <button
                           className={account.userStatus === "ACTIVE" ? "text-button text-button--danger" : "text-button"}
                           type="button"
@@ -312,19 +438,39 @@ export default function TenantAccountsPage() {
                 ? action.status === "SUSPENDED"
                   ? "Khóa tài khoản"
                   : "Mở lại tài khoản"
-                : action.kind === "resetPassword"
-                  ? "Reset mật khẩu"
-                  : "Thu hồi toàn bộ session"}
+                : action.kind === "role"
+                  ? "Đổi role tài khoản"
+                  : action.kind === "feature"
+                    ? (action.enabled ? "Tắt " : "Bật ") + featureLabels[action.feature]
+                    : action.kind === "resetPassword"
+                      ? "Reset mật khẩu"
+                      : "Thu hồi toàn bộ session"}
             </h2>
             <p className="modal-warning">
-              {action.account.displayName} · {action.account.email}
+              {action.kind === "feature"
+                ? `Thay đổi này áp cho toàn tenant và được backend enforce ngay. Nguồn hiện tại: ${action.source}.`
+                : `${action.account.displayName} · ${action.account.email}`}
               {action.kind === "status" && action.status === "SUSPENDED"
                 ? ". Session đang hoạt động sẽ bị thu hồi ngay."
                 : action.kind === "resetPassword"
                   ? ". Mật khẩu hiện tại mất hiệu lực và mọi session sẽ bị thu hồi."
-                  : ". Người dùng phải đăng nhập lại trên mọi thiết bị."}
+                  : action.kind === "role"
+                    ? ". Quyền mới có hiệu lực trên request tiếp theo."
+                    : action.kind === "revokeSessions"
+                      ? ". Người dùng phải đăng nhập lại trên mọi thiết bị."
+                      : ""}
             </p>
             <form onSubmit={(event) => void submitAction(event)}>
+              {action.kind === "role" ? (
+                <label>
+                  Role mới
+                  <select name="role" defaultValue={action.account.role}>
+                    {roles.map((role) => (
+                      <option key={role}>{role}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               {action.kind === "resetPassword" ? (
                 <label>
                   Mật khẩu tạm mới
