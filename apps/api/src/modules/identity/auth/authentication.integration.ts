@@ -192,6 +192,100 @@ test("login creates opaque session, resolves memberships and supports revocation
       throw new Error("ADMIN fixture unexpectedly requires MFA.");
     }
     const secondLogin = secondLoginResult;
+    await repository.replaceWebAuthnChallenge({
+      userId,
+      challenge: "integration-registration-challenge",
+      purpose: "REGISTRATION",
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const registrationChallenge =
+      await repository.getActiveWebAuthnChallenge({
+        userId,
+        purpose: "REGISTRATION"
+      });
+    assert.ok(registrationChallenge);
+
+    const passkey = await repository.completePasskeyRegistration({
+      challengeId: registrationChallenge.id,
+      userId,
+      credentialId: "integration-passkey-credential",
+      publicKey: new Uint8Array([1, 2, 3, 4]),
+      counter: 0,
+      transports: ["internal"],
+      deviceType: "singleDevice",
+      backedUp: false,
+      name: "Integration passkey"
+    });
+    assert.ok(passkey);
+
+    const replayedRegistration =
+      await repository.completePasskeyRegistration({
+        challengeId: registrationChallenge.id,
+        userId,
+        credentialId: "integration-passkey-replay",
+        publicKey: new Uint8Array([4, 3, 2, 1]),
+        counter: 0,
+        transports: ["internal"],
+        deviceType: "singleDevice",
+        backedUp: false,
+        name: "Replay"
+      });
+    assert.equal(replayedRegistration, null);
+
+    const parentMfaToken = hashOpaqueToken(
+      "integration-mfa-token-012345678901234567890123456789"
+    );
+    await fixture.query(
+      `INSERT INTO auth_mfa_challenges (
+         user_id, token_hash, expires_at, purpose
+       )
+       VALUES ($1::uuid, $2, now() + interval '1 minute', 'VERIFY')`,
+      [userId, parentMfaToken]
+    );
+
+    await repository.replaceWebAuthnChallenge({
+      userId,
+      challenge: "integration-authentication-challenge",
+      purpose: "AUTHENTICATION",
+      parentMfaTokenHash: parentMfaToken,
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const authenticationChallenge =
+      await repository.getActiveWebAuthnChallenge({
+        userId,
+        purpose: "AUTHENTICATION",
+        parentMfaTokenHash: parentMfaToken
+      });
+    assert.ok(authenticationChallenge);
+
+    assert.equal(
+      await repository.completePasskeyAuthentication({
+        webauthnChallengeId: authenticationChallenge.id,
+        userId,
+        mfaTokenHash: parentMfaToken,
+        passkeyId: passkey.id,
+        newCounter: 1
+      }),
+      true
+    );
+    assert.equal(
+      await repository.completePasskeyAuthentication({
+        webauthnChallengeId: authenticationChallenge.id,
+        userId,
+        mfaTokenHash: parentMfaToken,
+        passkeyId: passkey.id,
+        newCounter: 2
+      }),
+      false
+    );
+
+    const storedPasskey = await repository.findPasskeyByCredential(
+      userId,
+      "integration-passkey-credential"
+    );
+    assert.equal(storedPasskey?.counter, 1);
+    assert.ok(storedPasskey?.lastUsedAt);
+
     await fixture.query(
       "UPDATE users SET auth_version = auth_version + 1 WHERE id = $1",
       [userId]
