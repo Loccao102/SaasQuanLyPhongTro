@@ -115,11 +115,17 @@ Implemented controls:
 - TOTP secrets are encrypted with AES-256-GCM, recovery codes are stored only as hashes and are single-use;
 - tenant and platform password login are separated by authoritative account type;
 - active-session UX includes a bounded User-Agent-derived device label and supports revoking other sessions;
-- the CMS Control Plane uses real PLATFORM browser sessions instead of a production dev-principal fallback.
+- the CMS Control Plane uses real PLATFORM browser sessions instead of a production dev-principal fallback;
+- MFA enrollment policy is role-based and configurable through system settings;
+- OWNER and PLATFORM_ADMIN are required to enroll by default before a new browser session is issued;
+- mandatory enrollment uses a short-lived ENROLL challenge and never grants a temporary business session;
+- Authenticator QR codes are rendered locally in the Habi frontend, so the TOTP provisioning secret is not sent to a third-party QR service;
+- accounts whose role is still covered by MFA policy cannot disable MFA.
 
 Residual work before public launch:
 
-- decide and enforce mandatory MFA enrollment policy for privileged OWNER/PLATFORM roles;
+- decide whether additional roles should be added to the mandatory MFA policy;
+- decide whether already-active pre-policy sessions should be force-revoked at rollout or allowed to age out;
 - add WebAuthn/passkeys if phishing-resistant MFA is required;
 - connect production authentication alerts to the chosen incident channel.
 
