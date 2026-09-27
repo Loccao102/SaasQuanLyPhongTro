@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -20,6 +21,7 @@ import {
 } from "./excel-property.helper.js";
 import { PropertyImportService } from "./property-import.service.js";
 
+@RequireTenantFeature("properties")
 @Controller("admin/assets/import")
 @UseGuards(TenantPrincipalGuard)
 export class PropertyImportController {
