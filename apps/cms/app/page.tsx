@@ -1,5 +1,7 @@
 "use client";
 
+import { DateTimeInput } from "@propops/ui/date-input";
+
 import {
   useCallback,
   useEffect,
@@ -3657,7 +3659,7 @@ export default function CmsPage() {
                 </label>
                 <label>
                   Trial end (optional; ignored for ACTIVE)
-                  <input name="trialEndsAt" type="datetime-local" />
+                  <DateTimeInput name="trialEndsAt" />
                 </label>
               </>
             )}
@@ -3919,7 +3921,7 @@ export default function CmsPage() {
                 </label>
                 <label>
                   Hết hạn (tùy chọn)
-                  <input name="expiresAt" type="datetime-local" />
+                  <DateTimeInput name="expiresAt" />
                 </label>
               </>
             )}
