@@ -7,6 +7,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -14,6 +15,7 @@ import type {
 import { AssetReadService } from "./asset-read.service.js";
 import { RoomEquipmentService } from "./room-equipment.service.js";
 
+@RequireTenantFeature("properties")
 @Controller("admin/assets")
 @UseGuards(TenantPrincipalGuard)
 export class AssetReadController {
