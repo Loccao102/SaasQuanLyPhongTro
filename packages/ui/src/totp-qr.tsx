@@ -115,8 +115,10 @@ function rsGenerator(degree: number): number[] {
     const next = new Array(polynomial.length + 1).fill(0) as number[];
     const root = GF_EXP[index]!;
     for (let coefficient = 0; coefficient < polynomial.length; coefficient += 1) {
-      next[coefficient] ^= polynomial[coefficient]!;
-      next[coefficient + 1] ^=
+      next[coefficient] =
+        next[coefficient]! ^ polynomial[coefficient]!;
+      next[coefficient + 1] =
+        next[coefficient + 1]! ^
         gfMultiply(polynomial[coefficient]!, root);
     }
     polynomial = next;
@@ -133,7 +135,8 @@ function rsRemainder(data: readonly number[], degree: number): number[] {
     remainder.shift();
     remainder.push(0);
     for (let index = 0; index < degree; index += 1) {
-      remainder[index] ^= gfMultiply(generator[index]!, factor);
+      remainder[index] =
+        remainder[index]! ^ gfMultiply(generator[index]!, factor);
     }
   }
   return remainder;
