@@ -38,7 +38,8 @@ export class TeamManagementController {
       email: this.string(input, "email"),
       displayName: this.string(input, "displayName"),
       role: this.role(input.role),
-      scopes: this.scopes(input.scopes)
+      scopes: this.scopes(input.scopes),
+      temporaryPassword: this.string(input, "temporaryPassword")
     });
   }
 
