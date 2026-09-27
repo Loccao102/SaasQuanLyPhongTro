@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  RollbackOutlined,
+  PlusOutlined,
+  MinusOutlined
+} from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -32,19 +39,19 @@ function formatDate(iso: string) {
 function movementMeta(type: CreditMovementType) {
   switch (type) {
     case "OVERPAYMENT_CREDIT":
-      return { label: "Tín dụng thừa", tone: "success" as const, icon: "↗" };
+      return { label: "Tín dụng thừa", tone: "success" as const };
     case "CREDIT_APPLIED":
-      return { label: "Áp dụng tín dụng", tone: "info" as const, icon: "↙" };
+      return { label: "Áp dụng tín dụng", tone: "info" as const };
     case "MANUAL_CREDIT":
-      return { label: "Cộng thủ công", tone: "success" as const, icon: "+" };
+      return { label: "Cộng thủ công", tone: "success" as const };
     case "MANUAL_DEBIT":
-      return { label: "Trừ thủ công", tone: "warning" as const, icon: "−" };
+      return { label: "Trừ thủ công", tone: "warning" as const };
     case "REFUND_ISSUED":
-      return { label: "Hoàn trả", tone: "danger" as const, icon: "↩" };
+      return { label: "Hoàn trả", tone: "danger" as const };
     case "ALLOCATION_REVERSAL":
-      return { label: "Đảo phân bổ", tone: "warning" as const, icon: "⟲" };
+      return { label: "Đảo phân bổ", tone: "warning" as const };
     default:
-      return { label: type, tone: "neutral" as const, icon: "•" };
+      return { label: type, tone: "neutral" as const };
   }
 }
 
@@ -202,14 +209,14 @@ export function CreditBalanceClient() {
         <PageHeader title="Tín dụng Khách thuê" />
 
         {actionSuccess && (
-          <div className="alert alert-success" style={{ marginBottom: 16 }}>
-            ✅ {actionSuccess}
+          <div className="alert alert-success" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <CheckCircleOutlined /> {actionSuccess}
           </div>
         )}
 
         {error && (
-          <div className="alert alert-error" style={{ marginBottom: 16 }}>
-            ⚠ {error}
+          <div className="alert alert-error" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <ExclamationCircleOutlined /> {error}
           </div>
         )}
 
@@ -230,21 +237,21 @@ export function CreditBalanceClient() {
                   className="btn btn-primary"
                   onClick={() => { resetForm(); setModal("credit"); }}
                 >
-                  + Cộng tín dụng
+                  <PlusOutlined style={{ marginRight: 6 }} /> Cộng tín dụng
                 </button>
                 <button
                   className="btn btn-secondary"
                   onClick={() => { resetForm(); setModal("debit"); }}
                   disabled={!balance?.balanceVnd}
                 >
-                  − Trừ tín dụng
+                  <MinusOutlined style={{ marginRight: 6 }} /> Trừ tín dụng
                 </button>
                 <button
                   className="btn btn-danger"
                   onClick={() => { resetForm(); setModal("refund"); }}
                   disabled={!balance?.balanceVnd}
                 >
-                  ↩ Hoàn trả
+                  <RollbackOutlined style={{ marginRight: 6 }} /> Hoàn trả
                 </button>
               </div>
             </div>
@@ -291,7 +298,7 @@ export function CreditBalanceClient() {
                             <td>{formatDate(m.createdAt)}</td>
                             <td>
                               <StatusBadge tone={meta.tone}>
-                                {meta.icon} {meta.label}
+                                {meta.label}
                               </StatusBadge>
                             </td>
                             <td style={{ color: isPositive ? "var(--color-success)" : "var(--color-danger)", fontWeight: 600 }}>
@@ -366,8 +373,8 @@ export function CreditBalanceClient() {
               </h3>
 
               {actionError && (
-                <div className="alert alert-error" style={{ marginBottom: 12 }}>
-                  ⚠ {actionError}
+                <div className="alert alert-error" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <ExclamationCircleOutlined /> {actionError}
                 </div>
               )}
 

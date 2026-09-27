@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ExportOutlined, CopyOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -285,7 +286,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Mở trang khách xem ↗
+                <ExportOutlined style={{ marginRight: 6 }} /> Mở trang khách xem
               </a>
             </div>
           ) : null}
@@ -547,7 +548,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            📱 Mở trang khách xem ↗
+                            <ExportOutlined style={{ marginRight: 6 }} /> Mở trang khách xem
                           </a>
                           <button
                             className="secondary-button"
@@ -560,7 +561,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                               }
                             }}
                           >
-                            📋 Sao chép link
+                            <CopyOutlined style={{ marginRight: 6 }} /> Sao chép link
                           </button>
                         </>
                       ) : null}

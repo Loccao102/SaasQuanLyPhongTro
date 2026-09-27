@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent
 } from "react";
+import { ExportOutlined, CopyOutlined, LinkOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../../components/admin-shell";
 import { renterBillingApi } from "../../../../../lib/renter-billing-api";
@@ -259,7 +260,7 @@ export function ManualPaymentAllocationClient({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Mở trang thanh toán ↗
+                    <ExportOutlined style={{ marginRight: 6 }} /> Mở trang thanh toán
                   </a>
                   <button
                     className="secondary-button"
@@ -269,7 +270,7 @@ export function ManualPaymentAllocationClient({
                       setSuccess("Đã sao chép link thanh toán công khai vào clipboard.");
                     }}
                   >
-                    📋 Sao chép link
+                    <CopyOutlined style={{ marginRight: 6 }} /> Sao chép link
                   </button>
                 </div>
               ) : (
@@ -279,7 +280,8 @@ export function ManualPaymentAllocationClient({
                   disabled={publicLinkSaving}
                   onClick={() => void generatePublicLink()}
                 >
-                  {publicLinkSaving ? "Đang tạo link…" : "🔗 Tạo link thanh toán VietQR cho khách"}
+                  <LinkOutlined style={{ marginRight: 6 }} />
+                  {publicLinkSaving ? "Đang tạo link…" : "Tạo link thanh toán VietQR cho khách"}
                 </button>
               )}
             </section>

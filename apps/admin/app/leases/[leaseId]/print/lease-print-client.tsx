@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PrinterOutlined } from "@ant-design/icons";
 import {
   adminLeasesApi,
   type LeaseDepositSummary,
@@ -101,7 +102,7 @@ export function LeasePrintClient({ leaseId }: { leaseId: string }) {
             type="button"
             onClick={() => window.print()}
           >
-            🖨️ In hợp đồng (Ctrl + P)
+            <PrinterOutlined style={{ marginRight: 6 }} /> In hợp đồng (Ctrl + P)
           </button>
         </div>
       </div>

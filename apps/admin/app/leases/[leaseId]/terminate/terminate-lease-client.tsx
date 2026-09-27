@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { WarningOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -514,8 +515,8 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                       </dl>
 
                       {financialReadiness.summary.hasDraftInvoices ? (
-                        <p className="inline-note" style={{ color: "var(--warning-color, #b45309)" }}>
-                          ⚠️ Có hóa đơn DRAFT chưa phát hành. Vui lòng phát hành hoặc hủy hóa đơn draft trước khi chấm dứt.
+                        <p className="inline-note" style={{ color: "var(--warning-color, #b45309)", display: "flex", alignItems: "center", gap: 6 }}>
+                          <WarningOutlined /> Có hóa đơn DRAFT chưa phát hành. Vui lòng phát hành hoặc hủy hóa đơn draft trước khi chấm dứt.
                         </p>
                       ) : null}
 
