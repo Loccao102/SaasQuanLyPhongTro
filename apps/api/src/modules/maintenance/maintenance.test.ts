@@ -83,8 +83,8 @@ test("maintenance: fallback invalid category and priority to OTHER and NORMAL", 
     title: "Cháy bóng đèn",
     description: "Bóng đèn hành lang bị cháy",
     residentName: "Lê Thị B",
-    category: "UNKNOWN_CAT" as any,
-    priority: "SUPER_HIGH" as any
+    category: "UNKNOWN_CAT" as unknown as MaintenanceTicketCategory,
+    priority: "SUPER_HIGH" as unknown as MaintenanceTicketPriority
   });
 
   assert.equal(result.category, "OTHER");
