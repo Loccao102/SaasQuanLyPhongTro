@@ -34,6 +34,7 @@ import {
   type CmsPerformance,
   type CmsSetting,
   type CmsSubscriptionStatus,
+  type CmsTenantFeatureKey,
   type IntegrationStatus
 } from "../lib/cms-api";
 
@@ -77,6 +78,23 @@ type ModalState =
       targetStatus: "ACTIVE" | "PAUSED";
     }
   | null;
+
+const tenantFeatureOptions: Array<{
+  key: CmsTenantFeatureKey;
+  label: string;
+}> = [
+  { key: "properties", label: "Tài sản / cơ sở / phòng" },
+  { key: "leases", label: "Hợp đồng & người thuê" },
+  { key: "metering", label: "Điện nước / chốt số" },
+  { key: "billing", label: "Billing & biểu giá" },
+  { key: "payments", label: "Thanh toán & đối soát" },
+  { key: "maintenance", label: "Bảo trì / sự cố" },
+  { key: "notifications", label: "Thông báo" },
+  { key: "reports", label: "Báo cáo & sổ quỹ" },
+  { key: "team_management", label: "Đội ngũ & phân quyền" },
+  { key: "advanced_reports", label: "Báo cáo nâng cao" },
+  { key: "audit_log", label: "Audit log tenant" }
+];
 
 const navItems: Array<{
   id: View;
@@ -592,6 +610,12 @@ export default function CmsPage() {
           roomLimit: Number(data.get("roomLimit")),
           staffLimit: Number(data.get("staffLimit")),
           automationQuota: Number(data.get("automationQuota")),
+          features: Object.fromEntries(
+            tenantFeatureOptions.map(({ key }) => [
+              key,
+              data.get("feature:" + key) === "on"
+            ])
+          ) as Record<CmsTenantFeatureKey, boolean>,
           expectedVersion: current.version,
           reason
         });
@@ -677,7 +701,11 @@ export default function CmsPage() {
         const organizationId = String(data.get("organizationId") ?? "");
         const key = String(data.get("entitlementKey") ?? "") as CmsEntitlementOverride["key"];
         const rawValue = String(data.get("overrideValue") ?? "").trim();
-        const booleanKey = key === "advanced_reports" || key === "audit_log";
+        const booleanKey = ![
+          "room_limit",
+          "staff_limit",
+          "automation_actions_monthly"
+        ].includes(key);
         if (booleanKey && rawValue !== "true" && rawValue !== "false") {
           throw new Error("Boolean entitlement phải là true hoặc false.");
         }
@@ -3601,7 +3629,7 @@ export default function CmsPage() {
                       />
                     </label>
                     <label>
-                      Staff limit
+                      Account limit
                       <input
                         name="staffLimit"
                         type="number"
@@ -3620,6 +3648,19 @@ export default function CmsPage() {
                         required
                       />
                     </label>
+                    <fieldset className="team-form__wide">
+                      <legend>Chức năng tenant</legend>
+                      {tenantFeatureOptions.map((feature) => (
+                        <label className="team-check" key={feature.key}>
+                          <input
+                            type="checkbox"
+                            name={"feature:" + feature.key}
+                            defaultChecked={item.features[feature.key]}
+                          />
+                          <span>{feature.label}</span>
+                        </label>
+                      ))}
+                    </fieldset>
                   </>
                 );
               })()}
@@ -3906,8 +3947,11 @@ export default function CmsPage() {
                     <option value="automation_actions_monthly">
                       automation_actions_monthly
                     </option>
-                    <option value="advanced_reports">advanced_reports</option>
-                    <option value="audit_log">audit_log</option>
+                    {tenantFeatureOptions.map((feature) => (
+                      <option value={feature.key} key={feature.key}>
+                        {feature.key} — {feature.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label>
