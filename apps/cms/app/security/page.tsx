@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TotpQrCode } from "@propops/ui/totp-qr";
 import {
+  browserSupportsPasskeys,
+  createPasskey
+} from "@propops/ui/passkey";
+import {
   cmsAuthApi,
+  type CmsPasskeyItem,
   type CmsSessionItem
 } from "../../lib/cms-auth-api";
 
@@ -18,6 +23,9 @@ export default function CmsSecurityPage() {
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [sessions, setSessions] = useState<CmsSessionItem[]>([]);
+  const [passkeys, setPasskeys] = useState<CmsPasskeyItem[]>([]);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyName, setPasskeyName] = useState("Thiết bị này");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,13 +34,16 @@ export default function CmsSecurityPage() {
     setLoading(true);
     setError(null);
     try {
-      const [mfa, activeSessions] = await Promise.all([
+      setPasskeySupported(browserSupportsPasskeys());
+      const [mfa, activeSessions, passkeyResult] = await Promise.all([
         cmsAuthApi.mfaStatus(),
-        cmsAuthApi.sessions()
+        cmsAuthApi.sessions(),
+        cmsAuthApi.passkeys()
       ]);
       setEnabled(mfa.enabled);
       setRequiredByRole(mfa.required ? mfa.requiredByRole : null);
       setSessions(activeSessions.sessions);
+      setPasskeys(passkeyResult.passkeys);
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -98,6 +109,59 @@ export default function CmsSecurityPage() {
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Không thể tắt MFA."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function registerPasskey() {
+    if (!passkeySupported) {
+      setError("Trình duyệt hoặc thiết bị này chưa hỗ trợ passkey.");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const options = await cmsAuthApi.passkeyRegistrationOptions();
+      const response = await createPasskey(options);
+      await cmsAuthApi.verifyPasskeyRegistration({
+        response,
+        name: passkeyName
+      });
+      setPasskeyName("Thiết bị này");
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể đăng ký passkey."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokePasskey(passkey: CmsPasskeyItem) {
+    if (
+      !window.confirm(
+        "Thu hồi passkey “" + passkey.name + "”? Thiết bị đó sẽ không dùng được passkey này nữa."
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await cmsAuthApi.revokePasskey(passkey.id);
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể thu hồi passkey."
       );
     } finally {
       setBusy(false);
@@ -302,6 +366,103 @@ export default function CmsSecurityPage() {
               {busy ? "Đang tạo secret…" : "Thiết lập MFA"}
             </button>
           </>
+        )}
+      </section>
+
+      <section
+        style={{
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          borderRadius: 14,
+          padding: 20,
+          display: "grid",
+          gap: 14
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0 }}>Passkey</h2>
+          <p style={{ color: "#64748b", marginBottom: 0 }}>
+            Dùng Windows Hello, Touch ID, Face ID, khóa bảo mật hoặc passkey
+            đồng bộ làm second factor sau primary login.
+          </p>
+        </div>
+
+        {passkeySupported ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              gap: 8
+            }}
+          >
+            <input
+              value={passkeyName}
+              onChange={(event) => setPasskeyName(event.target.value)}
+              placeholder="VD: MacBook Touch ID"
+              maxLength={80}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void registerPasskey()}
+            >
+              {busy ? "Đang xử lý…" : "Thêm passkey"}
+            </button>
+          </div>
+        ) : (
+          <p>Trình duyệt/thiết bị này chưa hỗ trợ WebAuthn passkey.</p>
+        )}
+
+        {passkeys.length === 0 ? (
+          <small>Chưa có passkey nào được đăng ký.</small>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {passkeys.map((passkey) => (
+              <article
+                key={passkey.id}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  padding: 14,
+                  display: "grid",
+                  gap: 4
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12
+                  }}
+                >
+                  <strong>{passkey.name}</strong>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void revokePasskey(passkey)}
+                  >
+                    Thu hồi
+                  </button>
+                </div>
+                <small>
+                  {passkey.deviceType === "multiDevice"
+                    ? "Passkey đồng bộ"
+                    : "Passkey trên thiết bị"}
+                  {passkey.backedUp ? " · đã backup" : ""}
+                </small>
+                <small>
+                  Tạo lúc: {new Date(passkey.createdAt).toLocaleString("vi-VN")}
+                </small>
+                {passkey.lastUsedAt ? (
+                  <small>
+                    Dùng gần nhất:{" "}
+                    {new Date(passkey.lastUsedAt).toLocaleString("vi-VN")}
+                  </small>
+                ) : null}
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
