@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  HttpException,
   Injectable,
   UnauthorizedException
 } from "@nestjs/common";
@@ -34,25 +35,56 @@ export class CmsPlatformGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<CmsRequest>();
     let userId = request.authenticatedUserId;
     const sessionToken = readSessionToken(request);
+    let authenticatedSession = sessionToken
+      ? await this.authentication.authenticateSession(sessionToken)
+      : null;
 
     if (!userId && sessionToken) {
-      const session = await this.authentication.authenticateSession(sessionToken);
+      const session = authenticatedSession;
       if (!session) {
         throw new UnauthorizedException(
           "Authentication session is invalid or expired."
         );
       }
 
-      if (isUnsafeHttpMethod(request.method)) {
-        assertTrustedBrowserOrigin(request);
-        if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
-          throw new UnauthorizedException("Valid CSRF token is required.");
-        }
-      }
-
       userId = session.userId;
       request.authenticatedUserId = session.userId;
       request.authSessionId = session.sessionId;
+    }
+
+    if (isUnsafeHttpMethod(request.method) && authenticatedSession) {
+      assertTrustedBrowserOrigin(request);
+      if (
+        !this.authentication.verifyCsrf(
+          authenticatedSession,
+          readCsrfHeader(request)
+        )
+      ) {
+        throw new UnauthorizedException("Valid CSRF token is required.");
+      }
+
+      if (!this.authentication.hasRecentStepUp(authenticatedSession)) {
+        throw new HttpException(
+          {
+            statusCode: 428,
+            error: "Precondition Required",
+            code: "STEP_UP_REQUIRED",
+            message:
+              "Control Plane write requires recent authentication."
+          },
+          428
+        );
+      }
+    }
+
+    if (
+      isUnsafeHttpMethod(request.method) &&
+      !authenticatedSession &&
+      process.env.NODE_ENV === "production"
+    ) {
+      throw new UnauthorizedException(
+        "An authenticated browser session is required for Control Plane writes."
+      );
     }
 
     if (!userId && process.env.NODE_ENV !== "production") {
