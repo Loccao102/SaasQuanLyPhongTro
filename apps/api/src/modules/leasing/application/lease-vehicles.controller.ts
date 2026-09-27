@@ -12,6 +12,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -39,6 +40,7 @@ function optionalString(input: BodyInput, field: string): string | undefined {
   return value.trim();
 }
 
+@RequireTenantFeature("leases")
 @Controller("admin/leases/:leaseId/vehicles")
 @UseGuards(TenantPrincipalGuard)
 export class LeaseVehiclesController {
