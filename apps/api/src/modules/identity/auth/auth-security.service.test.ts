@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { DatabaseService } from "../../database/database.service.js";
+import type { AuthEmailDeliveryService } from "./auth-email-delivery.service.js";
 import { AuthSecurityService } from "./auth-security.service.js";
 
 function serviceWithCounts(counts: number[]) {
@@ -18,7 +19,14 @@ function serviceWithCounts(counts: number[]) {
     }
   } as unknown as DatabaseService;
 
-  return { service: new AuthSecurityService(db), queries };
+  const emailDelivery = {
+    sendSecurityAlert: async () => undefined
+  } as unknown as AuthEmailDeliveryService;
+
+  return {
+    service: new AuthSecurityService(db, emailDelivery),
+    queries
+  };
 }
 
 test("password login limiter uses hashed keys instead of raw email/IP", async () => {
