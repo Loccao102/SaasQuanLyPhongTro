@@ -7,6 +7,10 @@ import {
 import type { PoolClient, QueryResultRow } from "pg";
 import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
+import {
+  hashPassword,
+  InvalidPasswordPolicyError
+} from "../auth/password.js";
 import type { TenantPrincipal } from "../tenant-principal.js";
 import type {
   MembershipStatus,
@@ -207,12 +211,23 @@ export class TeamManagementService {
       displayName: string;
       role: Role;
       scopes: readonly TeamScopeInput[];
+      temporaryPassword: string;
     }
   ) {
     this.requireManage(principal);
     const email = this.email(input.email);
     const displayName = this.required(input.displayName, "displayName");
     this.assertRole(principal, input.role);
+
+    let credential;
+    try {
+      credential = await hashPassword(input.temporaryPassword);
+    } catch (error) {
+      if (error instanceof InvalidPasswordPolicyError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
 
     return this.db.withTransaction(async (client) => {
       const policy = await this.commercialPolicy.assertTenantWriteAllowed(
@@ -280,6 +295,27 @@ export class TeamManagementService {
         userId = createdUser.rows[0]!.id;
       }
 
+      const existingCredential = await client.query(
+        "SELECT 1 FROM user_password_credentials WHERE user_id = $1::uuid",
+        [userId]
+      );
+      if (!(existingCredential.rowCount ?? 0)) {
+        await client.query(
+          `INSERT INTO user_password_credentials (
+             user_id, password_hash, password_salt, scrypt_n, scrypt_r, scrypt_p
+           )
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            userId,
+            credential.hash,
+            credential.salt,
+            credential.n,
+            credential.r,
+            credential.p
+          ]
+        );
+      }
+
       const existingMembership = await client.query(
         `SELECT id
          FROM organization_memberships
@@ -298,7 +334,7 @@ export class TeamManagementService {
         `INSERT INTO organization_memberships (
            organization_id, user_id, role, status
          )
-         VALUES ($1, $2, $3, 'INVITED')
+         VALUES ($1, $2, $3, 'ACTIVE')
          RETURNING id::text`,
         [principal.organizationId, userId, input.role]
       );
@@ -310,7 +346,7 @@ export class TeamManagementService {
         scopes
       );
 
-      await this.audit(client, principal, "MEMBERSHIP_INVITED", membershipId, {
+      await this.audit(client, principal, "MEMBERSHIP_CREATED", membershipId, {
         email,
         displayName,
         role: input.role,
@@ -322,7 +358,7 @@ export class TeamManagementService {
         membershipId,
         userId,
         role: input.role,
-        status: "INVITED" as const
+        status: "ACTIVE" as const
       };
     });
   }
