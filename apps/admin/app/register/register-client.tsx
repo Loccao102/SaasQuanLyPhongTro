@@ -97,12 +97,18 @@ export function RegisterClient() {
       setSubmitting(true);
       setError(null);
       try {
-        const session = await auth.google({
+        const result = await auth.google({
           credential,
           mode: "REGISTER",
           organizationName: tenantName
         });
-        finish(session.memberships.length);
+        if ("mfaRequired" in result) {
+          setError(
+            "Google này đã liên kết với tài khoản Habi đang bật MFA. Hãy quay lại trang đăng nhập."
+          );
+          return;
+        }
+        finish(result.memberships.length);
       } catch (caught) {
         setError(
           caught instanceof Error
