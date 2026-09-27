@@ -19,7 +19,8 @@ import {
 import {
   adminAuthApi,
   type AdminMembership,
-  type AdminSession
+  type AdminSession,
+  type PendingRegistration
 } from "../lib/admin-auth-api";
 
 type AuthStatus =
@@ -41,7 +42,7 @@ type AdminAuthContextValue = {
     password: string;
     displayName: string;
     organizationName: string;
-  }) => Promise<AdminSession>;
+  }) => Promise<PendingRegistration>;
   google: (input: {
     credential: string;
     mode: "LOGIN" | "REGISTER";
@@ -152,7 +153,10 @@ export function AdminAuthProvider({
     if (
       status === "unauthenticated" &&
       pathname !== "/login" &&
-      pathname !== "/register"
+      pathname !== "/register" &&
+      pathname !== "/verify-email" &&
+      pathname !== "/forgot-password" &&
+      pathname !== "/reset-password"
     ) {
       router.replace(loginPath(pathname));
     }
@@ -170,8 +174,8 @@ export function AdminAuthProvider({
       password: string;
       displayName: string;
       organizationName: string;
-    }) => applySession(await adminAuthApi.register(input)),
-    [applySession]
+    }) => adminAuthApi.register(input),
+    []
   );
 
   const google = useCallback(
