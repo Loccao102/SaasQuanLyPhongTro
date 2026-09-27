@@ -644,6 +644,16 @@ export type IntegrationStatus = {
   snapshot: CmsOperationalSnapshot | null;
 };
 
+export class CmsApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "CmsApiError";
+  }
+}
+
 const apiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 
@@ -696,7 +706,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
+    throw new CmsApiError(
+      response.status,
       text || "CMS API request failed with status " + String(response.status)
     );
   }
