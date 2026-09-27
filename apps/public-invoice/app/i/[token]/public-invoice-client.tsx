@@ -214,7 +214,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
             </span>
             <h1>{data.invoiceNumber}</h1>
             <p className="invoice-period">
-              {data.periodStart} → {data.periodEnd}
+              {formatDateVi(data.periodStart)} → {formatDateVi(data.periodEnd)}
             </p>
           </div>
           <StatusBadge tone={tone(data.collectionStatus)}>
