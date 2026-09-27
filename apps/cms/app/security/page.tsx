@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { TotpQrCode } from "@propops/ui/totp-qr";
 import {
   cmsAuthApi,
   type CmsSessionItem
@@ -9,6 +10,7 @@ import {
 
 export default function CmsSecurityPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [requiredByRole, setRequiredByRole] = useState<string | null>(null);
   const [setup, setSetup] = useState<{
     secret: string;
     provisioningUri: string;
@@ -29,6 +31,7 @@ export default function CmsSecurityPage() {
         cmsAuthApi.sessions()
       ]);
       setEnabled(mfa.enabled);
+      setRequiredByRole(mfa.required ? mfa.requiredByRole : null);
       setSessions(activeSessions.sessions);
     } catch (caught) {
       setError(
@@ -202,38 +205,66 @@ export default function CmsSecurityPage() {
           <>
             <p>
               MFA đang bật. Login PLATFORM mới phải qua TOTP hoặc recovery code.
+              {requiredByRole
+                ? " Role " + requiredByRole + " đang thuộc policy bắt buộc MFA."
+                : ""}
             </p>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Mã TOTP / recovery code để tắt MFA</span>
-              <input
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                autoComplete="one-time-code"
-                placeholder="123456 hoặc HABI-..."
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy || !code.trim()}
-              onClick={() => void disable()}
-            >
-              {busy ? "Đang xử lý…" : "Tắt MFA"}
-            </button>
+            {requiredByRole ? (
+              <p
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  background: "#f8fafc",
+                  color: "#475569"
+                }}
+              >
+                MFA không thể tắt khi role {requiredByRole} còn nằm trong
+                policy bảo mật.
+              </p>
+            ) : (
+              <>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span>Mã TOTP / recovery code để tắt MFA</span>
+                  <input
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    autoComplete="one-time-code"
+                    placeholder="123456 hoặc HABI-..."
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !code.trim()}
+                  onClick={() => void disable()}
+                >
+                  {busy ? "Đang xử lý…" : "Tắt MFA"}
+                </button>
+              </>
+            )}
           </>
         ) : setup ? (
           <>
             <p>
-              Thêm secret vào Google Authenticator, Microsoft Authenticator,
+              {requiredByRole
+                ? "Role " + requiredByRole + " đang bắt buộc MFA. "
+                : ""}
+              Quét QR bằng Google Authenticator, Microsoft Authenticator,
               1Password hoặc ứng dụng TOTP tương thích.
             </p>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Secret</span>
-              <input readOnly value={setup.secret} />
-            </label>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span>Provisioning URI</span>
-              <textarea readOnly value={setup.provisioningUri} />
-            </label>
+            <div style={{ display: "grid", placeItems: "center" }}>
+              <TotpQrCode value={setup.provisioningUri} />
+            </div>
+            <p style={{ color: "#64748b", margin: 0 }}>
+              QR được dựng ngay trong Habi; provisioning secret không rời
+              browser.
+            </p>
+            <details>
+              <summary>Không quét được QR?</summary>
+              <label style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                <span>Secret</span>
+                <input readOnly value={setup.secret} />
+              </label>
+            </details>
             <label style={{ display: "grid", gap: 6 }}>
               <span>Mã 6 số để xác nhận</span>
               <input
@@ -255,6 +286,11 @@ export default function CmsSecurityPage() {
         ) : (
           <>
             <p>
+              {requiredByRole
+                ? "Role " +
+                  requiredByRole +
+                  " đang thuộc policy bắt buộc MFA. "
+                : ""}
               MFA hiện đang tắt. Nên bật cho PLATFORM_ADMIN và các operator có
               quyền billing, settings hoặc account management.
             </p>
