@@ -241,16 +241,42 @@ export class InternalWorkerApiClient {
       body: JSON.stringify(body)
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const detail = await response.text();
       throw new Error(
         "Internal API request failed (" +
           String(response.status) +
-          "): " +
-          detail
+          ") " +
+          path +
+          ": " +
+          (responseText.trim() || "<empty response>")
       );
     }
 
-    return response.json() as Promise<T>;
+    if (!responseText.trim()) {
+      return null as T;
+    }
+
+    try {
+      return JSON.parse(responseText) as T;
+    } catch (error) {
+      const contentType = response.headers.get("content-type") ?? "unknown";
+      const preview =
+        responseText.length > 240
+          ? responseText.slice(0, 240) + "..."
+          : responseText;
+      throw new Error(
+        "Internal API returned invalid JSON (" +
+          String(response.status) +
+          ") " +
+          path +
+          " content-type=" +
+          contentType +
+          ": " +
+          preview +
+          (error instanceof Error ? " [" + error.message + "]" : "")
+      );
+    }
   }
 }
