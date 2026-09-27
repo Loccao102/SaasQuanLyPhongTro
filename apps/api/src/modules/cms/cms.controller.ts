@@ -292,6 +292,11 @@ export class CmsController {
     return this.cms.listAuthSecurityEvents(this.principal(request));
   }
 
+  @Get("security/auth-alerts")
+  listAuthSecurityAlerts(@Req() request: CmsRequest) {
+    return this.cms.listAuthSecurityAlerts(this.principal(request));
+  }
+
   @Get("jobs")
   listJobs(@Req() request: CmsRequest) {
     return this.cms.getJobsIntegrationStatus(this.principal(request));
