@@ -76,7 +76,7 @@ const validMovementTypes: CreditMovementType[] = [
 
 const validRefundMethods = ["CASH", "BANK_TRANSFER", "OTHER"] as const;
 
-@RequireTenantFeature("payments")
+@RequireTenantFeature("credit_balance")
 @Controller("admin/credit-balance")
 @UseGuards(TenantPrincipalGuard)
 export class CreditBalanceController {
