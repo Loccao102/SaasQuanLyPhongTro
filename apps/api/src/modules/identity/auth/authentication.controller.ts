@@ -126,15 +126,13 @@ export class AuthenticationController {
         )
       });
       await this.security.recordEvent({
-        eventType: "TENANT_REGISTER",
+        eventType: "TENANT_REGISTRATION_STARTED",
         outcome: "SUCCESS",
         email,
         ip,
-        userId: result.user.id,
-        organizationId: result.user.organizationId,
         metadata: { method: "PASSWORD" }
       });
-      return this.finishAuthentication(response, result);
+      return result;
     } catch (error) {
       await this.security.recordEvent({
         eventType: "TENANT_REGISTER",
@@ -142,6 +140,99 @@ export class AuthenticationController {
         email,
         ip,
         metadata: { method: "PASSWORD" }
+      });
+      throw error;
+    }
+  }
+
+  @Post("verify-email")
+  async verifyEmail(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertEmailVerificationAllowed(ip);
+
+    try {
+      const result = await this.authentication.verifyEmail(
+        this.requiredString(body.token, "token")
+      );
+      await this.security.recordEvent({
+        eventType: "EMAIL_VERIFIED",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "EMAIL_VERIFY",
+        outcome: "FAILURE",
+        ip
+      });
+      throw error;
+    }
+  }
+
+  @Post("forgot-password")
+  async forgotPassword(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const email = this.requiredString(body.email, "email");
+    const ip = this.requestIp(request);
+    await this.security.assertPasswordResetRequestAllowed(email, ip);
+
+    await this.authentication.requestPasswordReset(email);
+    await this.security.recordEvent({
+      eventType: "PASSWORD_RESET_REQUESTED",
+      outcome: "SUCCESS",
+      email,
+      ip
+    });
+
+    return {
+      accepted: true,
+      message:
+        "Nếu email tồn tại và có thể đặt lại mật khẩu, Habi đã gửi hướng dẫn."
+    };
+  }
+
+  @Post("reset-password")
+  async resetPassword(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertPasswordResetConfirmAllowed(ip);
+
+    try {
+      await this.authentication.resetPassword(
+        this.requiredString(body.token, "token"),
+        this.requiredString(body.newPassword, "newPassword")
+      );
+      this.clearAuthCookies(response);
+      await this.security.recordEvent({
+        eventType: "PASSWORD_RESET",
+        outcome: "SUCCESS",
+        ip
+      });
+      return {
+        success: true,
+        message: "Mật khẩu đã được đặt lại. Hãy đăng nhập lại."
+      };
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PASSWORD_RESET",
+        outcome: "FAILURE",
+        ip
       });
       throw error;
     }
