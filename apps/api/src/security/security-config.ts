@@ -60,6 +60,19 @@ export function assertSecurityConfiguration(): void {
   requiredSecret("OBSERVABILITY_METRICS_TOKEN");
 
   for (const name of [
+    "AUTH_SESSION_COOKIE_NAME",
+    "AUTH_CSRF_COOKIE_NAME",
+    "AUTH_GOOGLE_NONCE_COOKIE_NAME"
+  ]) {
+    const value = process.env[name]?.trim();
+    if (value && !value.startsWith("__Host-")) {
+      throw new Error(
+        name + " must use the __Host- prefix in production or be left empty."
+      );
+    }
+  }
+
+  for (const name of [
     "ADMIN_DEV_USER_ID",
     "ADMIN_DEV_ORGANIZATION_ID",
     "CMS_DEV_USER_ID",
