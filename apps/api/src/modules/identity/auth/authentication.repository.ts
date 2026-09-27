@@ -1099,20 +1099,32 @@ export class AuthenticationRepository {
     purpose: "PASSWORDLESS_TENANT" | "PASSWORDLESS_PLATFORM";
     expiresAt: Date;
   }): Promise<string> {
-    const result = await this.db.query<QueryResultRow & { id: string }>(
-      `INSERT INTO auth_webauthn_challenges (
-         user_id,
-         challenge,
-         purpose,
-         parent_mfa_token_hash,
-         session_id,
-         expires_at
-       )
-       VALUES (NULL, $1, $2, NULL, NULL, $3)
-       RETURNING id::text`,
-      [input.challenge, input.purpose, input.expiresAt]
-    );
-    return result.rows[0]!.id;
+    return this.db.withTransaction(async (client) => {
+      await client.query(
+        `DELETE FROM auth_webauthn_challenges
+         WHERE user_id IS NULL
+           AND purpose IN (
+             'PASSWORDLESS_TENANT',
+             'PASSWORDLESS_PLATFORM'
+           )
+           AND expires_at < now()`
+      );
+
+      const result = await client.query<QueryResultRow & { id: string }>(
+        `INSERT INTO auth_webauthn_challenges (
+           user_id,
+           challenge,
+           purpose,
+           parent_mfa_token_hash,
+           session_id,
+           expires_at
+         )
+         VALUES (NULL, $1, $2, NULL, NULL, $3)
+         RETURNING id::text`,
+        [input.challenge, input.purpose, input.expiresAt]
+      );
+      return result.rows[0]!.id;
+    });
   }
 
   async getPasswordlessWebAuthnChallenge(input: {
