@@ -189,9 +189,11 @@ export function LoginClient() {
             </div>
           ) : null}
 
-          <div className="login-footnote">
-            <Link href="/forgot-password">Quên mật khẩu?</Link>
-          </div>
+          {config?.passwordRecoveryEnabled ? (
+            <div className="login-footnote">
+              <Link href="/forgot-password">Quên mật khẩu?</Link>
+            </div>
+          ) : null}
 
           <button
             className="primary-button login-submit"
