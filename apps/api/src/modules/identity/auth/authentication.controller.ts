@@ -83,13 +83,16 @@ export class AuthenticationController {
         accountType: "TENANT",
         sessionContext: this.sessionContext(request)
       });
-      if ("mfaRequired" in result) {
+      if ("mfaRequired" in result || "mfaEnrollmentRequired" in result) {
         await this.security.recordEvent({
           eventType: "PASSWORD_LOGIN_PRIMARY",
           outcome: "SUCCESS",
           email,
           ip,
-          metadata: { mfaRequired: true }
+          metadata: {
+            mfaRequired: "mfaRequired" in result,
+            mfaEnrollmentRequired: "mfaEnrollmentRequired" in result
+          }
         });
         return result;
       }
@@ -135,13 +138,16 @@ export class AuthenticationController {
         accountType: "PLATFORM",
         sessionContext: this.sessionContext(request)
       });
-      if ("mfaRequired" in result) {
+      if ("mfaRequired" in result || "mfaEnrollmentRequired" in result) {
         await this.security.recordEvent({
           eventType: "PLATFORM_LOGIN_PRIMARY",
           outcome: "SUCCESS",
           email,
           ip,
-          metadata: { mfaRequired: true }
+          metadata: {
+            mfaRequired: "mfaRequired" in result,
+            mfaEnrollmentRequired: "mfaEnrollmentRequired" in result
+          }
         });
         return result;
       }
@@ -225,6 +231,19 @@ export class AuthenticationController {
         this.requiredString(body.token, "token"),
         this.sessionContext(request)
       );
+      if ("mfaRequired" in result || "mfaEnrollmentRequired" in result) {
+        await this.security.recordEvent({
+          eventType: "EMAIL_VERIFIED",
+          outcome: "SUCCESS",
+          ip,
+          metadata: {
+            mfaRequired: "mfaRequired" in result,
+            mfaEnrollmentRequired: "mfaEnrollmentRequired" in result
+          }
+        });
+        return result;
+      }
+
       await this.security.recordEvent({
         eventType: "EMAIL_VERIFIED",
         outcome: "SUCCESS",
@@ -352,12 +371,16 @@ export class AuthenticationController {
             : undefined,
         sessionContext: this.sessionContext(request)
       });
-      if ("mfaRequired" in result) {
+      if ("mfaRequired" in result || "mfaEnrollmentRequired" in result) {
         await this.security.recordEvent({
           eventType: "GOOGLE_AUTH_PRIMARY",
           outcome: "SUCCESS",
           ip,
-          metadata: { mode, mfaRequired: true }
+          metadata: {
+            mode,
+            mfaRequired: "mfaRequired" in result,
+            mfaEnrollmentRequired: "mfaEnrollmentRequired" in result
+          }
         });
         return result;
       }
@@ -386,6 +409,64 @@ export class AuthenticationController {
       if (error instanceof InvalidCredentialsError) {
         throw new UnauthorizedException("Tài khoản không còn hoạt động.");
       }
+      throw error;
+    }
+  }
+
+  @Post("mfa/enrollment/setup")
+  async setupRequiredMfa(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    await this.security.assertMfaSetupAllowed(
+      this.requiredString(body.challengeToken, "challengeToken")
+    );
+    return this.authentication.beginRequiredMfaEnrollment({
+      challengeToken: this.requiredString(
+        body.challengeToken,
+        "challengeToken"
+      )
+    });
+  }
+
+  @Post("mfa/enrollment/confirm")
+  async confirmRequiredMfa(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertMfaVerifyAllowed(ip);
+
+    try {
+      const result = await this.authentication.confirmRequiredMfaEnrollment({
+        challengeToken: this.requiredString(
+          body.challengeToken,
+          "challengeToken"
+        ),
+        code: this.requiredString(body.code, "code"),
+        sessionContext: this.sessionContext(request)
+      });
+      await this.security.recordEvent({
+        eventType: "MFA_ENROLLMENT_COMPLETED",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
+      });
+      return {
+        ...this.finishAuthentication(response, result),
+        recoveryCodes: result.recoveryCodes
+      };
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "MFA_ENROLLMENT",
+        outcome: "FAILURE",
+        ip
+      });
       throw error;
     }
   }
@@ -431,7 +512,10 @@ export class AuthenticationController {
   @Get("mfa")
   async mfaStatus(@Req() request: Request) {
     const session = await this.requireSession(request);
-    return this.authentication.mfaStatus(session.userId);
+    return this.authentication.mfaStatus(
+      session.userId,
+      session.accountType
+    );
   }
 
   @Post("mfa/setup")
@@ -486,6 +570,7 @@ export class AuthenticationController {
 
     await this.authentication.disableMfa(
       session.userId,
+      session.accountType,
       session.sessionId,
       this.requiredString(body.code, "code")
     );
