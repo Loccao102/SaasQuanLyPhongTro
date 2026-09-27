@@ -127,3 +127,19 @@ Trade-offs:
 - customers that truly need cross-tenant identities would require a future explicit platform/account-linking model;
 - `staff_limit` remains the legacy storage name for account-seat quota until a dedicated schema rename is justified;
 - email verification, password recovery, invite-email delivery and MFA remain separate hardening slices.
+
+## Security hardening amendment — 2026-09-27
+
+The identity decision also adopts these invariants:
+
+- browser authentication remains opaque Habi sessions; federated identity never turns Google access tokens into Habi bearer credentials;
+- Google ID-token flows are nonce-bound to a short-lived Habi browser challenge;
+- public auth endpoints use distributed database-backed rate limits and privacy-preserving security telemetry;
+- TENANT and PLATFORM identities are re-checked at their respective guards even when relational constraints already exist;
+- production startup fails closed for unsafe CORS/cookie/dev-principal/secret configuration;
+- Staff offline authorization is a bounded 24-hour lease from the last online verification, not the full session lifetime;
+- tenant feature availability is server-side authorization metadata; hiding navigation is only a UX reflection;
+- supply-chain CI uses the committed lockfile and critical dependency auditing.
+
+These controls reduce common OWASP risks but are not a claim of complete OWASP/ASVS compliance. Security verification remains continuous and testable.
+
