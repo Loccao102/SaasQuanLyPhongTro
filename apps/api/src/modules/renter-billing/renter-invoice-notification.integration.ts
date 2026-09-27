@@ -58,8 +58,8 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM organization_entitlement_overrides WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM organization_subscriptions WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM audit_events WHERE organization_id = $1", [org]);
-  await pool.query("DELETE FROM organizations WHERE id = $1", [org]);
   await pool.query("DELETE FROM users WHERE id = $1", [user]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [org]);
 }
 
 test("finalized billing cycle creates idempotent personalized invoice jobs with fresh public links", async () => {
