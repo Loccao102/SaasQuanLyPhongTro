@@ -16,6 +16,13 @@ export class AuthEmailDeliveryService {
     );
   }
 
+  isSecurityAlertAvailable(): boolean {
+    return Boolean(
+      process.env.RESEND_API_KEY?.trim() &&
+      process.env.AUTH_EMAIL_FROM?.trim()
+    );
+  }
+
   sendVerification(email: string, token: string): Promise<void> {
     return this.send({
       kind: "VERIFY_EMAIL",
