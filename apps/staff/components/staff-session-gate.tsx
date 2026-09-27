@@ -62,10 +62,38 @@ export function StaffSessionGate({
       <main className="staff-page">
         <div className="staff-phone">
           <div className="staff-state staff-state--warning">
-            <strong>Chưa có workspace hoạt động.</strong>
+            <strong>Chưa có tenant hoạt động.</strong>
             <span>
-              Liên hệ Admin để được cấp membership/scope trước khi chốt số.
+              Liên hệ OWNER/Admin để được cấp tài khoản trước khi chốt số.
             </span>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (auth.session.features?.metering === false) {
+    return (
+      <main className="staff-page">
+        <div className="staff-phone">
+          <div className="staff-state staff-state--warning">
+            <strong>Chức năng chốt số đang bị tắt.</strong>
+            <span>
+              Gói hoặc cấu hình CMS của tenant hiện không cho phép sử dụng Metering.
+            </span>
+            {auth.online ? (
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => void auth.refresh()}
+              >
+                Kiểm tra lại quyền
+              </button>
+            ) : (
+              <span>
+                Thiết bị đang offline. Kết nối mạng để tải quyền mới nhất.
+              </span>
+            )}
           </div>
         </div>
       </main>
