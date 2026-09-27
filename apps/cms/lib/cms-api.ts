@@ -434,6 +434,16 @@ export type CmsAuditEvent = {
   reason: string;
 };
 
+export type CmsAuthSecurityEvent = {
+  id: string;
+  at: string;
+  eventType: string;
+  outcome: "SUCCESS" | "FAILURE" | "BLOCKED";
+  userId: string | null;
+  organizationId: string | null;
+  metadata: unknown;
+};
+
 export type CmsEntitlementOverride = {
   id: string;
   organizationId: string;
@@ -765,6 +775,8 @@ export const cmsApi = {
       }
     ),
   audit: () => request<CmsAuditEvent[]>("/audit"),
+  authSecurityEvents: () =>
+    request<CmsAuthSecurityEvent[]>("/security/auth-events"),
   jobs: () => request<CmsJobsStatus>("/jobs"),
   billingReconciliation: () =>
     request<CmsBillingReconciliation>("/billing/reconciliation"),
