@@ -530,9 +530,8 @@ export function LeaseCreateClient() {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <CalendarOutlined /> Ngày bắt đầu (dd/mm/yyyy) *
                 </span>
-                <input
+                <DateInput
                   name="startDate"
-                  type="date"
                   required
                   value={startDate}
                   onChange={(e) => {
@@ -542,7 +541,7 @@ export function LeaseCreateClient() {
                       setPlannedEndDate("");
                     }
                   }}
-                />
+                 />
                 {startDate ? (
                   <small style={{ color: "var(--color-primary, #2563eb)", fontSize: "11px", marginTop: "2px" }}>
                     Bắt đầu: {formatDateVi(startDate)}
@@ -554,13 +553,12 @@ export function LeaseCreateClient() {
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <CalendarOutlined /> Ngày kết thúc dự kiến (dd/mm/yyyy)
                 </span>
-                <input
+                <DateInput
                   name="plannedEndDate"
-                  type="date"
                   min={minPlannedEndDate}
                   value={plannedEndDate}
                   onChange={(e) => setPlannedEndDate(e.target.value)}
-                />
+                 />
                 {plannedEndDate ? (
                   <small style={{ color: "var(--color-primary, #2563eb)", fontSize: "11px", marginTop: "2px" }}>
                     Kết thúc: {formatDateVi(plannedEndDate)} (sau {formatDateVi(startDate)})
