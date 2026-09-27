@@ -83,8 +83,8 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM audit_events WHERE organization_id = $1", [
     organizationId
   ]);
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("public invoice token is opaque, revocable and reflects payment state", async () => {
