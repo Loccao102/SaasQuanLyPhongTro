@@ -53,7 +53,7 @@ function requiredNumber(input: BodyInput, field: string): number {
   return num;
 }
 
-@RequireTenantFeature("reports")
+@RequireTenantFeature("finances")
 @Controller("admin/finances")
 @UseGuards(TenantPrincipalGuard)
 export class FinancesController {
