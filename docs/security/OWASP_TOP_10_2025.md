@@ -128,13 +128,15 @@ Implemented controls:
 - Control Plane step-up uses HTTP 428 and transparent client retry with the original idempotency key, avoiding duplicate billing/settings mutations.
 - auth telemetry derives persistent security alerts for credential changes, unfamiliar network hashes and repeated step-up failures; notification delivery is best-effort after database persistence;
 - security alerts have an independent bounded retention window and are visible both to the affected account and authorized platform audit operators.
+- passwordless WebAuthn challenges are anonymous, short-lived, one-time and account-type scoped; credential ownership is resolved only after signed assertion verification;
+- passkey-first login is production-gated, IP rate-limited and requires discoverable credentials with user verification; privileged MFA-enrollment policy remains enforced.
 
 Residual work before public launch:
 
 - decide whether additional roles should be added to the mandatory MFA policy;
 - decide whether already-active pre-policy sessions should be force-revoked at rollout or allowed to age out;
-- decide whether to enable passwordless/passkey-first login after the second-factor rollout is proven in production;
-- decide whether mandatory MFA enrollment should allow passkey-first enrollment instead of requiring initial TOTP enrollment;
+- enable passkey-first in production only after RP/origin configuration and representative Windows Hello/Touch ID/Android credential tests pass;
+- decide whether mandatory MFA enrollment should eventually allow passkey-first enrollment instead of requiring initial TOTP enrollment;
 - connect production authentication alerts to the chosen incident channel.
 
 ## A08 — Software or Data Integrity Failures
