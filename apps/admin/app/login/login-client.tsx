@@ -507,7 +507,7 @@ export function LoginClient() {
             >
               {submitting ? "Đang xác thực…" : "Xác nhận & đăng nhập"}
             </button>
-            {passkeySupported ? (
+            {passkeySupported && config?.passkeyPasswordlessEnabled ? (
               <button
                 className="secondary-button login-submit"
                 type="button"
