@@ -154,6 +154,44 @@ Control Plane Security screen. Login shows the passkey option only when the
 browser supports WebAuthn; otherwise TOTP/recovery-code login continues to
 work.
 
+## Recent authentication / step-up
+
+Long-lived browser sessions are not treated as indefinitely strong proof for
+sensitive writes. Each session stores `reauthenticated_at`. New sessions start
+fresh; after the configured window expires, protected mutations return HTTP
+`428` with `code=STEP_UP_REQUIRED`.
+
+Configure the window with:
+
+```env
+AUTH_STEP_UP_TTL_MINUTES=10
+```
+
+Accepted step-up methods are:
+
+- current password, when the account has a password credential;
+- TOTP or a single-use recovery code;
+- a registered WebAuthn/passkey with user verification.
+
+Passkey step-up challenges are bound to the current session. Consuming the
+WebAuthn challenge, updating the authenticator counter and refreshing the
+session's `reauthenticated_at` happen in one transaction, so an assertion
+cannot be replayed to elevate the session twice.
+
+The Control Plane requires recent authentication for every unsafe HTTP method.
+The CMS request layer keeps the original mutation pending, opens the global
+recent-auth modal, and retries the original request after successful step-up.
+The same `Idempotency-Key` header is reused on retry.
+
+Tenant Admin currently applies step-up to security mutations such as MFA setup,
+passkey registration/revocation and revoking other sessions. Password change
+and MFA disable already prove a credential as part of the operation and refresh
+the session's recent-auth timestamp when they succeed.
+
+Existing sessions receive a migration-time `reauthenticated_at` value, giving
+them one normal step-up window after rollout rather than forcing an immediate
+mass interruption.
+
 ## Session security
 
 New sessions store a bounded User-Agent and a derived display label such as
