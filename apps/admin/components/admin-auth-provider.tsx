@@ -18,6 +18,7 @@ import {
 } from "../lib/admin-api-client";
 import {
   adminAuthApi,
+  type AdminAuthenticationResult,
   type AdminMembership,
   type AdminSession,
   type PendingRegistration
@@ -36,7 +37,7 @@ type AdminAuthContextValue = {
   selectedMembership: AdminMembership | null;
   error: string | null;
   refresh: () => Promise<AdminSession | null>;
-  login: (input: { email: string; password: string }) => Promise<AdminSession>;
+  login: (input: { email: string; password: string }) => Promise<AdminAuthenticationResult>;
   register: (input: {
     email: string;
     password: string;
@@ -47,6 +48,10 @@ type AdminAuthContextValue = {
     credential: string;
     mode: "LOGIN" | "REGISTER";
     organizationName?: string;
+  }) => Promise<AdminAuthenticationResult>;
+  verifyMfa: (input: {
+    challengeToken: string;
+    code: string;
   }) => Promise<AdminSession>;
   logout: () => Promise<void>;
   switchOrganization: (organizationId: string) => void;
@@ -106,6 +111,12 @@ export function AdminAuthProvider({
     return nextSession;
   }, []);
 
+  const applyAuthentication = useCallback(
+    (result: AdminAuthenticationResult) =>
+      "mfaRequired" in result ? result : applySession(result),
+    [applySession]
+  );
+
   const refresh = useCallback(async () => {
     setStatus((current) =>
       current === "authenticated" ? current : "loading"
@@ -164,8 +175,8 @@ export function AdminAuthProvider({
 
   const login = useCallback(
     async (input: { email: string; password: string }) =>
-      applySession(await adminAuthApi.login(input)),
-    [applySession]
+      applyAuthentication(await adminAuthApi.login(input)),
+    [applyAuthentication]
   );
 
   const register = useCallback(
@@ -183,7 +194,13 @@ export function AdminAuthProvider({
       credential: string;
       mode: "LOGIN" | "REGISTER";
       organizationName?: string;
-    }) => applySession(await adminAuthApi.google(input)),
+    }) => applyAuthentication(await adminAuthApi.google(input)),
+    [applyAuthentication]
+  );
+
+  const verifyMfa = useCallback(
+    async (input: { challengeToken: string; code: string }) =>
+      applySession(await adminAuthApi.verifyMfa(input)),
     [applySession]
   );
 
@@ -241,6 +258,7 @@ export function AdminAuthProvider({
       login,
       register,
       google,
+      verifyMfa,
       logout,
       switchOrganization
     }),
@@ -249,6 +267,7 @@ export function AdminAuthProvider({
       google,
       login,
       logout,
+      verifyMfa,
       refresh,
       register,
       selectedMembership,
