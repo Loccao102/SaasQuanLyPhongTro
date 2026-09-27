@@ -1,8 +1,10 @@
 "use client";
 
+import { DateInput } from "@propops/ui/date-input";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { WarningOutlined } from "@ant-design/icons";
-import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
   adminLeasesApi,
@@ -320,9 +322,9 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
           <form className="termination-schedule-form" onSubmit={(event) => void schedule(event)}>
             <label>
               <span>Ngày trả phòng hiệu lực</span>
-              <input
+              <DateInput
                 name="effectiveDate"
-                type="date"
+                
                 min={lease.startDate}
                 required
               />
@@ -528,7 +530,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                               {inv.status === "DRAFT" ? " (Bản nháp)" : ""}
                             </strong>
                             <span>
-                              Kỳ: {inv.periodStart} → {inv.periodEnd} · Hạn: {inv.dueDate}
+                              Kỳ: {formatDateVi(inv.periodStart)} → {formatDateVi(inv.periodEnd)} · Hạn: {formatDateVi(inv.dueDate)}
                               {" · Còn nợ: "}
                               <MoneyDisplay amountVnd={inv.remainingVnd} />
                             </span>
