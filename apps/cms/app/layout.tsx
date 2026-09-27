@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@propops/ui/styles.css";
 import "./styles.css";
+import { CmsAuthGate } from "../components/cms-auth-gate";
 
 export const metadata: Metadata = {
   title: "Habi Control Plane",
@@ -9,5 +10,11 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="vi"><body>{children}</body></html>;
+  return (
+    <html lang="vi">
+      <body>
+        <CmsAuthGate>{children}</CmsAuthGate>
+      </body>
+    </html>
+  );
 }
