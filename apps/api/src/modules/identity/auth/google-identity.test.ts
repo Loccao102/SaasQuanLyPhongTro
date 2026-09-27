@@ -4,7 +4,10 @@ import {
   sign
 } from "node:crypto";
 import test from "node:test";
-import { verifyGoogleIdentityToken } from "./google-identity.js";
+import {
+  InvalidGoogleIdentityTokenError,
+  verifyGoogleIdentityToken
+} from "./google-identity.js";
 
 const clientId = "test-client.apps.googleusercontent.com";
 const validNonce = "nonce-a-0123456789abcdef0123456789abcdef";
@@ -139,4 +142,18 @@ test("Google identity accepts a multi-audience token when azp matches Habi", asy
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("Google identity classifies malformed JWT payload as invalid credentials", async () => {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "RS256", kid: "malformed-test-key" })
+  ).toString("base64url");
+  const payload = Buffer.from("{not-valid-json").toString("base64url");
+  const credential = header + "." + payload + "." + "x".repeat(64);
+
+  await assert.rejects(
+    () => verifyGoogleIdentityToken(credential, clientId, validNonce),
+    (error: unknown) => error instanceof InvalidGoogleIdentityTokenError
+  );
 });
