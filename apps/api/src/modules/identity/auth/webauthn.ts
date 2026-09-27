@@ -1,6 +1,6 @@
-import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
+import type { AuthenticatorTransport } from "@simplewebauthn/server";
 
-const ALLOWED_TRANSPORTS = new Set<AuthenticatorTransportFuture>([
+const ALLOWED_TRANSPORTS = new Set<AuthenticatorTransport>([
   "ble",
   "cable",
   "hybrid",
@@ -62,7 +62,11 @@ export function uuidToWebAuthnUserId(userId: string): Uint8Array {
   if (!/^[0-9a-f]{32}$/i.test(hex)) {
     throw new Error("WebAuthn user ID must originate from a UUID.");
   }
-  return Uint8Array.from(Buffer.from(hex, "hex"));
+  const bytes = new Uint8Array(16);
+  for (let index = 0; index < 16; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
 }
 
 export function normalizePasskeyName(value: string | undefined): string {
@@ -73,10 +77,10 @@ export function normalizePasskeyName(value: string | undefined): string {
 
 export function normalizePasskeyTransports(
   values: readonly string[] | undefined
-): AuthenticatorTransportFuture[] {
+): AuthenticatorTransport[] {
   if (!values) return [];
   return values.filter(
-    (value): value is AuthenticatorTransportFuture =>
-      ALLOWED_TRANSPORTS.has(value as AuthenticatorTransportFuture)
+    (value): value is AuthenticatorTransport =>
+      ALLOWED_TRANSPORTS.has(value as AuthenticatorTransport)
   );
 }
