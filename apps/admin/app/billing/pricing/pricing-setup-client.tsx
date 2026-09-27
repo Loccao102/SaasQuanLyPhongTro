@@ -1,4 +1,5 @@
 "use client";
+import { DateInput } from "@propops/ui/date-input";
 
 import {
   useCallback,
@@ -369,11 +370,11 @@ export function PricingSetupClient() {
             </label>
             <label>
               <span>Hiệu lực từ</span>
-              <input name="effectiveFrom" type="date" required />
+              <DateInput name="effectiveFrom"  required />
             </label>
             <label>
               <span>Hiệu lực đến</span>
-              <input name="effectiveTo" type="date" required />
+              <DateInput name="effectiveTo"  required />
               <small>
                 Admin baseline dùng khoảng hữu hạn để policy kế tiếp không bị
                 chồng lấn.
