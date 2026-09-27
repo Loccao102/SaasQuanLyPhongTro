@@ -802,7 +802,7 @@ export class AuthenticationController {
     response: Response,
     result: AuthenticationResult
   ) {
-    return "mfaRequired" in result
+    return "mfaRequired" in result || "mfaEnrollmentRequired" in result
       ? result
       : this.finishAuthentication(response, result);
   }
