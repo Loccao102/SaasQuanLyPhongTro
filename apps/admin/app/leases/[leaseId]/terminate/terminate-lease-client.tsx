@@ -126,37 +126,6 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
     }
   }
 
-  async function setReadiness(
-    kind: "financial",
-    state: "READY" | "NOT_REQUIRED" | "PENDING"
-  ) {
-    const reason = window.prompt(
-      "Lý do manual override readiness (sẽ được ghi audit):"
-    );
-    if (!reason?.trim()) return;
-
-    setSaving(true);
-    setActionError(null);
-    setActionSuccess(null);
-    try {
-      await adminLeasesApi.setTerminationReadiness(leaseId, {
-        kind,
-        state,
-        reason: reason.trim()
-      });
-      setActionSuccess("Đã cập nhật readiness và ghi audit manual override.");
-      await load();
-    } catch (action) {
-      setActionError(
-        action instanceof Error
-          ? action.message
-          : "Không thể cập nhật readiness."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function recordFinalMeterReading(
     meterId: string,
     event: FormEvent<HTMLFormElement>
