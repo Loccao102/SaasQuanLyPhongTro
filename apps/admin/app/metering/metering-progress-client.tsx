@@ -65,11 +65,10 @@ export function MeteringProgressClient() {
         </div>
         <label className="metering-date-filter">
           <span>Ngày chốt</span>
-          <input
-            type="date"
+          <DateInput
             value={readingDate}
             onChange={(event) => setReadingDate(event.target.value)}
-          />
+           />
         </label>
       </section>
 
