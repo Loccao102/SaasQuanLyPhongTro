@@ -1782,6 +1782,14 @@ export default function CmsPage() {
                                 )
                               ) : (
                                 <div className="table-actions">
+                                  {hasPermission("platform.accounts.read") ? (
+                                    <a
+                                      className="text-button"
+                                      href={"/accounts/" + org.id}
+                                    >
+                                      Tài khoản
+                                    </a>
+                                  ) : null}
                                   {hasPermission(
                                     "platform.subscriptions.manage"
                                   ) &&
