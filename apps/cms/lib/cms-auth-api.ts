@@ -2,6 +2,7 @@ import type {
   PasskeyAuthenticationOptionsJSON,
   PasskeyRegistrationOptionsJSON
 } from "@propops/ui/passkey";
+import { requestCmsStepUp } from "./step-up";
 export type CmsAuthSession = {
   user: {
     id: string;
@@ -84,7 +85,8 @@ function readCookie(name: string): string | undefined {
 async function request<T>(
   path: string,
   init?: RequestInit,
-  csrf = false
+  csrf = false,
+  stepUpRetried = false
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined) {
@@ -100,6 +102,11 @@ async function request<T>(
     headers,
     credentials: "include"
   });
+  if (response.status === 428 && !stepUpRetried) {
+    await requestCmsStepUp();
+    return request<T>(path, init, csrf, true);
+  }
+
   if (!response.ok) {
     let message = "Yêu cầu xác thực thất bại.";
     try {
