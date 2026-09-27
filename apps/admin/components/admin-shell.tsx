@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { TotpQrCode } from "@propops/ui/totp-qr";
+import {
+  browserSupportsPasskeys,
+  createPasskey
+} from "@propops/ui/passkey";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAdminAuth } from "./admin-auth-provider";
 import {
   adminAuthApi,
   type AdminAuthSessionItem,
-  type AdminTenantFeatureKey
+  type AdminTenantFeatureKey,
+  type PasskeyItem
 } from "../lib/admin-auth-api";
 
 const navItems: Array<{
@@ -80,6 +85,10 @@ export function AdminShell({
   const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaError, setMfaError] = useState<string | null>(null);
+  const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyName, setPasskeyName] = useState("Thiết bị này");
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
 
   async function loadSessions() {
     setSessionsLoading(true);
@@ -165,11 +174,16 @@ export function AdminShell({
     setMfaRecoveryCodes([]);
     setMfaCode("");
     try {
-      const status = await adminAuthApi.mfaStatus();
+      setPasskeySupported(browserSupportsPasskeys());
+      const [status, passkeyResult] = await Promise.all([
+        adminAuthApi.mfaStatus(),
+        adminAuthApi.passkeys()
+      ]);
       setMfaEnabled(status.enabled);
       setMfaRequiredByRole(
         status.required ? status.requiredByRole : null
       );
+      setPasskeys(passkeyResult.passkeys);
     } catch (err) {
       setMfaError(
         err instanceof Error ? err.message : "Không thể tải trạng thái MFA."
@@ -237,6 +251,57 @@ export function AdminShell({
       );
     } finally {
       setMfaLoading(false);
+    }
+  }
+
+  async function registerPasskey() {
+    if (!passkeySupported) {
+      setMfaError("Trình duyệt hoặc thiết bị này chưa hỗ trợ passkey.");
+      return;
+    }
+
+    setPasskeyBusy(true);
+    setMfaError(null);
+    try {
+      const options = await adminAuthApi.passkeyRegistrationOptions();
+      const response = await createPasskey(options);
+      await adminAuthApi.verifyPasskeyRegistration({
+        response,
+        name: passkeyName
+      });
+      const result = await adminAuthApi.passkeys();
+      setPasskeys(result.passkeys);
+      setPasskeyName("Thiết bị này");
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Không thể đăng ký passkey."
+      );
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
+  async function revokePasskey(passkey: PasskeyItem) {
+    if (
+      !window.confirm(
+        "Thu hồi passkey “" + passkey.name + "”? Thiết bị đó sẽ không dùng được passkey này nữa."
+      )
+    ) {
+      return;
+    }
+
+    setPasskeyBusy(true);
+    setMfaError(null);
+    try {
+      await adminAuthApi.revokePasskey(passkey.id);
+      const result = await adminAuthApi.passkeys();
+      setPasskeys(result.passkeys);
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Không thể thu hồi passkey."
+      );
+    } finally {
+      setPasskeyBusy(false);
     }
   }
 
@@ -817,6 +882,113 @@ export function AdminShell({
                 )}
               </div>
             ) : null}
+
+            <div
+              style={{
+                marginTop: 22,
+                paddingTop: 18,
+                borderTop: "1px solid var(--color-border, #e2e8f0)",
+                display: "grid",
+                gap: 12
+              }}
+            >
+              <div>
+                <strong>Passkey / Windows Hello / Touch ID</strong>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "var(--color-muted)",
+                    fontSize: 13
+                  }}
+                >
+                  Passkey có thể thay mã TOTP ở bước xác thực hai lớp sau khi
+                  email/mật khẩu hoặc Google đã được xác minh.
+                </p>
+              </div>
+
+              {passkeySupported ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    gap: 8
+                  }}
+                >
+                  <input
+                    value={passkeyName}
+                    onChange={(event) => setPasskeyName(event.target.value)}
+                    placeholder="VD: Laptop Windows Hello"
+                    maxLength={80}
+                    disabled={passkeyBusy}
+                  />
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={passkeyBusy}
+                    onClick={() => void registerPasskey()}
+                  >
+                    {passkeyBusy ? "Đang xử lý…" : "Thêm passkey"}
+                  </button>
+                </div>
+              ) : (
+                <div className="admin-state">
+                  Trình duyệt/thiết bị này chưa hỗ trợ WebAuthn passkey.
+                </div>
+              )}
+
+              {passkeys.length === 0 ? (
+                <small>Chưa có passkey nào được đăng ký.</small>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {passkeys.map((passkey) => (
+                    <article
+                      key={passkey.id}
+                      style={{
+                        border: "1px solid var(--color-border, #e2e8f0)",
+                        borderRadius: 9,
+                        padding: 12,
+                        display: "grid",
+                        gap: 4
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10
+                        }}
+                      >
+                        <strong>{passkey.name}</strong>
+                        <button
+                          className="text-button text-button--danger"
+                          type="button"
+                          disabled={passkeyBusy}
+                          onClick={() => void revokePasskey(passkey)}
+                        >
+                          Thu hồi
+                        </button>
+                      </div>
+                      <small>
+                        {passkey.deviceType === "multiDevice"
+                          ? "Passkey đồng bộ"
+                          : "Passkey trên thiết bị"}
+                        {passkey.backedUp ? " · đã backup" : ""}
+                      </small>
+                      <small>
+                        Tạo lúc:{" "}
+                        {new Date(passkey.createdAt).toLocaleString("vi-VN")}
+                      </small>
+                      {passkey.lastUsedAt ? (
+                        <small>
+                          Dùng gần nhất:{" "}
+                          {new Date(passkey.lastUsedAt).toLocaleString("vi-VN")}
+                        </small>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
