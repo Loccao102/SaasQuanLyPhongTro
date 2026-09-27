@@ -28,17 +28,6 @@ async function main(): Promise<void> {
   try {
     await client.query("BEGIN");
 
-    const userResult = await client.query<{ id: string }>(
-      `INSERT INTO users (email, display_name)
-       VALUES ($1, $2)
-       ON CONFLICT (lower(email)) DO UPDATE
-         SET display_name = EXCLUDED.display_name,
-             updated_at = now()
-       RETURNING id::text`,
-      [email, displayName]
-    );
-    const userId = userResult.rows[0]!.id;
-
     const organizationResult = await client.query<{ id: string }>(
       `INSERT INTO organizations (slug, name, organization_type)
        VALUES ($1, $2, $3)
@@ -49,6 +38,26 @@ async function main(): Promise<void> {
       [organizationSlug, organizationName, organizationType]
     );
     const organizationId = organizationResult.rows[0]!.id;
+
+    const userResult = await client.query<{ id: string }>(
+      `INSERT INTO users (
+         organization_id, account_type, email, display_name
+       )
+       VALUES ($1, 'TENANT', $2, $3)
+       ON CONFLICT (lower(email)) DO UPDATE
+         SET display_name = EXCLUDED.display_name,
+             updated_at = now()
+       WHERE users.organization_id = EXCLUDED.organization_id
+         AND users.account_type = 'TENANT'
+       RETURNING id::text`,
+      [organizationId, email, displayName]
+    );
+    const userId = userResult.rows[0]?.id;
+    if (!userId) {
+      throw new Error(
+        "BOOTSTRAP_OWNER_EMAIL already belongs to another tenant or platform account."
+      );
+    }
 
     const membershipResult = await client.query<{ id: string }>(
       `INSERT INTO organization_memberships (
