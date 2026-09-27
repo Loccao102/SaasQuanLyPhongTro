@@ -15,6 +15,7 @@ import {
 } from "../commercial/domain/entitlements.js";
 import { DatabaseService } from "../database/database.service.js";
 import { roles, type Role } from "../identity/domain/access-control.js";
+import { AuthSecurityService } from "../identity/auth/auth-security.service.js";
 import { hashPassword, InvalidPasswordPolicyError } from "../identity/auth/password.js";
 import type { PlatformPrincipal } from "./cms.types.js";
 import {
@@ -37,7 +38,8 @@ type AccountRow = QueryResultRow & {
 export class CmsTenantAccountsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly commercialPolicy: CommercialPolicyService
+    private readonly commercialPolicy: CommercialPolicyService,
+    private readonly authSecurity: AuthSecurityService
   ) {}
 
   async list(principal: PlatformPrincipal, organizationId: string) {
@@ -407,6 +409,123 @@ export class CmsTenantAccountsService {
 
       return { userId, passwordReset: true, sessionsRevoked: true };
     });
+  }
+
+  async resetAuthenticators(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    userId: string,
+    reason: string
+  ) {
+    this.requirePermission(principal, "platform.accounts.manage");
+    const auditReason = this.required(reason, "reason");
+
+    const result = await this.db.withTransaction(async (client) => {
+      const account = await this.accountForUpdate(
+        client,
+        organizationId,
+        userId
+      );
+
+      const passkeys = await client.query(
+        `DELETE FROM user_passkeys
+         WHERE user_id = $1::uuid`,
+        [userId]
+      );
+      await client.query(
+        `DELETE FROM user_mfa_recovery_codes
+         WHERE user_id = $1::uuid`,
+        [userId]
+      );
+      await client.query(
+        `DELETE FROM user_totp_credentials
+         WHERE user_id = $1::uuid`,
+        [userId]
+      );
+      await client.query(
+        `DELETE FROM auth_mfa_challenges
+         WHERE user_id = $1::uuid`,
+        [userId]
+      );
+      await client.query(
+        `DELETE FROM auth_webauthn_challenges
+         WHERE user_id = $1::uuid
+            OR session_id IN (
+              SELECT id
+              FROM auth_sessions
+              WHERE user_id = $1::uuid
+            )`,
+        [userId]
+      );
+      await client.query(
+        `UPDATE auth_password_reset_tokens
+         SET consumed_at = COALESCE(consumed_at, now())
+         WHERE user_id = $1::uuid
+           AND consumed_at IS NULL`,
+        [userId]
+      );
+      await client.query(
+        `UPDATE users
+         SET auth_version = auth_version + 1,
+             updated_at = now()
+         WHERE id = $1::uuid
+           AND organization_id = $2::uuid
+           AND account_type = 'TENANT'`,
+        [userId, organizationId]
+      );
+      const revokedSessions = await this.revokeSessions(
+        client,
+        organizationId,
+        userId
+      );
+
+      const after = {
+        authenticatorsReset: true,
+        removedPasskeys: passkeys.rowCount ?? 0,
+        sessionsRevoked: revokedSessions,
+        passwordResetTokensInvalidated: true
+      };
+
+      await this.audit(client, principal, {
+        action: "TENANT_ACCOUNT_AUTHENTICATORS_RESET",
+        organizationId,
+        targetKey: userId,
+        before: {
+          email: account.email,
+          role: account.role
+        },
+        after,
+        reason: auditReason
+      });
+
+      return {
+        userId,
+        email: account.email,
+        ...after
+      };
+    });
+
+    await this.authSecurity.recordEvent({
+      eventType: "ACCOUNT_AUTHENTICATORS_RESET",
+      outcome: "SUCCESS",
+      email: result.email,
+      userId,
+      organizationId,
+      metadata: {
+        actorUserId: principal.userId,
+        removedPasskeys: result.removedPasskeys,
+        sessionsRevoked: result.sessionsRevoked
+      }
+    });
+
+    return {
+      userId: result.userId,
+      authenticatorsReset: result.authenticatorsReset,
+      removedPasskeys: result.removedPasskeys,
+      sessionsRevoked: result.sessionsRevoked,
+      passwordResetTokensInvalidated:
+        result.passwordResetTokensInvalidated
+    };
   }
 
   async revokeAllSessions(
