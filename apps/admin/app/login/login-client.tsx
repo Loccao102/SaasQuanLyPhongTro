@@ -9,6 +9,10 @@ import {
 } from "react";
 import Link from "next/link";
 import { TotpQrCode } from "@propops/ui/totp-qr";
+import {
+  authenticateWithPasskey,
+  browserSupportsPasskeys
+} from "@propops/ui/passkey";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAdminAuth } from "../../components/admin-auth-provider";
 import { GoogleIdentityButton } from "../../components/google-identity-button";
@@ -50,7 +54,12 @@ export function LoginClient() {
   } | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [enrolledMemberships, setEnrolledMemberships] = useState(0);
+  const [passkeySupported, setPasskeySupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPasskeySupported(browserSupportsPasskeys());
+  }, []);
 
   useEffect(() => {
     void adminAuthApi.config()
@@ -215,6 +224,34 @@ export function LoginClient() {
       setMfaEnrollment(null);
       setRecoveryCodes([]);
       finish(enrolledMemberships);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitPasskeyMfa() {
+    if (!mfaChallenge) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const options = await adminAuthApi.passkeyMfaOptions(
+        mfaChallenge.challengeToken
+      );
+      const response = await authenticateWithPasskey(options);
+      const session = await adminAuthApi.verifyPasskeyMfa({
+        challengeToken: mfaChallenge.challengeToken,
+        response
+      });
+      setMfaChallenge(null);
+      await auth.refresh();
+      finish(session.memberships.length);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể xác thực bằng passkey."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -447,6 +484,16 @@ export function LoginClient() {
             >
               {submitting ? "Đang xác thực…" : "Xác nhận & đăng nhập"}
             </button>
+            {passkeySupported ? (
+              <button
+                className="secondary-button login-submit"
+                type="button"
+                disabled={submitting}
+                onClick={() => void submitPasskeyMfa()}
+              >
+                Dùng passkey / Windows Hello / Touch ID
+              </button>
+            ) : null}
             <button
               className="secondary-button login-submit"
               type="button"
