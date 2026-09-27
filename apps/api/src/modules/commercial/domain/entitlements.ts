@@ -1,9 +1,24 @@
+export const tenantFeatureKeys = [
+  "properties",
+  "leases",
+  "metering",
+  "billing",
+  "payments",
+  "maintenance",
+  "notifications",
+  "reports",
+  "team_management",
+  "advanced_reports",
+  "audit_log"
+] as const;
+
+export type TenantFeatureKey = (typeof tenantFeatureKeys)[number];
+
 export const entitlementKeys = [
   "room_limit",
   "staff_limit",
   "automation_actions_monthly",
-  "advanced_reports",
-  "audit_log"
+  ...tenantFeatureKeys
 ] as const;
 
 export type EntitlementKey = (typeof entitlementKeys)[number];
@@ -12,12 +27,25 @@ export function isEntitlementKey(value: string): value is EntitlementKey {
   return (entitlementKeys as readonly string[]).includes(value);
 }
 
+export function isTenantFeatureKey(value: string): value is TenantFeatureKey {
+  return (tenantFeatureKeys as readonly string[]).includes(value);
+}
+
 export type EntitlementValue = number | boolean;
 
 export interface PlanEntitlements {
   roomLimit: number;
   staffLimit: number;
   automationActionsMonthly: number;
+  properties: boolean;
+  leases: boolean;
+  metering: boolean;
+  billing: boolean;
+  payments: boolean;
+  maintenance: boolean;
+  notifications: boolean;
+  reports: boolean;
+  teamManagement: boolean;
   advancedReports: boolean;
   auditLog: boolean;
 }
@@ -108,10 +136,81 @@ export function validateEntitlementOverride(
     case "automation_actions_monthly":
       assertNumberOverride(override.key, override.value);
       return;
-    case "advanced_reports":
-    case "audit_log":
+    default:
       assertBooleanOverride(override.key, override.value);
       return;
+  }
+}
+
+function setFeature(
+  values: PlanEntitlements,
+  key: TenantFeatureKey,
+  enabled: boolean
+): void {
+  switch (key) {
+    case "properties":
+      values.properties = enabled;
+      return;
+    case "leases":
+      values.leases = enabled;
+      return;
+    case "metering":
+      values.metering = enabled;
+      return;
+    case "billing":
+      values.billing = enabled;
+      return;
+    case "payments":
+      values.payments = enabled;
+      return;
+    case "maintenance":
+      values.maintenance = enabled;
+      return;
+    case "notifications":
+      values.notifications = enabled;
+      return;
+    case "reports":
+      values.reports = enabled;
+      return;
+    case "team_management":
+      values.teamManagement = enabled;
+      return;
+    case "advanced_reports":
+      values.advancedReports = enabled;
+      return;
+    case "audit_log":
+      values.auditLog = enabled;
+      return;
+  }
+}
+
+export function tenantFeatureEnabled(
+  entitlements: PlanEntitlements,
+  key: TenantFeatureKey
+): boolean {
+  switch (key) {
+    case "properties":
+      return entitlements.properties;
+    case "leases":
+      return entitlements.leases;
+    case "metering":
+      return entitlements.metering;
+    case "billing":
+      return entitlements.billing;
+    case "payments":
+      return entitlements.payments;
+    case "maintenance":
+      return entitlements.maintenance;
+    case "notifications":
+      return entitlements.notifications;
+    case "reports":
+      return entitlements.reports;
+    case "team_management":
+      return entitlements.teamManagement;
+    case "advanced_reports":
+      return entitlements.advancedReports;
+    case "audit_log":
+      return entitlements.auditLog;
   }
 }
 
@@ -121,13 +220,9 @@ export function resolveEffectiveEntitlements(
   now = new Date()
 ): EffectiveEntitlements {
   const values: PlanEntitlements = { ...plan };
-  const source: Record<EntitlementKey, "PLAN" | "OVERRIDE"> = {
-    room_limit: "PLAN",
-    staff_limit: "PLAN",
-    automation_actions_monthly: "PLAN",
-    advanced_reports: "PLAN",
-    audit_log: "PLAN"
-  };
+  const source = Object.fromEntries(
+    entitlementKeys.map((key) => [key, "PLAN" as const])
+  ) as Record<EntitlementKey, "PLAN" | "OVERRIDE">;
 
   for (const override of overrides) {
     if (!overrideIsActive(override, now)) continue;
@@ -145,13 +240,9 @@ export function resolveEffectiveEntitlements(
         assertNumberOverride(override.key, override.value);
         values.automationActionsMonthly = override.value;
         break;
-      case "advanced_reports":
+      default:
         assertBooleanOverride(override.key, override.value);
-        values.advancedReports = override.value;
-        break;
-      case "audit_log":
-        assertBooleanOverride(override.key, override.value);
-        values.auditLog = override.value;
+        setFeature(values, override.key, override.value);
         break;
     }
 
