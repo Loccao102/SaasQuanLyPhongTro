@@ -75,6 +75,8 @@ export class AuthenticationService {
     const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim() || null;
     return {
       registrationEnabled: await this.requireOnboarding().registrationEnabled(),
+      passwordRegistrationEnabled:
+        await this.requireOnboarding().passwordRegistrationEnabled(),
       googleEnabled:
         Boolean(googleClientId) && (await this.requireOnboarding().googleAuthEnabled()),
       googleClientId
