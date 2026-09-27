@@ -29,8 +29,8 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM organization_subscriptions WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM audit_events WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM organization_memberships WHERE organization_id = $1", [organizationId]);
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("tenant review queue safely resolves a provider payment without hiding excess money", async () => {
