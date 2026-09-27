@@ -161,22 +161,20 @@ export function ReportsClient() {
           <div className="report-filters__row">
             <div className="form-group" style={{ minWidth: 160 }}>
               <label className="form-label">Từ ngày (dd/mm/yyyy)</label>
-              <input
-                type="date"
+              <DateInput
                 className="form-input"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-              />
+               />
             </div>
             <div className="form-group" style={{ minWidth: 160 }}>
               <label className="form-label">Đến ngày (dd/mm/yyyy)</label>
-              <input
-                type="date"
+              <DateInput
                 className="form-input"
                 value={toDate}
                 min={fromDate || undefined}
                 onChange={(e) => setToDate(e.target.value)}
-              />
+               />
             </div>
             <div className="form-group" style={{ minWidth: 200 }}>
               <label className="form-label">Cơ sở</label>
