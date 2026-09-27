@@ -12,6 +12,7 @@ export interface TenantPrincipal {
 export interface TenantRequest {
   authenticatedUserId?: string;
   authSessionId?: string;
+  authenticatedOrganizationId?: string;
   method?: string;
   headers?: Record<string, string | string[] | undefined>;
   tenantPrincipal?: TenantPrincipal;
