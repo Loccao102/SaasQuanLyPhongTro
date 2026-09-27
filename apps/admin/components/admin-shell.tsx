@@ -227,28 +227,13 @@ export function AdminShell({
             Cài đặt
           </a>
 
-          <label className="workspace-card workspace-card--interactive">
-            <span>Workspace hiện tại</span>
-            <select
-              value={auth.selectedMembership.organizationId}
-              onChange={(event) =>
-                auth.switchOrganization(event.target.value)
-              }
-              aria-label="Chọn workspace"
-            >
-              {auth.session.memberships.map((membership) => (
-                <option
-                  key={membership.organizationId}
-                  value={membership.organizationId}
-                >
-                  {membership.organizationName}
-                </option>
-              ))}
-            </select>
+          <div className="workspace-card">
+            <span>Tenant hiện tại</span>
+            <strong>{auth.selectedMembership.organizationName}</strong>
             <small>
-              {auth.selectedMembership.role} · scope theo membership
+              {auth.selectedMembership.role} · tài khoản gắn cố định tenant này
             </small>
-          </label>
+          </div>
 
           <div className="account-card">
             <span className="account-card__avatar">
