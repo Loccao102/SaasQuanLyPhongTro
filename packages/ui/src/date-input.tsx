@@ -5,7 +5,8 @@ import {
   useId,
   useRef,
   useState,
-  type InputHTMLAttributes
+  type InputHTMLAttributes,
+  type RefObject
 } from "react";
 
 export type DateValueChangeEvent = {
@@ -137,7 +138,7 @@ export function parseDisplayDateTime(value: string | null | undefined) {
 }
 
 function pickerButton(
-  pickerRef: React.RefObject<HTMLInputElement | null>,
+  pickerRef: RefObject<HTMLInputElement | null>,
   disabled: boolean | undefined,
   label: string
 ) {
@@ -270,7 +271,7 @@ export function DateInput({
         disabled={disabled}
         onChange={(event) => applyIso(event.target.value)}
       />
-      {name ? <input type="hidden" name={name} value={isoValue} /> : null}
+      {name ? <input type="hidden" name={name} value={isoValue} disabled={disabled} /> : null}
     </span>
   );
 }
@@ -382,7 +383,7 @@ export function DateTimeInput({
         disabled={disabled}
         onChange={(event) => applyIso(event.target.value)}
       />
-      {name ? <input type="hidden" name={name} value={isoValue} /> : null}
+      {name ? <input type="hidden" name={name} value={isoValue} disabled={disabled} /> : null}
     </span>
   );
 }
