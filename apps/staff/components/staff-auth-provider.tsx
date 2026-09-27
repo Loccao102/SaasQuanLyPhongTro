@@ -33,7 +33,10 @@ type StaffAuthStatus =
 type CachedStaffSession = {
   session: StaffSession;
   selectedOrganizationId: string | null;
+  lastOnlineVerifiedAt: string;
 };
+
+const OFFLINE_AUTH_MAX_MS = 24 * 60 * 60 * 1000;
 
 type StaffAuthContextValue = {
   status: StaffAuthStatus;
@@ -66,7 +69,16 @@ function loadCached(): CachedStaffSession | null {
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as CachedStaffSession;
-    if (!parsed.session || !sessionValid(parsed.session)) {
+    const verifiedAt = Date.parse(parsed.lastOnlineVerifiedAt);
+    const offlineLeaseValid =
+      Number.isFinite(verifiedAt) &&
+      Date.now() - verifiedAt <= OFFLINE_AUTH_MAX_MS;
+
+    if (
+      !parsed.session ||
+      !sessionValid(parsed.session) ||
+      !offlineLeaseValid
+    ) {
       window.localStorage.removeItem(CACHE_KEY);
       return null;
     }
@@ -138,7 +150,8 @@ export function StaffAuthProvider({
     (
       nextSession: StaffSession,
       mode: "authenticated" | "offline-authenticated",
-      preferred?: string | null
+      preferred?: string | null,
+      lastOnlineVerifiedAt?: string
     ) => {
       const organizationId = resolveOrganization(
         nextSession,
@@ -150,7 +163,11 @@ export function StaffAuthProvider({
       setSelectedStaffOrganizationId(organizationId);
       saveCached({
         session: nextSession,
-        selectedOrganizationId: organizationId
+        selectedOrganizationId: organizationId,
+        lastOnlineVerifiedAt:
+          mode === "authenticated"
+            ? new Date().toISOString()
+            : lastOnlineVerifiedAt ?? new Date(0).toISOString()
       });
       setStatus(mode);
       setError(null);
@@ -174,7 +191,8 @@ export function StaffAuthProvider({
     return applySession(
       cached.session,
       "offline-authenticated",
-      cached.selectedOrganizationId
+      cached.selectedOrganizationId,
+      cached.lastOnlineVerifiedAt
     );
   }, [applySession]);
 
@@ -325,9 +343,12 @@ export function StaffAuthProvider({
 
       setSelectedStaffOrganizationId(organizationId);
       setSelectedOrganizationState(organizationId);
+      const cached = loadCached();
       saveCached({
         session,
-        selectedOrganizationId: organizationId
+        selectedOrganizationId: organizationId,
+        lastOnlineVerifiedAt:
+          cached?.lastOnlineVerifiedAt ?? new Date().toISOString()
       });
 
       if (typeof window !== "undefined") {
