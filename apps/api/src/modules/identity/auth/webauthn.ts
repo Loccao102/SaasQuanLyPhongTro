@@ -2,11 +2,9 @@ import type { AuthenticatorTransport } from "@simplewebauthn/server";
 
 const ALLOWED_TRANSPORTS = new Set<AuthenticatorTransport>([
   "ble",
-  "cable",
   "hybrid",
   "internal",
   "nfc",
-  "smart-card",
   "usb"
 ]);
 
@@ -57,12 +55,14 @@ export function webAuthnConfig(): {
   };
 }
 
-export function uuidToWebAuthnUserId(userId: string): Uint8Array {
+export function uuidToWebAuthnUserId(
+  userId: string
+): Uint8Array<ArrayBuffer> {
   const hex = userId.replace(/-/g, "");
   if (!/^[0-9a-f]{32}$/i.test(hex)) {
     throw new Error("WebAuthn user ID must originate from a UUID.");
   }
-  const bytes = new Uint8Array(16);
+  const bytes = new Uint8Array(new ArrayBuffer(16));
   for (let index = 0; index < 16; index += 1) {
     bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
   }
