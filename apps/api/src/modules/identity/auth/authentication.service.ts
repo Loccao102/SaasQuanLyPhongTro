@@ -352,9 +352,22 @@ export class AuthenticationService {
     return this.completePrimaryAuthentication(created, input.sessionContext);
   }
 
-  async mfaStatus(userId: string): Promise<{ enabled: boolean }> {
+  async mfaStatus(
+    userId: string,
+    accountType: "TENANT" | "PLATFORM"
+  ): Promise<{
+    enabled: boolean;
+    required: boolean;
+    requiredByRole: string | null;
+  }> {
+    const [credential, requirement] = await Promise.all([
+      this.repository.getMfaCredential(userId),
+      this.repository.getMfaPolicyRequirement(userId, accountType)
+    ]);
     return {
-      enabled: Boolean(await this.repository.getMfaCredential(userId))
+      enabled: Boolean(credential),
+      required: requirement.required,
+      requiredByRole: requirement.required ? requirement.role : null
     };
   }
 
@@ -417,9 +430,22 @@ export class AuthenticationService {
 
   async disableMfa(
     userId: string,
+    accountType: "TENANT" | "PLATFORM",
     currentSessionId: string,
     code: string
   ): Promise<void> {
+    const requirement = await this.repository.getMfaPolicyRequirement(
+      userId,
+      accountType
+    );
+    if (requirement.required) {
+      throw new ConflictException(
+        "MFA đang bắt buộc cho role " +
+          String(requirement.role ?? "hiện tại") +
+          " và không thể tắt."
+      );
+    }
+
     if (!(await this.verifySecondFactor(userId, code))) {
       throw new BadRequestException("Mã xác thực không hợp lệ.");
     }
