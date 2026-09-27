@@ -52,7 +52,8 @@ async function googleKeys(): Promise<GoogleJwk[]> {
 
 export async function verifyGoogleIdentityToken(
   credential: string,
-  clientId: string
+  clientId: string,
+  expectedNonce?: string
 ): Promise<VerifiedGoogleIdentity> {
   const parts = credential.split(".");
   if (parts.length !== 3) {
@@ -74,6 +75,7 @@ export async function verifyGoogleIdentityToken(
     email_verified?: boolean | string;
     name?: string;
     hd?: string;
+    nonce?: string;
   }>(encodedPayload);
 
   if (header.alg !== "RS256" || !header.kid) {
@@ -122,7 +124,11 @@ export async function verifyGoogleIdentityToken(
     claims.sub.length > 0 &&
     typeof claims.email === "string" &&
     claims.email.length > 0 &&
-    (claims.email_verified === true || claims.email_verified === "true");
+    (claims.email_verified === true || claims.email_verified === "true") &&
+    (
+      expectedNonce === undefined ||
+      (typeof claims.nonce === "string" && claims.nonce === expectedNonce)
+    );
 
   if (!verified) {
     throw new Error("Google credential không vượt qua bước xác thực.");
