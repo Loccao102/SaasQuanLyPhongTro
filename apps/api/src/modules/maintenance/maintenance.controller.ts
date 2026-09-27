@@ -12,6 +12,8 @@ import {
   Req,
   UseGuards
 } from "@nestjs/common";
+import type { Request } from "express";
+import { AuthSecurityService } from "../identity/auth/auth-security.service.js";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
 import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type { TenantPrincipal, TenantRequest } from "../identity/tenant-principal.js";
@@ -76,10 +78,14 @@ export class MaintenanceController {
 
 @Controller("public/maintenance")
 export class PublicMaintenanceController {
-  constructor(private readonly service: MaintenanceService) {}
+  constructor(
+    private readonly service: MaintenanceService,
+    private readonly security: AuthSecurityService
+  ) {}
 
   @Post(":token")
-  createPublic(
+  async createPublic(
+    @Req() request: Request,
     @Param("token") token: string,
     @Body()
     body: {
@@ -91,9 +97,12 @@ export class PublicMaintenanceController {
       images?: string[];
     }
   ) {
-    if (!token || token.trim().length === 0) {
+    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(token.trim())) {
       throw new BadRequestException("Mã token không hợp lệ.");
     }
+    await this.security.assertPublicMaintenanceAllowed(
+      request.ip || request.socket.remoteAddress || "unknown"
+    );
     return this.service.createFromPublicInvoice(token, body);
   }
 }
