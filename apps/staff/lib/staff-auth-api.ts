@@ -89,6 +89,7 @@ export const staffAuthApi = {
 
   googleChallenge: () =>
     json<{ nonce: string }>("/auth/google/challenge", {
+      method: "POST",
       organization: false,
       csrf: false
     }),
