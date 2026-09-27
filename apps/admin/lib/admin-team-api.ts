@@ -65,6 +65,7 @@ export const adminTeamApi = {
     displayName: string;
     role: TeamRole;
     scopes: TeamScopeInput[];
+    temporaryPassword: string;
   }) => request("/members", { method: "POST", body: input }),
   updateMember: (
     membershipId: string,
