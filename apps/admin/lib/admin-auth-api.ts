@@ -35,6 +35,11 @@ export type AdminSession = {
   expiresAt: string;
 };
 
+export type PendingRegistration = {
+  pendingVerification: true;
+  email: string;
+};
+
 export type AdminAuthSessionItem = {
   id: string;
   current: boolean;
@@ -70,7 +75,31 @@ export const adminAuthApi = {
     displayName: string;
     organizationName: string;
   }) =>
-    adminApiRequest<AdminSession>("/auth/register", {
+    adminApiRequest<PendingRegistration>("/auth/register", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+  verifyEmail: (token: string) =>
+    adminApiRequest<AdminSession>("/auth/verify-email", {
+      method: "POST",
+      body: { token },
+      organization: false,
+      csrf: false
+    }),
+
+  forgotPassword: (email: string) =>
+    adminApiRequest<{ accepted: true; message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      organization: false,
+      csrf: false
+    }),
+
+  resetPassword: (input: { token: string; newPassword: string }) =>
+    adminApiRequest<{ success: true; message: string }>("/auth/reset-password", {
       method: "POST",
       body: input,
       organization: false,
