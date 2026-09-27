@@ -7,7 +7,7 @@ import { useAdminAuth } from "../../components/admin-auth-provider";
 import { adminAuthApi } from "../../lib/admin-auth-api";
 
 export function VerifyEmailClient() {
-  const auth = useAdminAuth();
+  const { refresh } = useAdminAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
@@ -25,7 +25,7 @@ export function VerifyEmailClient() {
     void adminAuthApi.verifyEmail(token)
       .then(async () => {
         if (cancelled) return;
-        await auth.refresh();
+        await refresh();
         if (cancelled) return;
         setState("success");
         setMessage("Email đã được xác minh. Tenant của bạn đã sẵn sàng.");
@@ -45,7 +45,7 @@ export function VerifyEmailClient() {
     return () => {
       cancelled = true;
     };
-  }, [auth, router, searchParams]);
+  }, [refresh, router, searchParams]);
 
   return (
     <main className="login-page">
