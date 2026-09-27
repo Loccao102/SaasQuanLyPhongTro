@@ -68,6 +68,16 @@ export function AdminShell({
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsSuccess, setSessionsSuccess] = useState<string | null>(null);
+  const [mfaOpen, setMfaOpen] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [mfaSetup, setMfaSetup] = useState<{
+    secret: string;
+    provisioningUri: string;
+  } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaError, setMfaError] = useState<string | null>(null);
 
   async function loadSessions() {
     setSessionsLoading(true);
@@ -142,6 +152,86 @@ export function AdminShell({
       );
     } finally {
       setSessionsLoading(false);
+    }
+  }
+
+  async function openMfa() {
+    setMfaOpen(true);
+    setMfaLoading(true);
+    setMfaError(null);
+    setMfaSetup(null);
+    setMfaRecoveryCodes([]);
+    setMfaCode("");
+    try {
+      const status = await adminAuthApi.mfaStatus();
+      setMfaEnabled(status.enabled);
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Không thể tải trạng thái MFA."
+      );
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function beginMfaSetup() {
+    setMfaLoading(true);
+    setMfaError(null);
+    setMfaRecoveryCodes([]);
+    try {
+      setMfaSetup(await adminAuthApi.setupMfa());
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Không thể bắt đầu thiết lập MFA."
+      );
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function confirmMfaSetup() {
+    if (!mfaCode.trim()) return;
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      const result = await adminAuthApi.confirmMfa(mfaCode);
+      setMfaRecoveryCodes(result.recoveryCodes);
+      setMfaEnabled(true);
+      setMfaSetup(null);
+      setMfaCode("");
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Mã xác thực không hợp lệ."
+      );
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function disableMfa() {
+    if (!mfaCode.trim()) return;
+    if (
+      !window.confirm(
+        "Tắt xác thực hai bước? Các phiên đăng nhập khác sẽ bị thu hồi."
+      )
+    ) {
+      return;
+    }
+
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      await adminAuthApi.disableMfa(mfaCode);
+      setMfaEnabled(false);
+      setMfaCode("");
+      setMfaRecoveryCodes([]);
+      setMfaSetup(null);
+    } catch (err) {
+      setMfaError(
+        err instanceof Error ? err.message : "Không thể tắt MFA."
+      );
+    } finally {
+      setMfaLoading(false);
     }
   }
 
@@ -340,6 +430,13 @@ export function AdminShell({
               <button
                 type="button"
                 className="secondary-button secondary-button--compact"
+                onClick={() => void openMfa()}
+              >
+                MFA
+              </button>
+              <button
+                type="button"
+                className="secondary-button secondary-button--compact"
                 onClick={() => void openSessions()}
               >
                 Phiên
@@ -506,6 +603,194 @@ export function AdminShell({
         </div>
       ) : null}
 
+      {mfaOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mfa-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "20px"
+          }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setMfaOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: "var(--color-surface, #ffffff)",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "560px",
+              width: "100%",
+              maxHeight: "82vh",
+              overflowY: "auto",
+              border: "1px solid var(--color-border, #e2e8f0)"
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "12px",
+                alignItems: "center"
+              }}
+            >
+              <div>
+                <span className="eyebrow">BẢO MẬT TÀI KHOẢN</span>
+                <h3 id="mfa-title" style={{ margin: "4px 0 0" }}>
+                  Xác thực hai bước
+                </h3>
+              </div>
+              <button
+                className="secondary-button secondary-button--compact"
+                type="button"
+                onClick={() => setMfaOpen(false)}
+              >
+                Đóng
+              </button>
+            </div>
+
+            {mfaError ? (
+              <div className="admin-state admin-state--error" role="alert">
+                <span>{mfaError}</span>
+              </div>
+            ) : null}
+
+            {mfaLoading && mfaEnabled === null ? (
+              <div className="admin-state">Đang tải trạng thái MFA…</div>
+            ) : null}
+
+            {mfaRecoveryCodes.length > 0 ? (
+              <div style={{ display: "grid", gap: "12px", marginTop: "16px" }}>
+                <div className="admin-state admin-state--success">
+                  <span>
+                    MFA đã bật. Lưu các recovery code này ở nơi an toàn. Mỗi mã
+                    chỉ dùng được một lần và Habi sẽ không hiển thị lại.
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "6px",
+                    fontFamily: "monospace",
+                    background: "var(--color-background, #f8fafc)",
+                    padding: "14px",
+                    borderRadius: "8px"
+                  }}
+                >
+                  {mfaRecoveryCodes.map((code) => (
+                    <code key={code}>{code}</code>
+                  ))}
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(
+                      mfaRecoveryCodes.join("\n")
+                    )
+                  }
+                >
+                  Copy recovery codes
+                </button>
+              </div>
+            ) : mfaEnabled === false ? (
+              <div style={{ display: "grid", gap: "14px", marginTop: "16px" }}>
+                {!mfaSetup ? (
+                  <>
+                    <p style={{ margin: 0 }}>
+                      Dùng Google Authenticator, Microsoft Authenticator, 1Password
+                      hoặc ứng dụng TOTP tương thích.
+                    </p>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={mfaLoading}
+                      onClick={() => void beginMfaSetup()}
+                    >
+                      {mfaLoading ? "Đang tạo secret…" : "Bắt đầu thiết lập MFA"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="admin-state">
+                      <span>
+                        Thêm tài khoản bằng URI dưới đây hoặc nhập secret thủ
+                        công vào ứng dụng Authenticator.
+                      </span>
+                    </div>
+                    <label style={{ display: "grid", gap: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>Secret</span>
+                      <input readOnly value={mfaSetup.secret} />
+                    </label>
+                    <label style={{ display: "grid", gap: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>Provisioning URI</span>
+                      <textarea readOnly value={mfaSetup.provisioningUri} />
+                    </label>
+                    <label style={{ display: "grid", gap: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>
+                        Mã 6 số để xác nhận
+                      </span>
+                      <input
+                        value={mfaCode}
+                        onChange={(event) => setMfaCode(event.target.value)}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="123456"
+                      />
+                    </label>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={mfaLoading || mfaCode.trim().length === 0}
+                      onClick={() => void confirmMfaSetup()}
+                    >
+                      {mfaLoading ? "Đang xác nhận…" : "Bật MFA"}
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : mfaEnabled === true && mfaRecoveryCodes.length === 0 ? (
+              <div style={{ display: "grid", gap: "14px", marginTop: "16px" }}>
+                <div className="admin-state admin-state--success">
+                  <span>
+                    MFA đang bật. Những lần đăng nhập mới sẽ cần mã TOTP hoặc
+                    recovery code.
+                  </span>
+                </div>
+                <label style={{ display: "grid", gap: "6px" }}>
+                  <span style={{ fontWeight: 600 }}>
+                    Mã TOTP / recovery code để tắt MFA
+                  </span>
+                  <input
+                    value={mfaCode}
+                    onChange={(event) => setMfaCode(event.target.value)}
+                    autoComplete="one-time-code"
+                    placeholder="123456 hoặc HABI-..."
+                  />
+                </label>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={mfaLoading || mfaCode.trim().length === 0}
+                  onClick={() => void disableMfa()}
+                >
+                  {mfaLoading ? "Đang xử lý…" : "Tắt MFA"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {sessionsOpen ? (
         <div
           role="dialog"
@@ -623,7 +908,9 @@ export function AdminShell({
                       }}
                     >
                       <strong>
-                        {session.current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
+                        {session.current
+                          ? "Phiên hiện tại"
+                          : session.deviceLabel ?? "Phiên đăng nhập khác"}
                       </strong>
                       <button
                         type="button"
@@ -639,6 +926,9 @@ export function AdminShell({
                       </button>
                     </div>
                     <small>
+                      Thiết bị: {session.deviceLabel ?? "Chưa xác định"}
+                    </small>
+                    <small title={session.userAgent ?? undefined}>
                       Hoạt động gần nhất:{" "}
                       {new Date(session.lastSeenAt).toLocaleString("vi-VN")}
                     </small>
