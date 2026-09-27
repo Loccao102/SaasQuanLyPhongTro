@@ -108,6 +108,10 @@ export function RegisterClient() {
           );
           return;
         }
+        if ("mfaEnrollmentRequired" in result) {
+          router.replace("/login?enroll=required");
+          return;
+        }
         finish(result.memberships.length);
       } catch (caught) {
         setError(
