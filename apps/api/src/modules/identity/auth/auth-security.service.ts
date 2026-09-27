@@ -12,6 +12,7 @@ type RateLimitAction =
   | "PASSWORD_LOGIN_IDENTIFIER"
   | "PASSWORD_LOGIN_IP"
   | "GOOGLE_AUTH_IP"
+  | "PASSKEY_LOGIN_IP"
   | "REGISTER_IP"
   | "GOOGLE_CHALLENGE_IP"
   | "PASSWORD_CHANGE_USER"
@@ -171,6 +172,16 @@ export class AuthSecurityService {
       ip,
       this.positiveInteger("AUTH_GOOGLE_RATE_MAX_PER_IP", 60),
       this.positiveInteger("AUTH_GOOGLE_RATE_WINDOW_SECONDS", 900)
+    );
+  }
+
+  async assertPasskeyLoginAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "PASSKEY_LOGIN_IP",
+      "ip",
+      ip,
+      this.positiveInteger("AUTH_PASSKEY_LOGIN_RATE_MAX_PER_IP", 120),
+      this.positiveInteger("AUTH_PASSKEY_LOGIN_RATE_WINDOW_SECONDS", 900)
     );
   }
 
@@ -400,6 +411,8 @@ export class AuthSecurityService {
       "GOOGLE_AUTH",
       "MFA_LOGIN",
       "PASSKEY_MFA_LOGIN",
+      "PASSKEY_LOGIN",
+      "PLATFORM_PASSKEY_LOGIN",
       "PLATFORM_LOGIN"
     ].includes(eventType);
   }
@@ -414,6 +427,8 @@ export class AuthSecurityService {
       "GOOGLE_AUTH",
       "MFA_LOGIN",
       "PASSKEY_MFA_LOGIN",
+      "PASSKEY_LOGIN",
+      "PLATFORM_PASSKEY_LOGIN",
       "PLATFORM_LOGIN"
     ];
     const result = await this.db.query<
