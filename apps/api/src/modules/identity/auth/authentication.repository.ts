@@ -116,6 +116,7 @@ export class AuthenticationRepository {
        FROM users u
        JOIN user_password_credentials c ON c.user_id = u.id
        WHERE lower(u.email) = lower($1)
+         AND u.email_verified_at IS NOT NULL
        LIMIT 1`,
       [email]
     );
@@ -288,6 +289,116 @@ export class AuthenticationRepository {
          WHERE id = $1::uuid`,
         [currentSessionId, newVersion]
       );
+    });
+  }
+
+  async replacePasswordResetToken(input: {
+    userId: string;
+    tokenHash: Buffer;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE auth_password_reset_tokens
+         SET consumed_at = COALESCE(consumed_at, now())
+         WHERE user_id = $1::uuid
+           AND consumed_at IS NULL`,
+        [input.userId]
+      );
+      await client.query(
+        `INSERT INTO auth_password_reset_tokens (
+           user_id, token_hash, expires_at
+         )
+         VALUES ($1::uuid, $2, $3)`,
+        [input.userId, input.tokenHash, input.expiresAt]
+      );
+    });
+  }
+
+  async resetPasswordWithToken(
+    tokenHash: Buffer,
+    credential: PasswordCredential
+  ): Promise<AccountIdentity | null> {
+    return this.db.withTransaction(async (client) => {
+      const token = await client.query<
+        AccountRow & { token_id: string }
+      >(
+        `SELECT
+           t.id::text AS token_id,
+           u.id::text AS user_id,
+           u.email,
+           u.display_name,
+           u.status AS user_status,
+           u.auth_version,
+           u.organization_id::text,
+           u.account_type
+         FROM auth_password_reset_tokens t
+         JOIN users u ON u.id = t.user_id
+         JOIN user_password_credentials c ON c.user_id = u.id
+         WHERE t.token_hash = $1
+           AND t.consumed_at IS NULL
+           AND t.expires_at > now()
+           AND u.status = 'ACTIVE'
+           AND u.email_verified_at IS NOT NULL
+         FOR UPDATE OF t, u, c
+         LIMIT 1`,
+        [tokenHash]
+      );
+      const row = token.rows[0];
+      if (!row) return null;
+
+      const userResult = await client.query<{ auth_version: number }>(
+        `UPDATE users
+         SET auth_version = auth_version + 1, updated_at = now()
+         WHERE id = $1::uuid
+         RETURNING auth_version`,
+        [row.user_id]
+      );
+      const authVersion = userResult.rows[0]?.auth_version;
+      if (!authVersion) {
+        throw new Error("User was not found.");
+      }
+
+      await client.query(
+        `UPDATE user_password_credentials
+         SET password_hash = $2,
+             password_salt = $3,
+             scrypt_n = $4,
+             scrypt_r = $5,
+             scrypt_p = $6,
+             password_changed_at = now(),
+             updated_at = now()
+         WHERE user_id = $1::uuid`,
+        [
+          row.user_id,
+          credential.hash,
+          credential.salt,
+          credential.n,
+          credential.r,
+          credential.p
+        ]
+      );
+
+      await client.query(
+        `UPDATE auth_sessions
+         SET revoked_at = COALESCE(revoked_at, now())
+         WHERE user_id = $1::uuid
+           AND revoked_at IS NULL`,
+        [row.user_id]
+      );
+
+      await client.query(
+        `UPDATE auth_password_reset_tokens
+         SET consumed_at = COALESCE(consumed_at, now())
+         WHERE user_id = $1::uuid
+           AND consumed_at IS NULL`,
+        [row.user_id]
+      );
+
+      return this.mapAccount({
+        ...row,
+        auth_version: authVersion
+      });
     });
   }
 
