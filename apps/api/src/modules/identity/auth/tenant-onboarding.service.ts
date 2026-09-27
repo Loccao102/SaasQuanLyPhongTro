@@ -38,6 +38,13 @@ export class TenantOnboardingService {
     return result.rows[0]?.value !== false;
   }
 
+  async passwordRegistrationEnabled(): Promise<boolean> {
+    const result = await this.db.query<QueryResultRow & { value: unknown }>(
+      "SELECT value FROM system_settings WHERE key = 'password_registration_enabled'"
+    );
+    return result.rows[0]?.value !== false;
+  }
+
   async register(input: {
     email: string;
     displayName: string;
@@ -53,6 +60,19 @@ export class TenantOnboardingService {
       );
       if (!registrationEnabled) {
         throw new ConflictException("Hệ thống đang tạm khóa đăng ký tài khoản mới.");
+      }
+
+      if (input.credential) {
+        const passwordRegistrationEnabled = await this.settingBoolean(
+          client,
+          "password_registration_enabled",
+          true
+        );
+        if (!passwordRegistrationEnabled) {
+          throw new ConflictException(
+            "Đăng ký bằng email/mật khẩu đang tắt. Hãy dùng Google hoặc liên hệ quản trị viên."
+          );
+        }
       }
 
       const email = input.email.trim().toLowerCase();
