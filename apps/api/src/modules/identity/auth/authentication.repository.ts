@@ -49,6 +49,11 @@ export interface AuthMembershipSummary {
   role: string;
 }
 
+export interface MfaPolicyRequirement {
+  required: boolean;
+  role: string | null;
+}
+
 type CredentialRow = QueryResultRow & {
   user_id: string;
   email: string;
@@ -254,6 +259,74 @@ export class AuthenticationRepository {
              updated_at = now()`,
       [input.userId, input.subject, input.providerEmail]
     );
+  }
+
+  async getMfaPolicyRequirement(
+    userId: string,
+    accountType: "TENANT" | "PLATFORM"
+  ): Promise<MfaPolicyRequirement> {
+    const settings = await this.db.query<
+      QueryResultRow & { key: string; value: unknown }
+    >(
+      `SELECT key, value
+       FROM system_settings
+       WHERE key = ANY($1::text[])`,
+      [[
+        "mfa_required_tenant_roles",
+        "mfa_required_platform_roles"
+      ]]
+    );
+    const values = new Map(
+      settings.rows.map((row) => [row.key, row.value])
+    );
+
+    if (accountType === "PLATFORM") {
+      const roleResult = await this.db.query<QueryResultRow & { role: string }>(
+        `SELECT role
+         FROM platform_operators
+         WHERE user_id = $1::uuid
+           AND status = 'ACTIVE'
+         LIMIT 1`,
+        [userId]
+      );
+      const role = roleResult.rows[0]?.role ?? null;
+      const configured = values.get("mfa_required_platform_roles");
+      const requiredRoles = Array.isArray(configured)
+        ? configured.filter((value): value is string => typeof value === "string")
+        : ["PLATFORM_ADMIN"];
+      return {
+        role,
+        required: role !== null && requiredRoles.includes(role)
+      };
+    }
+
+    const roleResult = await this.db.query<QueryResultRow & { role: string }>(
+      `SELECT role
+       FROM organization_memberships
+       WHERE user_id = $1::uuid
+         AND status = 'ACTIVE'
+       ORDER BY
+         CASE role
+           WHEN 'OWNER' THEN 0
+           WHEN 'ADMIN' THEN 1
+           WHEN 'MANAGER' THEN 2
+           WHEN 'ACCOUNTANT' THEN 3
+           WHEN 'STAFF' THEN 4
+           WHEN 'VIEWER' THEN 5
+           ELSE 6
+         END
+       LIMIT 1`,
+      [userId]
+    );
+    const role = roleResult.rows[0]?.role ?? null;
+    const configured = values.get("mfa_required_tenant_roles");
+    const requiredRoles = Array.isArray(configured)
+      ? configured.filter((value): value is string => typeof value === "string")
+      : ["OWNER"];
+    return {
+      role,
+      required: role !== null && requiredRoles.includes(role)
+    };
   }
 
   async changePassword(
@@ -548,6 +621,7 @@ export class AuthenticationRepository {
     userId: string;
     tokenHash: Buffer;
     expiresAt: Date;
+    purpose?: "VERIFY" | "ENROLL";
   }): Promise<void> {
     await this.db.withTransaction(async (client) => {
       await client.query(
@@ -558,15 +632,24 @@ export class AuthenticationRepository {
         [input.userId]
       );
       await client.query(
-        `INSERT INTO auth_mfa_challenges (user_id, token_hash, expires_at)
-         VALUES ($1::uuid, $2, $3)`,
-        [input.userId, input.tokenHash, input.expiresAt]
+        `INSERT INTO auth_mfa_challenges (
+           user_id, token_hash, expires_at, purpose
+         )
+         VALUES ($1::uuid, $2, $3, $4)`,
+        [
+          input.userId,
+          input.tokenHash,
+          input.expiresAt,
+          input.purpose ?? "VERIFY"
+        ]
       );
     });
   }
 
   async findMfaChallenge(
-    tokenHash: Buffer
+    tokenHash: Buffer,
+    purpose: "VERIFY" | "ENROLL" = "VERIFY",
+    requireConfirmedCredential = purpose === "VERIFY"
   ): Promise<AccountIdentity | null> {
     const result = await this.db.query<AccountRow>(
       `SELECT
@@ -579,30 +662,36 @@ export class AuthenticationRepository {
          u.account_type
        FROM auth_mfa_challenges c
        JOIN users u ON u.id = c.user_id
-       JOIN user_totp_credentials m ON m.user_id = u.id
+       LEFT JOIN user_totp_credentials m ON m.user_id = u.id
        WHERE c.token_hash = $1
+         AND c.purpose = $2
          AND c.consumed_at IS NULL
          AND c.expires_at > now()
-         AND m.confirmed_at IS NOT NULL
+         AND (
+           $3::boolean = false
+           OR m.confirmed_at IS NOT NULL
+         )
          AND u.status = 'ACTIVE'
        LIMIT 1`,
-      [tokenHash]
+      [tokenHash, purpose, requireConfirmedCredential]
     );
     return result.rows[0] ? this.mapAccount(result.rows[0]) : null;
   }
 
   async consumeMfaChallenge(
     userId: string,
-    tokenHash: Buffer
+    tokenHash: Buffer,
+    purpose: "VERIFY" | "ENROLL" = "VERIFY"
   ): Promise<boolean> {
     const result = await this.db.query(
       `UPDATE auth_mfa_challenges
        SET consumed_at = now()
        WHERE user_id = $1::uuid
          AND token_hash = $2
+         AND purpose = $3
          AND consumed_at IS NULL
          AND expires_at > now()`,
-      [userId, tokenHash]
+      [userId, tokenHash, purpose]
     );
     return (result.rowCount ?? 0) === 1;
   }
