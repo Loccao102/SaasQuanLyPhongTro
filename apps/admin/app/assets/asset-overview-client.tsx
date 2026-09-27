@@ -7,6 +7,7 @@ import {
   adminAssetsApi,
   type AdminAssetOverview
 } from "../../lib/admin-assets-api";
+import { PropertyImportModal } from "./property-import-modal";
 
 function percent(occupied: number, total: number): string {
   if (total === 0) return "0%";
@@ -22,6 +23,7 @@ export function AssetOverviewClient() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,12 +186,20 @@ export function AssetOverviewClient() {
                 <span className="eyebrow">PROPERTY DIRECTORY</span>
                 <h2>Cơ sở trong phạm vi của bạn</h2>
               </div>
-              <div className="button-row">
-                <button className="secondary-button" type="button" onClick={() => void load()}>
-                  Refresh
+              <div className="button-row" style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setShowImport(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
+                >
+                  📥 Import Excel
                 </button>
                 <button className="primary-button" type="button" onClick={() => setShowCreate(true)}>
                   + Thêm cơ sở
+                </button>
+                <button className="secondary-button" type="button" onClick={() => void load()}>
+                  Refresh
                 </button>
               </div>
             </div>
@@ -235,6 +245,16 @@ export function AssetOverviewClient() {
             )}
           </section>
         </>
+      )}
+
+      {showImport && (
+        <PropertyImportModal
+          onClose={() => setShowImport(false)}
+          onSuccess={() => {
+            setShowImport(false);
+            void load();
+          }}
+        />
       )}
     </AdminShell>
   );

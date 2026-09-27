@@ -226,5 +226,81 @@ export const adminAssetsApi = {
       {
         method: "DELETE"
       }
-    )
+    ),
+
+  validateImport: (payload: PropertyImportPayload) =>
+    request<PropertyImportValidationReport>("/assets/import/validate", {
+      method: "POST",
+      body: { payload }
+    }),
+
+  executeImport: (payload: PropertyImportPayload) =>
+    request<PropertyImportResult>("/assets/import/execute", {
+      method: "POST",
+      body: { payload }
+    })
 };
+
+export type PropertyImportPayload = {
+  property: {
+    code: string;
+    name: string;
+    propertyType: "BOARDING_HOUSE" | "MINI_APARTMENT" | "APARTMENT" | "OTHER";
+    addressText?: string;
+    provinceName?: string;
+    districtName?: string;
+    wardName?: string;
+  };
+  floors: Array<{
+    code: string;
+    name: string;
+    sortOrder?: number;
+  }>;
+  rooms: Array<{
+    floorCode?: string;
+    code: string;
+    name: string;
+    sortOrder?: number;
+  }>;
+  equipments: Array<{
+    roomCode: string;
+    name: string;
+    brand?: string;
+    modelOrSerial?: string;
+    quantity?: number;
+    conditionStatus?: EquipmentConditionStatus;
+    compensationValueVnd?: number;
+    note?: string;
+  }>;
+};
+
+export type PropertyImportValidationReport = {
+  isValid: boolean;
+  summary: {
+    propertyCode: string;
+    propertyName: string;
+    propertyType: string;
+    locationText: string;
+    floorCount: number;
+    roomCount: number;
+    equipmentCount: number;
+  };
+  errors: Array<{
+    section: "PROPERTY" | "FLOORS" | "ROOMS" | "EQUIPMENTS";
+    row?: number;
+    itemCode?: string;
+    message: string;
+  }>;
+  warnings: string[];
+};
+
+export type PropertyImportResult = {
+  propertyId: string;
+  propertyCode: string;
+  propertyName: string;
+  floorCount: number;
+  roomCount: number;
+  equipmentCount: number;
+  administrativeAreaId: string | null;
+};
+
