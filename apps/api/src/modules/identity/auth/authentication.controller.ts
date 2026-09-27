@@ -568,6 +568,14 @@ export class AuthenticationController {
     }
   }
 
+  @Get("security/alerts")
+  async securityAlerts(@Req() request: Request) {
+    const session = await this.requireSession(request);
+    return {
+      alerts: await this.security.listAlertsForUser(session.userId)
+    };
+  }
+
   @Get("step-up/status")
   async stepUpStatus(@Req() request: Request) {
     const session = await this.requireSession(request);
