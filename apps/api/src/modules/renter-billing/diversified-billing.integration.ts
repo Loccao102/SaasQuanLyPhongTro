@@ -56,8 +56,8 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM organization_memberships WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM rooms WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM properties WHERE organization_id = $1", [organizationId]);
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("diversified pricing calculates occupant count, vehicle parking, and adjustments accurately", async () => {
