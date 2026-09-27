@@ -1,4 +1,5 @@
 "use client";
+import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
@@ -216,15 +217,15 @@ export function RenterBillingClient() {
           </label>
           <label>
             <span>Từ ngày (dd/mm/yyyy) *</span>
-            <input name="periodStart" type="date" required />
+            <DateInput name="periodStart"  required />
           </label>
           <label>
             <span>Đến ngày (dd/mm/yyyy) *</span>
-            <input name="periodEnd" type="date" required />
+            <DateInput name="periodEnd"  required />
           </label>
           <label>
             <span>Hạn thanh toán (dd/mm/yyyy) *</span>
-            <input name="dueDate" type="date" required />
+            <DateInput name="dueDate"  required />
           </label>
           <div className="button-row">
             <button className="primary-button" type="submit" disabled={saving}>
