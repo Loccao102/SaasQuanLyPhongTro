@@ -39,8 +39,10 @@ import {
 import {
   InvalidEntitlementOverrideError,
   isEntitlementKey,
+  tenantFeatureKeys,
   validateEntitlementOverride,
-  type EntitlementValue
+  type EntitlementValue,
+  type TenantFeatureKey
 } from "../commercial/domain/entitlements.js";
 import type {
   AllocateProviderPaymentInput,
@@ -93,6 +95,7 @@ type PlanRow = QueryResultRow & {
   room_limit: number;
   staff_limit: number;
   automation_quota: number;
+  features: unknown;
   effective_from: Date;
 };
 
@@ -1124,6 +1127,7 @@ export class CmsService {
       roomLimit: input.roomLimit ?? null,
       staffLimit: input.staffLimit ?? null,
       automationQuota: input.automationQuota ?? null,
+      features: input.features ?? null,
       expectedVersion: input.expectedVersion ?? null,
       effectiveAt: input.effectiveAt ?? null,
       reason
@@ -1159,7 +1163,8 @@ export class CmsService {
         roomLimit: input.roomLimit ?? current.room_limit,
         staffLimit: input.staffLimit ?? current.staff_limit,
         automationQuota:
-          input.automationQuota ?? current.automation_quota
+          input.automationQuota ?? current.automation_quota,
+        features: this.mergePlanFeatures(current.features, input.features)
       };
 
       if (
@@ -1188,7 +1193,7 @@ export class CmsService {
            room_limit, staff_limit, automation_quota, features,
            effective_from, created_by_user_id, reason
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb, COALESCE($8::timestamptz, now()), $9, $10)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, COALESCE($9::timestamptz, now()), $10, $11)
          RETURNING id`,
         [
           current.plan_id,
@@ -1198,6 +1203,7 @@ export class CmsService {
           next.roomLimit,
           next.staffLimit,
           next.automationQuota,
+          JSON.stringify(next.features),
           input.effectiveAt ?? null,
           principal.userId,
           reason
@@ -2966,8 +2972,39 @@ export class CmsService {
       roomLimit: row.room_limit,
       staffLimit: row.staff_limit,
       automationQuota: row.automation_quota,
+      features: this.mergePlanFeatures(row.features),
       effectiveFrom: row.effective_from.toISOString()
     };
+  }
+
+  private mergePlanFeatures(
+    current: unknown,
+    patch?: Record<string, boolean>
+  ): Record<TenantFeatureKey, boolean> {
+    const base = Object.fromEntries(
+      tenantFeatureKeys.map((key) => [
+        key,
+        typeof current === "object" &&
+          current !== null &&
+          !Array.isArray(current) &&
+          (current as Record<string, unknown>)[key] === true
+      ])
+    ) as Record<TenantFeatureKey, boolean>;
+
+    if (!patch) return base;
+
+    for (const [key, value] of Object.entries(patch)) {
+      if (!(tenantFeatureKeys as readonly string[]).includes(key)) {
+        throw new BadRequestException("Unknown tenant feature: " + key);
+      }
+      if (typeof value !== "boolean") {
+        throw new BadRequestException(
+          "Tenant feature " + key + " must be boolean."
+        );
+      }
+      base[key as TenantFeatureKey] = value;
+    }
+    return base;
   }
 
   private planSelectSql(whereClause = "", lockClause = ""): string {
@@ -2983,6 +3020,7 @@ export class CmsService {
        pv.room_limit,
        pv.staff_limit,
        pv.automation_quota,
+       pv.features,
        pv.effective_from
      FROM saas_plans p
      JOIN saas_plan_versions pv
