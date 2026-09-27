@@ -4,7 +4,8 @@
   "private": true,
   "exports": {
     ".": "./src/index.tsx",
-    "./styles.css": "./src/styles.css"
+    "./styles.css": "./src/styles.css",
+    "./date-input": "./src/date-input.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
