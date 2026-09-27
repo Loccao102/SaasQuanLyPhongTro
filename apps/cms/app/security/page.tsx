@@ -24,6 +24,11 @@ export default function CmsSecurityPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [sessions, setSessions] = useState<CmsSessionItem[]>([]);
   const [passkeys, setPasskeys] = useState<CmsPasskeyItem[]>([]);
+  const [stepUp, setStepUp] = useState<{
+    recent: boolean;
+    reauthenticatedAt: string;
+    expiresAt: string;
+  } | null>(null);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyName, setPasskeyName] = useState("Thiết bị này");
   const [loading, setLoading] = useState(true);
@@ -35,15 +40,18 @@ export default function CmsSecurityPage() {
     setError(null);
     try {
       setPasskeySupported(browserSupportsPasskeys());
-      const [mfa, activeSessions, passkeyResult] = await Promise.all([
-        cmsAuthApi.mfaStatus(),
-        cmsAuthApi.sessions(),
-        cmsAuthApi.passkeys()
-      ]);
+      const [mfa, activeSessions, passkeyResult, recentAuth] =
+        await Promise.all([
+          cmsAuthApi.mfaStatus(),
+          cmsAuthApi.sessions(),
+          cmsAuthApi.passkeys(),
+          cmsAuthApi.stepUpStatus()
+        ]);
       setEnabled(mfa.enabled);
       setRequiredByRole(mfa.required ? mfa.requiredByRole : null);
       setSessions(activeSessions.sessions);
       setPasskeys(passkeyResult.passkeys);
+      setStepUp(recentAuth);
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -219,6 +227,34 @@ export default function CmsSecurityPage() {
           }}
         >
           {error}
+        </section>
+      ) : null}
+
+      {stepUp ? (
+        <section
+          style={{
+            border: "1px solid #e2e8f0",
+            background: "#fff",
+            borderRadius: 14,
+            padding: 18,
+            display: "grid",
+            gap: 6
+          }}
+        >
+          <strong>
+            Recent authentication: {stepUp.recent ? "còn hiệu lực" : "đã hết hạn"}
+          </strong>
+          <small style={{ color: "#64748b" }}>
+            Xác thực gần nhất:{" "}
+            {new Date(stepUp.reauthenticatedAt).toLocaleString("vi-VN")}
+          </small>
+          <small style={{ color: "#64748b" }}>
+            {stepUp.recent
+              ? "Các write nhạy cảm được phép đến " +
+                new Date(stepUp.expiresAt).toLocaleTimeString("vi-VN") +
+                "."
+              : "Write Control Plane tiếp theo sẽ yêu cầu password, TOTP/recovery code hoặc passkey."}
+          </small>
         </section>
       ) : null}
 
