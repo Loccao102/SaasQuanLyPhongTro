@@ -36,6 +36,17 @@ type AdminAuthContextValue = {
   error: string | null;
   refresh: () => Promise<AdminSession | null>;
   login: (input: { email: string; password: string }) => Promise<AdminSession>;
+  register: (input: {
+    email: string;
+    password: string;
+    displayName: string;
+    organizationName: string;
+  }) => Promise<AdminSession>;
+  google: (input: {
+    credential: string;
+    mode: "LOGIN" | "REGISTER";
+    organizationName?: string;
+  }) => Promise<AdminSession>;
   logout: () => Promise<void>;
   switchOrganization: (organizationId: string) => void;
 };
@@ -152,6 +163,25 @@ export function AdminAuthProvider({
     [applySession]
   );
 
+  const register = useCallback(
+    async (input: {
+      email: string;
+      password: string;
+      displayName: string;
+      organizationName: string;
+    }) => applySession(await adminAuthApi.register(input)),
+    [applySession]
+  );
+
+  const google = useCallback(
+    async (input: {
+      credential: string;
+      mode: "LOGIN" | "REGISTER";
+      organizationName?: string;
+    }) => applySession(await adminAuthApi.google(input)),
+    [applySession]
+  );
+
   const logout = useCallback(async () => {
     try {
       await adminAuthApi.logout();
@@ -204,14 +234,18 @@ export function AdminAuthProvider({
       error,
       refresh,
       login,
+      register,
+      google,
       logout,
       switchOrganization
     }),
     [
       error,
+      google,
       login,
       logout,
       refresh,
+      register,
       selectedMembership,
       selectedOrganizationId,
       session,
