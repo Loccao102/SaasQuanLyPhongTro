@@ -395,7 +395,9 @@ export class AuthenticationRepository {
 
       await client.query(
         `UPDATE auth_sessions
-         SET auth_version = $2, last_seen_at = now()
+         SET auth_version = $2,
+             last_seen_at = now(),
+             reauthenticated_at = now()
          WHERE id = $1::uuid`,
         [currentSessionId, newVersion]
       );
@@ -628,7 +630,9 @@ export class AuthenticationRepository {
 
       await client.query(
         `UPDATE auth_sessions
-         SET auth_version = $2, last_seen_at = now()
+         SET auth_version = $2,
+             last_seen_at = now(),
+             reauthenticated_at = now()
          WHERE id = $1::uuid`,
         [currentSessionId, version]
       );
