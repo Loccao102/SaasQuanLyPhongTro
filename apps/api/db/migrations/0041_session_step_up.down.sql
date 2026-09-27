@@ -18,6 +18,14 @@ ALTER TABLE auth_webauthn_challenges
 ALTER TABLE auth_webauthn_challenges
   DROP COLUMN IF EXISTS session_id;
 
+ALTER TABLE auth_webauthn_challenges
+  ADD CONSTRAINT auth_webauthn_challenges_check
+  CHECK (
+    (purpose = 'REGISTRATION' AND parent_mfa_token_hash IS NULL)
+    OR
+    (purpose = 'AUTHENTICATION' AND parent_mfa_token_hash IS NOT NULL)
+  );
+
 ALTER TABLE auth_sessions
   DROP COLUMN IF EXISTS reauthenticated_at;
 
