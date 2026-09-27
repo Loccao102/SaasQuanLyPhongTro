@@ -418,6 +418,97 @@ export class AuthenticationController {
     }
   }
 
+  @Post("passkey/login/options")
+  async tenantPasskeyLoginOptions(@Req() request: Request) {
+    assertTrustedBrowserOrigin(request);
+    await this.security.assertPasskeyLoginAllowed(this.requestIp(request));
+    return this.authentication.beginPasswordlessPasskey("TENANT");
+  }
+
+  @Post("passkey/login/verify")
+  async tenantPasskeyLoginVerify(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertPasskeyLoginAllowed(ip);
+
+    try {
+      const result = await this.authentication.passwordlessPasskeyLogin({
+        requestId: this.requiredUuid(body.requestId, "requestId"),
+        accountType: "TENANT",
+        response: this.requiredObject(
+          body.response,
+          "response"
+        ) as unknown as AuthenticationResponseJSON,
+        sessionContext: this.sessionContext(request)
+      });
+      await this.security.recordEvent({
+        eventType: "PASSKEY_LOGIN",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PASSKEY_LOGIN",
+        outcome: "FAILURE",
+        ip
+      });
+      throw error;
+    }
+  }
+
+  @Post("platform/passkey/login/options")
+  async platformPasskeyLoginOptions(@Req() request: Request) {
+    assertTrustedBrowserOrigin(request);
+    await this.security.assertPasskeyLoginAllowed(this.requestIp(request));
+    return this.authentication.beginPasswordlessPasskey("PLATFORM");
+  }
+
+  @Post("platform/passkey/login/verify")
+  async platformPasskeyLoginVerify(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertPasskeyLoginAllowed(ip);
+
+    try {
+      const result = await this.authentication.passwordlessPasskeyLogin({
+        requestId: this.requiredUuid(body.requestId, "requestId"),
+        accountType: "PLATFORM",
+        response: this.requiredObject(
+          body.response,
+          "response"
+        ) as unknown as AuthenticationResponseJSON,
+        sessionContext: this.sessionContext(request)
+      });
+      await this.security.recordEvent({
+        eventType: "PLATFORM_PASSKEY_LOGIN",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PLATFORM_PASSKEY_LOGIN",
+        outcome: "FAILURE",
+        ip
+      });
+      throw error;
+    }
+  }
+
   @Post("mfa/enrollment/setup")
   async setupRequiredMfa(
     @Req() request: Request,
@@ -1154,6 +1245,18 @@ export class AuthenticationController {
 
   private requestIp(request: Request): string {
     return request.ip || request.socket.remoteAddress || "unknown";
+  }
+
+  private requiredUuid(value: unknown, field: string): string {
+    const normalized = this.requiredString(value, field);
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        normalized
+      )
+    ) {
+      throw new BadRequestException(field + " must be a UUID v4.");
+    }
+    return normalized;
   }
 
   private requiredObject(
