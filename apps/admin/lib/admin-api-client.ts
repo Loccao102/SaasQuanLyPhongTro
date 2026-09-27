@@ -1,3 +1,4 @@
+import { requestAdminStepUp } from "./step-up";
 const apiBase =
   process.env.NEXT_PUBLIC_ADMIN_API_BASE_URL?.trim() || "/api";
 const fallbackOrganizationId =
@@ -117,7 +118,8 @@ export type AdminApiRequestOptions = {
 
 export async function adminApiRequest<T>(
   path: string,
-  options: AdminApiRequestOptions = {}
+  options: AdminApiRequestOptions = {},
+  stepUpRetried = false
 ): Promise<T> {
   const method = options.method ?? "GET";
   const headers = new Headers(options.headers);
@@ -155,6 +157,11 @@ export async function adminApiRequest<T>(
         ? undefined
         : JSON.stringify(options.body)
   });
+
+  if (response.status === 428 && !stepUpRetried) {
+    await requestAdminStepUp();
+    return adminApiRequest<T>(path, options, true);
+  }
 
   if (!response.ok) {
     const message = await responseErrorMessage(response);
