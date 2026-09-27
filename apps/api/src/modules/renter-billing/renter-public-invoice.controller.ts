@@ -3,24 +3,41 @@ import {
   Get,
   MessageEvent,
   Param,
+  Req,
   Sse
 } from "@nestjs/common";
+import type { Request } from "express";
 import { from, map, Observable, switchMap, timer } from "rxjs";
+import { AuthSecurityService } from "../identity/auth/auth-security.service.js";
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
 
 @Controller("public/renter-invoices")
 export class RenterPublicInvoiceController {
-  constructor(private readonly publicInvoices: RenterPublicInvoiceService) {}
+  constructor(
+    private readonly publicInvoices: RenterPublicInvoiceService,
+    private readonly security: AuthSecurityService
+  ) {}
 
   @Get(":token")
-  detail(@Param("token") token: string) {
+  async detail(
+    @Req() request: Request,
+    @Param("token") token: string
+  ) {
+    await this.security.assertPublicInvoiceAllowed(this.requestIp(request));
     return this.publicInvoices.detail(token);
   }
 
   @Sse(":token/events")
-  events(@Param("token") token: string): Observable<MessageEvent> {
+  events(
+    @Req() request: Request,
+    @Param("token") token: string
+  ): Observable<MessageEvent> {
     let last = "";
-    return timer(0, 3000).pipe(
+    return from(
+      this.security.assertPublicInvoiceAllowed(this.requestIp(request))
+    ).pipe(
+      switchMap(() => timer(0, 3000)),
+      switchMap(() => from(this.publicInvoices.status(token))),
       switchMap(() => from(this.publicInvoices.status(token))),
       map((status) => {
         const serialized = JSON.stringify(status);
@@ -32,5 +49,9 @@ export class RenterPublicInvoiceController {
         };
       })
     );
+  }
+
+  private requestIp(request: Request): string {
+    return request.ip || request.socket.remoteAddress || "unknown";
   }
 }
