@@ -73,6 +73,16 @@ export type AdminAuthSessionItem = {
   deviceLabel: string | null;
 };
 
+export type SecurityAlertItem = {
+  id: string;
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  metadata: Record<string, unknown>;
+  deliveryStatus: string;
+  createdAt: string;
+};
+
 export type PasskeyItem = {
   id: string;
   name: string;
@@ -218,6 +228,15 @@ export const adminAuthApi = {
       organization: false,
       csrf: false
     }),
+
+  securityAlerts: () =>
+    adminApiRequest<{ alerts: SecurityAlertItem[] }>(
+      "/auth/security/alerts",
+      {
+        organization: false,
+        csrf: false
+      }
+    ),
 
   stepUpStatus: () =>
     adminApiRequest<{
