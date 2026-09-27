@@ -4,6 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { TotpQrCode } from "@propops/ui/totp-qr";
 import {
+  authenticateWithPasskey,
+  browserSupportsPasskeys
+} from "@propops/ui/passkey";
+import {
   cmsAuthApi,
   type CmsAuthenticationResult
 } from "../../lib/cms-auth-api";
@@ -24,8 +28,13 @@ export default function CmsLoginPage() {
     } | null;
   } | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [passkeySupported, setPasskeySupported] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPasskeySupported(browserSupportsPasskeys());
+  }, []);
 
   useEffect(() => {
     void cmsAuthApi.me()
@@ -153,6 +162,37 @@ export default function CmsLoginPage() {
     setRecoveryCodes([]);
     router.replace("/");
     router.refresh();
+  }
+
+  async function verifyPasskeyMfa() {
+    if (!mfaChallenge) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const options = await cmsAuthApi.passkeyMfaOptions(
+        mfaChallenge.challengeToken
+      );
+      const response = await authenticateWithPasskey(options);
+      const session = await cmsAuthApi.verifyPasskeyMfa({
+        challengeToken: mfaChallenge.challengeToken,
+        response
+      });
+      if (session.user.accountType !== "PLATFORM") {
+        throw new Error("Phiên passkey không thuộc tài khoản PLATFORM.");
+      }
+      setMfaChallenge(null);
+      router.replace("/");
+      router.refresh();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể xác thực bằng passkey."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function verifyMfa(event: FormEvent<HTMLFormElement>) {
@@ -379,6 +419,15 @@ export default function CmsLoginPage() {
             <button type="submit" disabled={submitting} style={{ padding: "11px 14px" }}>
               {submitting ? "Đang xác thực…" : "Xác nhận & vào Control Plane"}
             </button>
+            {passkeySupported ? (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void verifyPasskeyMfa()}
+              >
+                Dùng passkey / Windows Hello / Touch ID
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={submitting}
