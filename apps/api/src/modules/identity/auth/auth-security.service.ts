@@ -18,6 +18,8 @@ type RateLimitAction =
   | "PASSWORD_RESET_IDENTIFIER"
   | "PASSWORD_RESET_CONFIRM_IP"
   | "EMAIL_VERIFY_IP"
+  | "MFA_VERIFY_IP"
+  | "MFA_SETUP_USER"
   | "PUBLIC_INVOICE_IP"
   | "PUBLIC_MAINTENANCE_IP";
 
@@ -127,6 +129,26 @@ export class AuthSecurityService {
       ip,
       this.positiveInteger("AUTH_EMAIL_VERIFY_MAX_PER_IP", 60),
       this.positiveInteger("AUTH_EMAIL_VERIFY_WINDOW_SECONDS", 3600)
+    );
+  }
+
+  async assertMfaVerifyAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "MFA_VERIFY_IP",
+      "ip",
+      ip,
+      this.positiveInteger("AUTH_MFA_VERIFY_MAX_PER_IP", 60),
+      this.positiveInteger("AUTH_MFA_VERIFY_WINDOW_SECONDS", 900)
+    );
+  }
+
+  async assertMfaSetupAllowed(userId: string): Promise<void> {
+    await this.consume(
+      "MFA_SETUP_USER",
+      "email",
+      userId,
+      this.positiveInteger("AUTH_MFA_SETUP_MAX_PER_USER", 10),
+      this.positiveInteger("AUTH_MFA_SETUP_WINDOW_SECONDS", 3600)
     );
   }
 
