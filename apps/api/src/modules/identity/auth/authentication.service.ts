@@ -900,6 +900,176 @@ export class AuthenticationService {
     return this.issueSession(identity, input.sessionContext);
   }
 
+  stepUpStatus(session: SessionIdentity): {
+    recent: boolean;
+    reauthenticatedAt: string;
+    expiresAt: string;
+  } {
+    const expiresAt = new Date(
+      session.reauthenticatedAt.getTime() +
+        this.stepUpTtlMinutes() * 60 * 1000
+    );
+    return {
+      recent: expiresAt.getTime() > Date.now(),
+      reauthenticatedAt: session.reauthenticatedAt.toISOString(),
+      expiresAt: expiresAt.toISOString()
+    };
+  }
+
+  hasRecentStepUp(session: SessionIdentity): boolean {
+    return (
+      session.reauthenticatedAt.getTime() +
+        this.stepUpTtlMinutes() * 60 * 1000 >
+      Date.now()
+    );
+  }
+
+  async stepUpWithPassword(
+    session: SessionIdentity,
+    password: string
+  ): Promise<void> {
+    const identity = await this.repository.findCredentialByUserId(
+      session.userId
+    );
+    if (!identity || identity.userStatus !== "ACTIVE") {
+      throw new BadRequestException(
+        "Tài khoản không có password credential khả dụng."
+      );
+    }
+
+    const verified = await verifyPassword(password, identity.credential);
+    if (!verified) {
+      throw new BadRequestException("Mật khẩu hiện tại không chính xác.");
+    }
+
+    const updated = await this.repository.markSessionReauthenticated(
+      session.userId,
+      session.sessionId
+    );
+    if (!updated) {
+      throw new BadRequestException(
+        "Phiên đăng nhập đã thay đổi. Hãy tải lại trang."
+      );
+    }
+    session.reauthenticatedAt = new Date();
+  }
+
+  async stepUpWithCode(
+    session: SessionIdentity,
+    code: string
+  ): Promise<void> {
+    if (!(await this.verifySecondFactor(session.userId, code))) {
+      throw new BadRequestException("Mã xác thực không hợp lệ.");
+    }
+
+    const updated = await this.repository.markSessionReauthenticated(
+      session.userId,
+      session.sessionId
+    );
+    if (!updated) {
+      throw new BadRequestException(
+        "Phiên đăng nhập đã thay đổi. Hãy tải lại trang."
+      );
+    }
+    session.reauthenticatedAt = new Date();
+  }
+
+  async beginPasskeyStepUp(session: SessionIdentity) {
+    const passkeys = await this.repository.listPasskeys(session.userId);
+    if (passkeys.length === 0) {
+      throw new ConflictException("Tài khoản chưa đăng ký passkey.");
+    }
+
+    const config = webAuthnConfig();
+    const options = await generateAuthenticationOptions({
+      rpID: config.rpID,
+      userVerification: "required",
+      allowCredentials: passkeys.map((passkey) => ({
+        id: passkey.credentialId,
+        transports: normalizePasskeyTransports(passkey.transports)
+      }))
+    });
+
+    await this.repository.replaceWebAuthnChallenge({
+      userId: session.userId,
+      challenge: options.challenge,
+      purpose: "STEP_UP",
+      sessionId: session.sessionId,
+      expiresAt: new Date(
+        Date.now() + config.challengeTtlMinutes * 60 * 1000
+      )
+    });
+
+    return options;
+  }
+
+  async verifyPasskeyStepUp(input: {
+    session: SessionIdentity;
+    response: AuthenticationResponseJSON;
+  }): Promise<void> {
+    const { session } = input;
+    const challenge = await this.repository.getActiveWebAuthnChallenge({
+      userId: session.userId,
+      purpose: "STEP_UP",
+      sessionId: session.sessionId
+    });
+    if (!challenge) {
+      throw new BadRequestException(
+        "Passkey step-up challenge đã hết hạn."
+      );
+    }
+
+    const passkey = await this.repository.findPasskeyByCredential(
+      session.userId,
+      input.response.id
+    );
+    if (!passkey) {
+      throw new BadRequestException(
+        "Passkey không thuộc tài khoản này."
+      );
+    }
+
+    const config = webAuthnConfig();
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: input.response,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origins,
+        expectedRPID: config.rpID,
+        credential: {
+          id: passkey.credentialId,
+          publicKey: new Uint8Array(passkey.publicKey),
+          counter: passkey.counter,
+          transports: normalizePasskeyTransports(passkey.transports)
+        },
+        requireUserVerification: true
+      });
+    } catch {
+      throw new BadRequestException(
+        "Không thể xác minh passkey."
+      );
+    }
+
+    if (!verification.verified) {
+      throw new BadRequestException("Passkey không hợp lệ.");
+    }
+
+    const completed = await this.repository.completePasskeyStepUp({
+      webauthnChallengeId: challenge.id,
+      userId: session.userId,
+      sessionId: session.sessionId,
+      passkeyId: passkey.id,
+      newCounter: verification.authenticationInfo.newCounter
+    });
+    if (!completed) {
+      throw new BadRequestException(
+        "Passkey step-up challenge đã được sử dụng hoặc hết hạn."
+      );
+    }
+    session.reauthenticatedAt = new Date();
+  }
+
   async authenticateSession(
     sessionToken: string | undefined
   ): Promise<SessionIdentity | null> {
@@ -1254,6 +1424,16 @@ export class AuthenticationService {
     if (!Number.isInteger(value) || value < 1 || value > 365) {
       throw new Error(
         "AUTH_SESSION_TTL_DAYS must be an integer between 1 and 365."
+      );
+    }
+    return value;
+  }
+
+  private stepUpTtlMinutes(): number {
+    const value = Number(process.env.AUTH_STEP_UP_TTL_MINUTES ?? "10");
+    if (!Number.isInteger(value) || value < 1 || value > 60) {
+      throw new Error(
+        "AUTH_STEP_UP_TTL_MINUTES must be between 1 and 60."
       );
     }
     return value;
