@@ -38,8 +38,8 @@ test("login creates opaque session, resolves memberships and supports revocation
     await cleanup(fixture);
 
     await fixture.query(
-      `INSERT INTO users (id, email, display_name)
-       VALUES ($1, $2, 'Auth Integration User')`,
+      `INSERT INTO users (id, email, display_name, email_verified_at)
+       VALUES ($1, $2, 'Auth Integration User', now())`,
       [userId, email]
     );
     await fixture.query(
