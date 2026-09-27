@@ -14,8 +14,11 @@ export type StaffSession = {
     id: string;
     email: string;
     displayName: string;
+    organizationId: string | null;
+    accountType: "TENANT" | "PLATFORM";
   };
   memberships: StaffMembership[];
+  features: Record<string, boolean> | null;
   expiresAt: string;
 };
 
@@ -71,7 +74,28 @@ async function json<T>(
   return response.json() as Promise<T>;
 }
 
+export type StaffAuthConfig = {
+  registrationEnabled: boolean;
+  googleEnabled: boolean;
+  googleClientId: string | null;
+};
+
 export const staffAuthApi = {
+  config: () =>
+    json<StaffAuthConfig>("/auth/config", {
+      organization: false,
+      csrf: false
+    }),
+
+  google: (input: { credential: string; mode: "LOGIN" }) =>
+    json<StaffSession>("/auth/google", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+
   me: () =>
     json<StaffSession>("/auth/me", {
       organization: false,
