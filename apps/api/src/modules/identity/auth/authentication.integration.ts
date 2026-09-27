@@ -21,8 +21,8 @@ async function cleanup(pool: Pool): Promise<void> {
   await pool.query("DELETE FROM user_password_credentials WHERE user_id = $1", [userId]);
   await pool.query("DELETE FROM membership_scopes WHERE organization_id = $1", [organizationId]);
   await pool.query("DELETE FROM organization_memberships WHERE organization_id = $1", [organizationId]);
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("login creates opaque session, resolves memberships and supports revocation", async () => {
