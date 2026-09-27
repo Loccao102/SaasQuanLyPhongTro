@@ -54,6 +54,29 @@ export interface MfaPolicyRequirement {
   role: string | null;
 }
 
+export interface PasskeyRecord {
+  id: string;
+  userId: string;
+  credentialId: string;
+  publicKey: Buffer;
+  counter: number;
+  transports: string[];
+  deviceType: string;
+  backedUp: boolean;
+  name: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+}
+
+export interface WebAuthnChallengeRecord {
+  id: string;
+  userId: string;
+  challenge: string;
+  purpose: "REGISTRATION" | "AUTHENTICATION";
+  parentMfaTokenHash: Buffer | null;
+  expiresAt: Date;
+}
+
 type CredentialRow = QueryResultRow & {
   user_id: string;
   email: string;
@@ -713,6 +736,243 @@ export class AuthenticationRepository {
        )
        AND used_at IS NULL`,
       [userId, codeHash]
+    );
+    return (result.rowCount ?? 0) === 1;
+  }
+
+  async listPasskeys(userId: string): Promise<PasskeyRecord[]> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        user_id: string;
+        credential_id: string;
+        public_key: Buffer;
+        counter: string;
+        transports: string[];
+        device_type: string;
+        backed_up: boolean;
+        name: string;
+        created_at: Date;
+        last_used_at: Date | null;
+      }
+    >(
+      `SELECT
+         id::text,
+         user_id::text,
+         credential_id,
+         public_key,
+         counter::text,
+         transports,
+         device_type,
+         backed_up,
+         name,
+         created_at,
+         last_used_at
+       FROM user_passkeys
+       WHERE user_id = $1::uuid
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      credentialId: row.credential_id,
+      publicKey: row.public_key,
+      counter: Number(row.counter),
+      transports: row.transports,
+      deviceType: row.device_type,
+      backedUp: row.backed_up,
+      name: row.name,
+      createdAt: row.created_at,
+      lastUsedAt: row.last_used_at
+    }));
+  }
+
+  async findPasskeyByCredential(
+    userId: string,
+    credentialId: string
+  ): Promise<PasskeyRecord | null> {
+    const rows = await this.listPasskeys(userId);
+    return rows.find((row) => row.credentialId === credentialId) ?? null;
+  }
+
+  async createPasskey(input: {
+    userId: string;
+    credentialId: string;
+    publicKey: Uint8Array;
+    counter: number;
+    transports: readonly string[];
+    deviceType: string;
+    backedUp: boolean;
+    name: string;
+  }): Promise<PasskeyRecord> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        created_at: Date;
+      }
+    >(
+      `INSERT INTO user_passkeys (
+         user_id,
+         credential_id,
+         public_key,
+         counter,
+         transports,
+         device_type,
+         backed_up,
+         name
+       )
+       VALUES ($1::uuid, $2, $3, $4, $5::text[], $6, $7, $8)
+       RETURNING id::text, created_at`,
+      [
+        input.userId,
+        input.credentialId,
+        Buffer.from(input.publicKey),
+        input.counter,
+        [...input.transports],
+        input.deviceType,
+        input.backedUp,
+        input.name
+      ]
+    );
+    const row = result.rows[0]!;
+    return {
+      id: row.id,
+      userId: input.userId,
+      credentialId: input.credentialId,
+      publicKey: Buffer.from(input.publicKey),
+      counter: input.counter,
+      transports: [...input.transports],
+      deviceType: input.deviceType,
+      backedUp: input.backedUp,
+      name: input.name,
+      createdAt: row.created_at,
+      lastUsedAt: null
+    };
+  }
+
+  async updatePasskeyUsage(
+    passkeyId: string,
+    userId: string,
+    counter: number
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE user_passkeys
+       SET counter = $3,
+           last_used_at = now(),
+           updated_at = now()
+       WHERE id = $1::uuid
+         AND user_id = $2::uuid`,
+      [passkeyId, userId, counter]
+    );
+    return (result.rowCount ?? 0) === 1;
+  }
+
+  async revokePasskey(userId: string, passkeyId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `DELETE FROM user_passkeys
+       WHERE id = $1::uuid
+         AND user_id = $2::uuid`,
+      [passkeyId, userId]
+    );
+    return (result.rowCount ?? 0) === 1;
+  }
+
+  async replaceWebAuthnChallenge(input: {
+    userId: string;
+    challenge: string;
+    purpose: "REGISTRATION" | "AUTHENTICATION";
+    expiresAt: Date;
+    parentMfaTokenHash?: Buffer | null;
+  }): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE auth_webauthn_challenges
+         SET consumed_at = COALESCE(consumed_at, now())
+         WHERE user_id = $1::uuid
+           AND purpose = $2
+           AND consumed_at IS NULL`,
+        [input.userId, input.purpose]
+      );
+      await client.query(
+        `INSERT INTO auth_webauthn_challenges (
+           user_id,
+           challenge,
+           purpose,
+           parent_mfa_token_hash,
+           expires_at
+         )
+         VALUES ($1::uuid, $2, $3, $4, $5)`,
+        [
+          input.userId,
+          input.challenge,
+          input.purpose,
+          input.parentMfaTokenHash ?? null,
+          input.expiresAt
+        ]
+      );
+    });
+  }
+
+  async getActiveWebAuthnChallenge(input: {
+    userId: string;
+    purpose: "REGISTRATION" | "AUTHENTICATION";
+    parentMfaTokenHash?: Buffer | null;
+  }): Promise<WebAuthnChallengeRecord | null> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        user_id: string;
+        challenge: string;
+        purpose: "REGISTRATION" | "AUTHENTICATION";
+        parent_mfa_token_hash: Buffer | null;
+        expires_at: Date;
+      }
+    >(
+      `SELECT
+         id::text,
+         user_id::text,
+         challenge,
+         purpose,
+         parent_mfa_token_hash,
+         expires_at
+       FROM auth_webauthn_challenges
+       WHERE user_id = $1::uuid
+         AND purpose = $2
+         AND parent_mfa_token_hash IS NOT DISTINCT FROM $3
+         AND consumed_at IS NULL
+         AND expires_at > now()
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [
+        input.userId,
+        input.purpose,
+        input.parentMfaTokenHash ?? null
+      ]
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          id: row.id,
+          userId: row.user_id,
+          challenge: row.challenge,
+          purpose: row.purpose,
+          parentMfaTokenHash: row.parent_mfa_token_hash,
+          expiresAt: row.expires_at
+        }
+      : null;
+  }
+
+  async consumeWebAuthnChallenge(id: string, userId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE auth_webauthn_challenges
+       SET consumed_at = now()
+       WHERE id = $1::uuid
+         AND user_id = $2::uuid
+         AND consumed_at IS NULL
+         AND expires_at > now()`,
+      [id, userId]
     );
     return (result.rowCount ?? 0) === 1;
   }
