@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -567,6 +568,135 @@ export class AuthenticationController {
     }
   }
 
+  @Get("step-up/status")
+  async stepUpStatus(@Req() request: Request) {
+    const session = await this.requireSession(request);
+    return this.authentication.stepUpStatus(session);
+  }
+
+  @Post("step-up/password")
+  async stepUpPassword(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertPasswordChangeAllowed(session.userId);
+
+    try {
+      await this.authentication.stepUpWithPassword(
+        session,
+        this.requiredString(body.password, "password")
+      );
+      await this.security.recordEvent({
+        eventType: "STEP_UP_PASSWORD",
+        outcome: "SUCCESS",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      return this.authentication.stepUpStatus(session);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "STEP_UP_PASSWORD",
+        outcome: "FAILURE",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      throw error;
+    }
+  }
+
+  @Post("step-up/code")
+  async stepUpCode(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaVerifyAllowed(this.requestIp(request));
+
+    try {
+      await this.authentication.stepUpWithCode(
+        session,
+        this.requiredString(body.code, "code")
+      );
+      await this.security.recordEvent({
+        eventType: "STEP_UP_MFA",
+        outcome: "SUCCESS",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      return this.authentication.stepUpStatus(session);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "STEP_UP_MFA",
+        outcome: "FAILURE",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      throw error;
+    }
+  }
+
+  @Post("step-up/passkey/options")
+  async stepUpPasskeyOptions(@Req() request: Request) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaVerifyAllowed(this.requestIp(request));
+    return this.authentication.beginPasskeyStepUp(session);
+  }
+
+  @Post("step-up/passkey/verify")
+  async stepUpPasskeyVerify(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaVerifyAllowed(this.requestIp(request));
+
+    try {
+      await this.authentication.verifyPasskeyStepUp({
+        session,
+        response: this.requiredObject(
+          body.response,
+          "response"
+        ) as unknown as AuthenticationResponseJSON
+      });
+      await this.security.recordEvent({
+        eventType: "STEP_UP_PASSKEY",
+        outcome: "SUCCESS",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      return this.authentication.stepUpStatus(session);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "STEP_UP_PASSKEY",
+        outcome: "FAILURE",
+        email: session.email,
+        ip: this.requestIp(request),
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      throw error;
+    }
+  }
+
   @Get("passkeys")
   async passkeys(@Req() request: Request) {
     const session = await this.requireSession(request);
@@ -580,6 +710,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
     await this.security.assertMfaSetupAllowed(session.userId);
 
     return this.authentication.beginPasskeyRegistration({
@@ -597,6 +728,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
     await this.security.assertMfaSetupAllowed(session.userId);
 
     const passkey = await this.authentication.confirmPasskeyRegistration({
@@ -636,6 +768,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
 
     const revoked = await this.authentication.revokePasskey(
       session.userId,
@@ -670,6 +803,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
     await this.security.assertMfaSetupAllowed(session.userId);
     return this.authentication.beginMfaSetup(
       session.userId,
@@ -685,6 +819,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
     await this.security.assertMfaSetupAllowed(session.userId);
 
     const result = await this.authentication.confirmMfaSetup(
@@ -778,6 +913,10 @@ export class AuthenticationController {
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
 
+    if (sessionId !== session.sessionId) {
+      this.requireRecentStepUp(session);
+    }
+
     const revoked = await this.authentication.revokeSession(
       session.userId,
       sessionId
@@ -809,6 +948,7 @@ export class AuthenticationController {
     assertTrustedBrowserOrigin(request);
     const session = await this.requireSession(request);
     this.requireCsrf(request, session);
+    this.requireRecentStepUp(session);
 
     const revokedSessions = await this.authentication.revokeOtherSessions(
       session.userId,
@@ -913,6 +1053,21 @@ export class AuthenticationController {
       );
     }
     return session;
+  }
+
+  private requireRecentStepUp(session: SessionIdentity): void {
+    if (this.authentication.hasRecentStepUp(session)) return;
+
+    throw new HttpException(
+      {
+        statusCode: 428,
+        error: "Precondition Required",
+        code: "STEP_UP_REQUIRED",
+        message:
+          "Thao tác nhạy cảm yêu cầu xác thực lại phiên đăng nhập."
+      },
+      428
+    );
   }
 
   private requireCsrf(
