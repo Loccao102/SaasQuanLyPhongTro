@@ -1,4 +1,13 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+  type AuthenticationResponseJSON,
+  type AuthenticatorTransportFuture,
+  type RegistrationResponseJSON
+} from "@simplewebauthn/server";
 import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import {
   tenantFeatureEnabled,
@@ -31,6 +40,12 @@ import {
 import { verifyGoogleIdentityToken } from "./google-identity.js";
 import { AuthEmailDeliveryService } from "./auth-email-delivery.service.js";
 import { TenantOnboardingService } from "./tenant-onboarding.service.js";
+import {
+  normalizePasskeyName,
+  normalizePasskeyTransports,
+  uuidToWebAuthnUserId,
+  webAuthnConfig
+} from "./webauthn.js";
 import {
   decryptTotpSecret,
   encryptTotpSecret,
@@ -617,6 +632,269 @@ export class AuthenticationService {
     ) {
       throw new BadRequestException(
         "Phiên xác thực hai bước đã được sử dụng hoặc đã hết hạn."
+      );
+    }
+
+    return this.issueSession(identity, input.sessionContext);
+  }
+
+  async listPasskeys(userId: string) {
+    const passkeys = await this.repository.listPasskeys(userId);
+    return passkeys.map((passkey) => ({
+      id: passkey.id,
+      name: passkey.name,
+      deviceType: passkey.deviceType,
+      backedUp: passkey.backedUp,
+      transports: passkey.transports,
+      createdAt: passkey.createdAt.toISOString(),
+      lastUsedAt: passkey.lastUsedAt?.toISOString() ?? null
+    }));
+  }
+
+  async beginPasskeyRegistration(input: {
+    userId: string;
+    email: string;
+    displayName: string;
+  }) {
+    const config = webAuthnConfig();
+    const existing = await this.repository.listPasskeys(input.userId);
+    const options = await generateRegistrationOptions({
+      rpName: config.rpName,
+      rpID: config.rpID,
+      userName: input.email,
+      userDisplayName: input.displayName,
+      userID: uuidToWebAuthnUserId(input.userId),
+      attestationType: "none",
+      excludeCredentials: existing.map((passkey) => ({
+        id: passkey.credentialId,
+        transports:
+          normalizePasskeyTransports(passkey.transports)
+      })),
+      authenticatorSelection: {
+        residentKey: "preferred",
+        userVerification: "required"
+      }
+    });
+
+    await this.repository.replaceWebAuthnChallenge({
+      userId: input.userId,
+      challenge: options.challenge,
+      purpose: "REGISTRATION",
+      expiresAt: new Date(
+        Date.now() + config.challengeTtlMinutes * 60 * 1000
+      )
+    });
+
+    return options;
+  }
+
+  async confirmPasskeyRegistration(input: {
+    userId: string;
+    response: RegistrationResponseJSON;
+    name?: string;
+  }) {
+    const config = webAuthnConfig();
+    const challenge = await this.repository.getActiveWebAuthnChallenge({
+      userId: input.userId,
+      purpose: "REGISTRATION"
+    });
+    if (!challenge) {
+      throw new BadRequestException(
+        "Passkey registration challenge đã hết hạn."
+      );
+    }
+
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response: input.response,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origins,
+        expectedRPID: config.rpID,
+        requireUserVerification: true
+      });
+    } catch {
+      throw new BadRequestException(
+        "Không thể xác minh passkey registration."
+      );
+    }
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new BadRequestException(
+        "Passkey registration không hợp lệ."
+      );
+    }
+
+    const {
+      credential,
+      credentialDeviceType,
+      credentialBackedUp
+    } = verification.registrationInfo;
+
+    const passkey = await this.repository.completePasskeyRegistration({
+      challengeId: challenge.id,
+      userId: input.userId,
+      credentialId: credential.id,
+      publicKey: credential.publicKey,
+      counter: credential.counter,
+      transports: credential.transports ?? [],
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp,
+      name: normalizePasskeyName(input.name)
+    });
+    if (!passkey) {
+      throw new BadRequestException(
+        "Passkey registration challenge đã được sử dụng hoặc hết hạn."
+      );
+    }
+
+    return {
+      id: passkey.id,
+      name: passkey.name,
+      deviceType: passkey.deviceType,
+      backedUp: passkey.backedUp,
+      transports: passkey.transports,
+      createdAt: passkey.createdAt.toISOString(),
+      lastUsedAt: null
+    };
+  }
+
+  revokePasskey(userId: string, passkeyId: string): Promise<boolean> {
+    return this.repository.revokePasskey(userId, passkeyId);
+  }
+
+  async beginPasskeyMfa(challengeToken: string) {
+    const tokenHash = safeTokenHash(challengeToken);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Phiên xác thực passkey không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findMfaChallenge(
+      tokenHash,
+      "VERIFY",
+      true
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        "Phiên xác thực hai bước không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const passkeys = await this.repository.listPasskeys(identity.userId);
+    if (passkeys.length === 0) {
+      throw new ConflictException(
+        "Tài khoản chưa đăng ký passkey."
+      );
+    }
+
+    const config = webAuthnConfig();
+    const options = await generateAuthenticationOptions({
+      rpID: config.rpID,
+      userVerification: "required",
+      allowCredentials: passkeys.map((passkey) => ({
+        id: passkey.credentialId,
+        transports:
+          normalizePasskeyTransports(passkey.transports)
+      }))
+    });
+
+    await this.repository.replaceWebAuthnChallenge({
+      userId: identity.userId,
+      challenge: options.challenge,
+      purpose: "AUTHENTICATION",
+      parentMfaTokenHash: tokenHash,
+      expiresAt: new Date(
+        Date.now() + config.challengeTtlMinutes * 60 * 1000
+      )
+    });
+
+    return options;
+  }
+
+  async verifyPasskeyMfa(input: {
+    challengeToken: string;
+    response: AuthenticationResponseJSON;
+    sessionContext?: SessionContext;
+  }): Promise<LoginResult> {
+    const tokenHash = safeTokenHash(input.challengeToken);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Phiên xác thực passkey không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findMfaChallenge(
+      tokenHash,
+      "VERIFY",
+      true
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        "Phiên xác thực hai bước không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const challenge = await this.repository.getActiveWebAuthnChallenge({
+      userId: identity.userId,
+      purpose: "AUTHENTICATION",
+      parentMfaTokenHash: tokenHash
+    });
+    if (!challenge) {
+      throw new BadRequestException(
+        "Passkey authentication challenge đã hết hạn."
+      );
+    }
+
+    const passkey = await this.repository.findPasskeyByCredential(
+      identity.userId,
+      input.response.id
+    );
+    if (!passkey) {
+      throw new BadRequestException(
+        "Passkey không thuộc tài khoản này."
+      );
+    }
+
+    const config = webAuthnConfig();
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: input.response,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origins,
+        expectedRPID: config.rpID,
+        credential: {
+          id: passkey.credentialId,
+          publicKey: new Uint8Array(passkey.publicKey),
+          counter: passkey.counter,
+          transports:
+            normalizePasskeyTransports(passkey.transports)
+        },
+        requireUserVerification: true
+      });
+    } catch {
+      throw new BadRequestException(
+        "Không thể xác minh passkey."
+      );
+    }
+
+    if (!verification.verified) {
+      throw new BadRequestException("Passkey không hợp lệ.");
+    }
+
+    const completed =
+      await this.repository.completePasskeyAuthentication({
+        webauthnChallengeId: challenge.id,
+        userId: identity.userId,
+        mfaTokenHash: tokenHash,
+        passkeyId: passkey.id,
+        newCounter: verification.authenticationInfo.newCounter
+      });
+    if (!completed) {
+      throw new BadRequestException(
+        "Passkey challenge đã được sử dụng hoặc hết hạn."
       );
     }
 
