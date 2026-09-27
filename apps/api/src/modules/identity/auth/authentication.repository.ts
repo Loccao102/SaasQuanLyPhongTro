@@ -69,14 +69,26 @@ export interface PasskeyRecord {
   lastUsedAt: Date | null;
 }
 
+export type WebAuthnChallengePurpose =
+  | "REGISTRATION"
+  | "AUTHENTICATION"
+  | "STEP_UP"
+  | "PASSWORDLESS_TENANT"
+  | "PASSWORDLESS_PLATFORM";
+
 export interface WebAuthnChallengeRecord {
   id: string;
-  userId: string;
+  userId: string | null;
   challenge: string;
-  purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
+  purpose: WebAuthnChallengePurpose;
   parentMfaTokenHash: Buffer | null;
   sessionId: string | null;
   expiresAt: Date;
+}
+
+export interface PasswordlessPasskeyIdentity {
+  passkey: PasskeyRecord;
+  identity: AccountIdentity;
 }
 
 type CredentialRow = QueryResultRow & {
@@ -796,6 +808,86 @@ export class AuthenticationRepository {
     }));
   }
 
+  async findPasswordlessPasskeyByCredential(
+    credentialId: string,
+    accountType: "TENANT" | "PLATFORM"
+  ): Promise<PasswordlessPasskeyIdentity | null> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        user_id: string;
+        credential_id: string;
+        public_key: Buffer;
+        counter: string;
+        transports: string[];
+        device_type: string;
+        backed_up: boolean;
+        name: string;
+        created_at: Date;
+        last_used_at: Date | null;
+        email: string;
+        display_name: string;
+        user_status: string;
+        auth_version: number;
+        organization_id: string | null;
+        account_type: "TENANT" | "PLATFORM";
+      }
+    >(
+      `SELECT
+         p.id::text,
+         p.user_id::text,
+         p.credential_id,
+         p.public_key,
+         p.counter::text,
+         p.transports,
+         p.device_type,
+         p.backed_up,
+         p.name,
+         p.created_at,
+         p.last_used_at,
+         u.email,
+         u.display_name,
+         u.status AS user_status,
+         u.auth_version,
+         u.organization_id::text,
+         u.account_type
+       FROM user_passkeys p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.credential_id = $1
+         AND u.account_type = $2
+         AND u.status = 'ACTIVE'
+       LIMIT 1`,
+      [credentialId, accountType]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      passkey: {
+        id: row.id,
+        userId: row.user_id,
+        credentialId: row.credential_id,
+        publicKey: row.public_key,
+        counter: Number(row.counter),
+        transports: row.transports,
+        deviceType: row.device_type,
+        backedUp: row.backed_up,
+        name: row.name,
+        createdAt: row.created_at,
+        lastUsedAt: row.last_used_at
+      },
+      identity: {
+        userId: row.user_id,
+        email: row.email,
+        displayName: row.display_name,
+        userStatus: row.user_status,
+        authVersion: row.auth_version,
+        organizationId: row.organization_id,
+        accountType: row.account_type
+      }
+    };
+  }
+
   async findPasskeyByCredential(
     userId: string,
     credentialId: string
@@ -1002,10 +1094,102 @@ export class AuthenticationRepository {
     return (result.rowCount ?? 0) === 1;
   }
 
+  async createPasswordlessWebAuthnChallenge(input: {
+    challenge: string;
+    purpose: "PASSWORDLESS_TENANT" | "PASSWORDLESS_PLATFORM";
+    expiresAt: Date;
+  }): Promise<string> {
+    const result = await this.db.query<QueryResultRow & { id: string }>(
+      `INSERT INTO auth_webauthn_challenges (
+         user_id,
+         challenge,
+         purpose,
+         parent_mfa_token_hash,
+         session_id,
+         expires_at
+       )
+       VALUES (NULL, $1, $2, NULL, NULL, $3)
+       RETURNING id::text`,
+      [input.challenge, input.purpose, input.expiresAt]
+    );
+    return result.rows[0]!.id;
+  }
+
+  async getPasswordlessWebAuthnChallenge(input: {
+    id: string;
+    purpose: "PASSWORDLESS_TENANT" | "PASSWORDLESS_PLATFORM";
+  }): Promise<WebAuthnChallengeRecord | null> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        challenge: string;
+        purpose: WebAuthnChallengePurpose;
+        expires_at: Date;
+      }
+    >(
+      `SELECT id::text, challenge, purpose, expires_at
+       FROM auth_webauthn_challenges
+       WHERE id = $1::uuid
+         AND purpose = $2
+         AND user_id IS NULL
+         AND parent_mfa_token_hash IS NULL
+         AND session_id IS NULL
+         AND consumed_at IS NULL
+         AND expires_at > now()
+       LIMIT 1`,
+      [input.id, input.purpose]
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          id: row.id,
+          userId: null,
+          challenge: row.challenge,
+          purpose: row.purpose,
+          parentMfaTokenHash: null,
+          sessionId: null,
+          expiresAt: row.expires_at
+        }
+      : null;
+  }
+
+  async completePasswordlessPasskeyAuthentication(input: {
+    challengeId: string;
+    purpose: "PASSWORDLESS_TENANT" | "PASSWORDLESS_PLATFORM";
+    userId: string;
+    passkeyId: string;
+    newCounter: number;
+  }): Promise<boolean> {
+    return this.db.withTransaction(async (client) => {
+      const challenge = await client.query(
+        `UPDATE auth_webauthn_challenges
+         SET consumed_at = now()
+         WHERE id = $1::uuid
+           AND purpose = $2
+           AND user_id IS NULL
+           AND consumed_at IS NULL
+           AND expires_at > now()`,
+        [input.challengeId, input.purpose]
+      );
+      if ((challenge.rowCount ?? 0) !== 1) return false;
+
+      const passkey = await client.query(
+        `UPDATE user_passkeys
+         SET counter = $3,
+             last_used_at = now(),
+             updated_at = now()
+         WHERE id = $1::uuid
+           AND user_id = $2::uuid`,
+        [input.passkeyId, input.userId, input.newCounter]
+      );
+      return (passkey.rowCount ?? 0) === 1;
+    });
+  }
+
   async replaceWebAuthnChallenge(input: {
     userId: string;
     challenge: string;
-    purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
+    purpose: WebAuthnChallengePurpose;
     expiresAt: Date;
     parentMfaTokenHash?: Buffer | null;
     sessionId?: string | null;
@@ -1043,7 +1227,7 @@ export class AuthenticationRepository {
 
   async getActiveWebAuthnChallenge(input: {
     userId: string;
-    purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
+    purpose: WebAuthnChallengePurpose;
     parentMfaTokenHash?: Buffer | null;
     sessionId?: string | null;
   }): Promise<WebAuthnChallengeRecord | null> {
@@ -1052,7 +1236,7 @@ export class AuthenticationRepository {
         id: string;
         user_id: string;
         challenge: string;
-        purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
+        purpose: WebAuthnChallengePurpose;
         parent_mfa_token_hash: Buffer | null;
         session_id: string | null;
         expires_at: Date;
