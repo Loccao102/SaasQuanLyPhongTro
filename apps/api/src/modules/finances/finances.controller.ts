@@ -16,8 +16,10 @@ import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type { TenantPrincipal, TenantRequest } from "../identity/tenant-principal.js";
 import { FinancesService } from "./finances.service.js";
 import {
+  expensePaymentMethods,
   operatingExpenseCategories,
   type CreateExpenseInput,
+  type ExpensePaymentMethod,
   type OperatingExpenseCategory
 } from "./finances.types.js";
 
@@ -93,6 +95,15 @@ export class FinancesController {
       throw new BadRequestException("Danh mục chi phí không hợp lệ.");
     }
 
+    const paymentMethod = optionalString(body, "paymentMethod");
+    if (
+      paymentMethod !== null &&
+      paymentMethod !== undefined &&
+      !(expensePaymentMethods as readonly string[]).includes(paymentMethod)
+    ) {
+      throw new BadRequestException("Phương thức thanh toán không hợp lệ.");
+    }
+
     const input: CreateExpenseInput = {
       propertyId: optionalString(body, "propertyId"),
       category,
@@ -100,7 +111,10 @@ export class FinancesController {
       occurredAt: requiredString(body, "occurredAt"),
       paidTo: optionalString(body, "paidTo"),
       note: optionalString(body, "note"),
-      paymentMethod: optionalString(body, "paymentMethod") as any,
+      paymentMethod:
+        paymentMethod === null || paymentMethod === undefined
+          ? undefined
+          : (paymentMethod as ExpensePaymentMethod),
       receiptUrl: optionalString(body, "receiptUrl")
     };
 
