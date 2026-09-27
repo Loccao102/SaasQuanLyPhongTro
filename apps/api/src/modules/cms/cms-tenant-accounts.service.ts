@@ -235,19 +235,7 @@ export class CmsTenantAccountsService {
       const before = await this.accountForUpdate(client, organizationId, userId);
 
       if (before.role === "OWNER" && role !== "OWNER") {
-        const owners = await client.query<QueryResultRow & { count: number }>(
-          `SELECT count(*)::int AS count
-           FROM organization_memberships
-           WHERE organization_id = $1::uuid
-             AND role = 'OWNER'
-             AND status = 'ACTIVE'`,
-          [organizationId]
-        );
-        if ((owners.rows[0]?.count ?? 0) <= 1) {
-          throw new ConflictException(
-            "Tenant phải luôn còn ít nhất một OWNER đang hoạt động."
-          );
-        }
+        await this.assertNotLastActiveOwner(client, organizationId, userId);
       }
 
       await client.query(
@@ -311,6 +299,15 @@ export class CmsTenantAccountsService {
 
     return this.db.withTransaction(async (client) => {
       const before = await this.accountForUpdate(client, organizationId, userId);
+      if (
+        status === "SUSPENDED" &&
+        before.role === "OWNER" &&
+        before.userStatus === "ACTIVE" &&
+        before.membershipStatus === "ACTIVE"
+      ) {
+        await this.assertNotLastActiveOwner(client, organizationId, userId);
+      }
+
       await client.query(
         `UPDATE users
          SET status = $3, updated_at = now()
@@ -436,6 +433,32 @@ export class CmsTenantAccountsService {
 
       return { userId, revokedSessions: revoked };
     });
+  }
+
+  private async assertNotLastActiveOwner(
+    client: PoolClient,
+    organizationId: string,
+    userId: string
+  ): Promise<void> {
+    const result = await client.query<QueryResultRow & { count: number }>(
+      `SELECT count(*)::int AS count
+       FROM organization_memberships om
+       JOIN users u
+         ON u.id = om.user_id
+        AND u.organization_id = om.organization_id
+       WHERE om.organization_id = $1::uuid
+         AND om.role = 'OWNER'
+         AND om.status = 'ACTIVE'
+         AND u.status = 'ACTIVE'
+         AND u.id <> $2::uuid`,
+      [organizationId, userId]
+    );
+
+    if ((result.rows[0]?.count ?? 0) === 0) {
+      throw new ConflictException(
+        "Tenant phải luôn còn ít nhất một OWNER đang hoạt động."
+      );
+    }
   }
 
   private async revokeSessions(
