@@ -443,7 +443,13 @@ export class MaintenanceService {
       images?: string[];
     }
   ): Promise<{ id: string; title: string; status: string; message: string }> {
-    const tokenHash = createHash("sha256").update(token.trim()).digest("hex");
+    const normalizedToken = token.trim();
+    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(normalizedToken)) {
+      throw new NotFoundException(
+        "Đường link hoá đơn không hợp lệ hoặc đã hết hạn."
+      );
+    }
+    const tokenHash = createHash("sha256").update(normalizedToken).digest("hex");
 
     const invoiceResult = await this.db.query<{
       organization_id: string;
@@ -477,17 +483,52 @@ export class MaintenanceService {
     }
 
     const title = input.title?.trim();
-    if (!title) {
-      throw new BadRequestException("Tiêu đề báo hỏng không được để trống.");
+    if (!title || title.length > 160) {
+      throw new BadRequestException(
+        "Tiêu đề báo hỏng phải có từ 1 đến 160 ký tự."
+      );
     }
 
     const description = input.description?.trim();
-    if (!description) {
-      throw new BadRequestException("Mô tả sự cố không được để trống.");
+    if (!description || description.length > 4000) {
+      throw new BadRequestException(
+        "Mô tả sự cố phải có từ 1 đến 4000 ký tự."
+      );
     }
 
-    const residentName = (input.residentName?.trim() || inv.recipient_name || "Khách thuê").trim();
-    const residentPhone = input.residentPhone?.trim() || inv.recipient_phone || null;
+    const requestedResidentName = input.residentName?.trim();
+    if (requestedResidentName && requestedResidentName.length > 120) {
+      throw new BadRequestException("Tên người báo không được vượt quá 120 ký tự.");
+    }
+    const residentName = (
+      requestedResidentName ||
+      inv.recipient_name ||
+      "Khách thuê"
+    ).trim();
+
+    const requestedPhone = input.residentPhone?.trim();
+    if (requestedPhone && requestedPhone.length > 30) {
+      throw new BadRequestException(
+        "Số điện thoại người báo không được vượt quá 30 ký tự."
+      );
+    }
+    const residentPhone = requestedPhone || inv.recipient_phone || null;
+
+    const images = input.images ?? [];
+    if (
+      !Array.isArray(images) ||
+      images.length > 8 ||
+      images.some(
+        (item) =>
+          typeof item !== "string" ||
+          item.trim().length === 0 ||
+          item.trim().length > 2048
+      )
+    ) {
+      throw new BadRequestException(
+        "Tối đa 8 ảnh, mỗi URL phải có từ 1 đến 2048 ký tự."
+      );
+    }
 
     const category: MaintenanceTicketCategory =
       input.category &&
@@ -533,7 +574,7 @@ export class MaintenanceService {
         description,
         residentName,
         residentPhone,
-        input.images ?? []
+        images.map((item) => item.trim())
       ]
     );
 
