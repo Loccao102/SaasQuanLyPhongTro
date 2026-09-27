@@ -670,7 +670,7 @@ export class AuthenticationService {
           normalizePasskeyTransports(passkey.transports)
       })),
       authenticatorSelection: {
-        residentKey: "preferred",
+        residentKey: "required",
         userVerification: "required"
       }
     });
@@ -760,6 +760,130 @@ export class AuthenticationService {
 
   revokePasskey(userId: string, passkeyId: string): Promise<boolean> {
     return this.repository.revokePasskey(userId, passkeyId);
+  }
+
+  async beginPasswordlessPasskey(
+    accountType: "TENANT" | "PLATFORM"
+  ) {
+    const config = webAuthnConfig();
+    const options = await generateAuthenticationOptions({
+      rpID: config.rpID,
+      userVerification: "required"
+    });
+    const purpose =
+      accountType === "PLATFORM"
+        ? "PASSWORDLESS_PLATFORM"
+        : "PASSWORDLESS_TENANT";
+    const requestId =
+      await this.repository.createPasswordlessWebAuthnChallenge({
+        challenge: options.challenge,
+        purpose,
+        expiresAt: new Date(
+          Date.now() + config.challengeTtlMinutes * 60 * 1000
+        )
+      });
+
+    return {
+      requestId,
+      options
+    };
+  }
+
+  async passwordlessPasskeyLogin(input: {
+    requestId: string;
+    accountType: "TENANT" | "PLATFORM";
+    response: AuthenticationResponseJSON;
+    sessionContext?: SessionContext;
+  }): Promise<LoginResult> {
+    const purpose =
+      input.accountType === "PLATFORM"
+        ? "PASSWORDLESS_PLATFORM"
+        : "PASSWORDLESS_TENANT";
+    const challenge =
+      await this.repository.getPasswordlessWebAuthnChallenge({
+        id: input.requestId,
+        purpose
+      });
+    if (!challenge) {
+      throw new BadRequestException(
+        "Passkey login challenge không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const resolved =
+      await this.repository.findPasswordlessPasskeyByCredential(
+        input.response.id,
+        input.accountType
+      );
+    if (!resolved) {
+      throw new BadRequestException(
+        "Passkey không thuộc tài khoản hợp lệ cho khu vực đăng nhập này."
+      );
+    }
+
+    const requirement =
+      await this.repository.getMfaPolicyRequirement(
+        resolved.identity.userId,
+        resolved.identity.accountType
+      );
+    if (
+      requirement.required &&
+      !(await this.repository.getMfaCredential(
+        resolved.identity.userId
+      ))
+    ) {
+      throw new ConflictException(
+        "Role " +
+          String(requirement.role ?? "hiện tại") +
+          " phải hoàn tất MFA enrollment trước khi dùng passkey-first."
+      );
+    }
+
+    const config = webAuthnConfig();
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: input.response,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: config.origins,
+        expectedRPID: config.rpID,
+        credential: {
+          id: resolved.passkey.credentialId,
+          publicKey: new Uint8Array(resolved.passkey.publicKey),
+          counter: resolved.passkey.counter,
+          transports:
+            normalizePasskeyTransports(resolved.passkey.transports)
+        },
+        requireUserVerification: true
+      });
+    } catch {
+      throw new BadRequestException(
+        "Không thể xác minh passkey login."
+      );
+    }
+
+    if (!verification.verified) {
+      throw new BadRequestException("Passkey login không hợp lệ.");
+    }
+
+    const completed =
+      await this.repository.completePasswordlessPasskeyAuthentication({
+        challengeId: challenge.id,
+        purpose,
+        userId: resolved.identity.userId,
+        passkeyId: resolved.passkey.id,
+        newCounter: verification.authenticationInfo.newCounter
+      });
+    if (!completed) {
+      throw new BadRequestException(
+        "Passkey login challenge đã được sử dụng hoặc hết hạn."
+      );
+    }
+
+    return this.issueSession(
+      resolved.identity,
+      input.sessionContext
+    );
   }
 
   async beginPasskeyMfa(challengeToken: string) {
