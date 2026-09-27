@@ -5,7 +5,6 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
   type AuthenticationResponseJSON,
-  type AuthenticatorTransportFuture,
   type RegistrationResponseJSON
 } from "@simplewebauthn/server";
 import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
