@@ -160,7 +160,10 @@ export class AuthenticationService {
       google.subject
     );
     if (linked) {
-      if (linked.userStatus !== "ACTIVE") {
+      if (
+        linked.accountType !== "TENANT" ||
+        linked.userStatus !== "ACTIVE"
+      ) {
         throw new InvalidCredentialsError();
       }
       return this.issueSession(linked);
@@ -168,6 +171,11 @@ export class AuthenticationService {
 
     const existing = await this.repository.findAccountByEmail(google.email);
     if (existing) {
+      if (existing.accountType !== "TENANT") {
+        throw new ConflictException(
+          "Google sign-in không được bật cho tài khoản nền tảng."
+        );
+      }
       if (!google.authoritativeEmail) {
         throw new ConflictException(
           "Email đã tồn tại. Hãy đăng nhập bằng mật khẩu để liên kết Google an toàn."
