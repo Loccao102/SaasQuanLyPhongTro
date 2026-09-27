@@ -109,6 +109,8 @@ export type CmsPlatformPermission =
   | "platform.billing.read"
   | "platform.billing.manage"
   | "platform.organizations.inspect"
+  | "platform.accounts.read"
+  | "platform.accounts.manage"
   | "platform.jobs.read"
   | "platform.jobs.manage"
   | "platform.audit.read"
