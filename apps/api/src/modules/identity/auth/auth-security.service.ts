@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
 import { DatabaseService } from "../../database/database.service.js";
+import { AuthEmailDeliveryService } from "./auth-email-delivery.service.js";
 
 type RateLimitAction =
   | "PASSWORD_LOGIN_IDENTIFIER"
@@ -24,6 +25,14 @@ type RateLimitAction =
   | "PUBLIC_MAINTENANCE_IP";
 
 type SecurityEventOutcome = "SUCCESS" | "FAILURE" | "BLOCKED";
+type SecurityAlertSeverity = "LOW" | "MEDIUM" | "HIGH";
+
+type SecurityAlertCandidate = {
+  type: string;
+  severity: SecurityAlertSeverity;
+  summary: string;
+  metadata?: Record<string, unknown>;
+};
 
 type RateLimitRow = QueryResultRow & {
   attempt_count: number;
@@ -33,7 +42,10 @@ type RateLimitRow = QueryResultRow & {
 export class AuthSecurityService {
   private lastCleanupAt = 0;
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly emailDelivery: AuthEmailDeliveryService
+  ) {}
 
   async assertPasswordLoginAllowed(email: string, ip: string): Promise<void> {
     const windowSeconds = this.positiveInteger(
@@ -192,7 +204,12 @@ export class AuthSecurityService {
     metadata?: Record<string, unknown>;
   }): Promise<void> {
     try {
-      await this.db.query(
+      const identifierHash = input.email
+        ? this.hash("identifier", input.email.trim().toLowerCase())
+        : null;
+      const ipHash = input.ip ? this.hash("ip", input.ip) : null;
+
+      const result = await this.db.query<QueryResultRow & { id: string }>(
         `INSERT INTO auth_security_events (
            event_type,
            outcome,
@@ -202,24 +219,341 @@ export class AuthSecurityService {
            ip_hash,
            metadata
          )
-         VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7::jsonb)`,
+         VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7::jsonb)
+         RETURNING id::text`,
         [
           input.eventType,
           input.outcome,
           input.userId ?? null,
           input.organizationId ?? null,
-          input.email
-            ? this.hash("identifier", input.email.trim().toLowerCase())
-            : null,
-          input.ip ? this.hash("ip", input.ip) : null,
+          identifierHash,
+          ipHash,
           JSON.stringify(input.metadata ?? {})
         ]
       );
+
+      const eventId = result.rows[0]?.id;
+      if (eventId) {
+        await this.evaluateAlerts({
+          ...input,
+          eventId,
+          ipHash
+        });
+      }
     } catch (error) {
       // Security telemetry must never turn a successful authentication
       // operation into an outage. The caller still owns normal app logging.
       console.error(
-        "[auth-security] failed to persist security event",
+        "[auth-security] failed to persist security telemetry",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  async listAlertsForUser(userId: string): Promise<Array<{
+    id: string;
+    type: string;
+    severity: SecurityAlertSeverity;
+    summary: string;
+    metadata: Record<string, unknown>;
+    deliveryStatus: string;
+    createdAt: string;
+  }>> {
+    const result = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        alert_type: string;
+        severity: SecurityAlertSeverity;
+        summary: string;
+        metadata: Record<string, unknown>;
+        delivery_status: string;
+        created_at: Date;
+      }
+    >(
+      `SELECT
+         id::text,
+         alert_type,
+         severity,
+         summary,
+         metadata,
+         delivery_status,
+         created_at
+       FROM auth_security_alerts
+       WHERE user_id = $1::uuid
+       ORDER BY created_at DESC, id DESC
+       LIMIT 50`,
+      [userId]
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      type: row.alert_type,
+      severity: row.severity,
+      summary: row.summary,
+      metadata: row.metadata,
+      deliveryStatus: row.delivery_status,
+      createdAt: row.created_at.toISOString()
+    }));
+  }
+
+  private async evaluateAlerts(input: {
+    eventId: string;
+    eventType: string;
+    outcome: SecurityEventOutcome;
+    email?: string | null;
+    userId?: string | null;
+    organizationId?: string | null;
+    metadata?: Record<string, unknown>;
+    ipHash: Buffer | null;
+  }): Promise<void> {
+    const candidates: SecurityAlertCandidate[] = [];
+
+    if (input.outcome === "SUCCESS") {
+      const direct = this.directAlert(input.eventType);
+      if (direct) candidates.push(direct);
+    }
+
+    if (
+      input.outcome === "SUCCESS" &&
+      input.userId &&
+      input.ipHash &&
+      this.isCompletedLoginEvent(input.eventType) &&
+      (await this.isNewLoginNetwork(
+        input.userId,
+        input.eventId,
+        input.ipHash
+      ))
+    ) {
+      candidates.push({
+        type: "NEW_LOGIN_NETWORK",
+        severity: "MEDIUM",
+        summary:
+          "Habi phát hiện đăng nhập thành công từ một network chưa từng thấy cho tài khoản này."
+      });
+    }
+
+    if (
+      input.outcome === "FAILURE" &&
+      input.userId &&
+      input.eventType.startsWith("STEP_UP_") &&
+      (await this.hasRepeatedStepUpFailures(input.userId))
+    ) {
+      const duplicate = await this.hasRecentAlert(
+        input.userId,
+        "REPEATED_STEP_UP_FAILURE",
+        60
+      );
+      if (!duplicate) {
+        candidates.push({
+          type: "REPEATED_STEP_UP_FAILURE",
+          severity: "HIGH",
+          summary:
+            "Có nhiều lần xác thực lại thất bại liên tiếp trên tài khoản Habi."
+        });
+      }
+    }
+
+    for (const candidate of candidates) {
+      await this.persistAlert({
+        eventId: input.eventId,
+        userId: input.userId ?? null,
+        organizationId: input.organizationId ?? null,
+        email: input.email ?? null,
+        candidate
+      });
+    }
+  }
+
+  private directAlert(eventType: string): SecurityAlertCandidate | null {
+    switch (eventType) {
+      case "MFA_DISABLED":
+        return {
+          type: "MFA_DISABLED",
+          severity: "HIGH",
+          summary: "Xác thực hai bước vừa bị tắt trên tài khoản Habi."
+        };
+      case "PASSKEY_REGISTERED":
+        return {
+          type: "PASSKEY_REGISTERED",
+          severity: "MEDIUM",
+          summary: "Một passkey mới vừa được đăng ký cho tài khoản Habi."
+        };
+      case "PASSKEY_REVOKED":
+        return {
+          type: "PASSKEY_REVOKED",
+          severity: "MEDIUM",
+          summary: "Một passkey vừa bị thu hồi khỏi tài khoản Habi."
+        };
+      case "PASSWORD_CHANGED":
+        return {
+          type: "PASSWORD_CHANGED",
+          severity: "MEDIUM",
+          summary: "Mật khẩu tài khoản Habi vừa được thay đổi."
+        };
+      default:
+        return null;
+    }
+  }
+
+  private isCompletedLoginEvent(eventType: string): boolean {
+    return [
+      "PASSWORD_LOGIN",
+      "GOOGLE_AUTH",
+      "MFA_LOGIN",
+      "PASSKEY_MFA_LOGIN",
+      "PLATFORM_LOGIN"
+    ].includes(eventType);
+  }
+
+  private async isNewLoginNetwork(
+    userId: string,
+    currentEventId: string,
+    ipHash: Buffer
+  ): Promise<boolean> {
+    const eventTypes = [
+      "PASSWORD_LOGIN",
+      "GOOGLE_AUTH",
+      "MFA_LOGIN",
+      "PASSKEY_MFA_LOGIN",
+      "PLATFORM_LOGIN"
+    ];
+    const result = await this.db.query<
+      QueryResultRow & { total: string; same_network: string }
+    >(
+      `SELECT
+         count(*)::text AS total,
+         count(*) FILTER (WHERE ip_hash = $3)::text AS same_network
+       FROM auth_security_events
+       WHERE user_id = $1::uuid
+         AND id <> $2::uuid
+         AND outcome = 'SUCCESS'
+         AND event_type = ANY($4::text[])`,
+      [userId, currentEventId, ipHash, eventTypes]
+    );
+    const total = Number(result.rows[0]?.total ?? "0");
+    const sameNetwork = Number(result.rows[0]?.same_network ?? "0");
+    return total > 0 && sameNetwork === 0;
+  }
+
+  private async hasRepeatedStepUpFailures(userId: string): Promise<boolean> {
+    const result = await this.db.query<QueryResultRow & { count: string }>(
+      `SELECT count(*)::text AS count
+       FROM auth_security_events
+       WHERE user_id = $1::uuid
+         AND outcome = 'FAILURE'
+         AND event_type LIKE 'STEP_UP_%'
+         AND occurred_at > now() - interval '15 minutes'`,
+      [userId]
+    );
+    return Number(result.rows[0]?.count ?? "0") >= 3;
+  }
+
+  private async hasRecentAlert(
+    userId: string,
+    alertType: string,
+    minutes: number
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `SELECT 1
+       FROM auth_security_alerts
+       WHERE user_id = $1::uuid
+         AND alert_type = $2
+         AND created_at > now() - ($3::int * interval '1 minute')
+       LIMIT 1`,
+      [userId, alertType, minutes]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  private async persistAlert(input: {
+    eventId: string;
+    userId: string | null;
+    organizationId: string | null;
+    email: string | null;
+    candidate: SecurityAlertCandidate;
+  }): Promise<void> {
+    const initialDeliveryStatus =
+      input.userId && input.email && input.candidate.severity !== "LOW"
+        ? "PENDING"
+        : "SKIPPED";
+
+    const result = await this.db.query<QueryResultRow & { id: string }>(
+      `INSERT INTO auth_security_alerts (
+         source_event_id,
+         user_id,
+         organization_id,
+         alert_type,
+         severity,
+         summary,
+         metadata,
+         delivery_status
+       )
+       VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8
+       )
+       ON CONFLICT (source_event_id, alert_type) DO NOTHING
+       RETURNING id::text`,
+      [
+        input.eventId,
+        input.userId,
+        input.organizationId,
+        input.candidate.type,
+        input.candidate.severity,
+        input.candidate.summary,
+        JSON.stringify(input.candidate.metadata ?? {}),
+        initialDeliveryStatus
+      ]
+    );
+
+    const alertId = result.rows[0]?.id;
+    if (
+      !alertId ||
+      initialDeliveryStatus !== "PENDING" ||
+      !input.email
+    ) {
+      return;
+    }
+
+    void this.deliverAlertEmail(
+      alertId,
+      input.email,
+      input.candidate
+    );
+  }
+
+  private async deliverAlertEmail(
+    alertId: string,
+    email: string,
+    candidate: SecurityAlertCandidate
+  ): Promise<void> {
+    try {
+      await this.emailDelivery.sendSecurityAlert({
+        email,
+        subject:
+          candidate.severity === "HIGH"
+            ? "Cảnh báo bảo mật quan trọng từ Habi"
+            : "Thông báo bảo mật từ Habi",
+        message: candidate.summary
+      });
+      await this.db.query(
+        `UPDATE auth_security_alerts
+         SET delivery_status = 'SENT',
+             delivered_at = now()
+         WHERE id = $1::uuid`,
+        [alertId]
+      );
+    } catch (error) {
+      try {
+        await this.db.query(
+          `UPDATE auth_security_alerts
+           SET delivery_status = 'FAILED'
+           WHERE id = $1::uuid`,
+          [alertId]
+        );
+      } catch {
+        // Ignore secondary persistence failures; the original alert exists.
+      }
+      console.error(
+        "[auth-security] security alert email failed",
         error instanceof Error ? error.message : String(error)
       );
     }
