@@ -14,6 +14,10 @@ type RateLimitAction =
   | "REGISTER_IP"
   | "GOOGLE_CHALLENGE_IP"
   | "PASSWORD_CHANGE_USER"
+  | "PASSWORD_RESET_IP"
+  | "PASSWORD_RESET_IDENTIFIER"
+  | "PASSWORD_RESET_CONFIRM_IP"
+  | "EMAIL_VERIFY_IP"
   | "PUBLIC_INVOICE_IP"
   | "PUBLIC_MAINTENANCE_IP";
 
@@ -79,6 +83,50 @@ export class AuthSecurityService {
       userId,
       this.positiveInteger("AUTH_PASSWORD_CHANGE_MAX_PER_WINDOW", 10),
       this.positiveInteger("AUTH_PASSWORD_CHANGE_WINDOW_SECONDS", 3600)
+    );
+  }
+
+  async assertPasswordResetRequestAllowed(
+    email: string,
+    ip: string
+  ): Promise<void> {
+    const windowSeconds = this.positiveInteger(
+      "AUTH_PASSWORD_RESET_WINDOW_SECONDS",
+      3600
+    );
+    await this.consume(
+      "PASSWORD_RESET_IP",
+      "ip",
+      ip,
+      this.positiveInteger("AUTH_PASSWORD_RESET_MAX_PER_IP", 30),
+      windowSeconds
+    );
+    await this.consume(
+      "PASSWORD_RESET_IDENTIFIER",
+      "email",
+      email.trim().toLowerCase(),
+      this.positiveInteger("AUTH_PASSWORD_RESET_MAX_PER_EMAIL", 6),
+      windowSeconds
+    );
+  }
+
+  async assertPasswordResetConfirmAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "PASSWORD_RESET_CONFIRM_IP",
+      "ip",
+      ip,
+      this.positiveInteger("AUTH_PASSWORD_RESET_CONFIRM_MAX_PER_IP", 30),
+      this.positiveInteger("AUTH_PASSWORD_RESET_CONFIRM_WINDOW_SECONDS", 3600)
+    );
+  }
+
+  async assertEmailVerificationAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "EMAIL_VERIFY_IP",
+      "ip",
+      ip,
+      this.positiveInteger("AUTH_EMAIL_VERIFY_MAX_PER_IP", 60),
+      this.positiveInteger("AUTH_EMAIL_VERIFY_WINDOW_SECONDS", 3600)
     );
   }
 
