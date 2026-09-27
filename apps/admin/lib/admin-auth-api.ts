@@ -22,6 +22,16 @@ export type AdminTenantFeatureKey =
   | "advanced_reports"
   | "audit_log";
 
+export type MfaRequiredResult = {
+  mfaRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  userAgent: string | null;
+  deviceLabel: string | null;
+};
+
+export type AdminAuthenticationResult = AdminSession | MfaRequiredResult;
+
 export type AdminSession = {
   user: {
     id: string;
@@ -33,6 +43,7 @@ export type AdminSession = {
   memberships: AdminMembership[];
   features: Record<AdminTenantFeatureKey, boolean> | null;
   expiresAt: string;
+  mfaEnabled?: boolean;
 };
 
 export type PendingRegistration = {
@@ -112,7 +123,7 @@ export const adminAuthApi = {
     mode: "LOGIN" | "REGISTER";
     organizationName?: string;
   }) =>
-    adminApiRequest<AdminSession>("/auth/google", {
+    adminApiRequest<AdminAuthenticationResult>("/auth/google", {
       method: "POST",
       body: input,
       organization: false,
@@ -121,11 +132,45 @@ export const adminAuthApi = {
 
 
   login: (input: { email: string; password: string }) =>
-    adminApiRequest<AdminSession>("/auth/login", {
+    adminApiRequest<AdminAuthenticationResult>("/auth/login", {
       method: "POST",
       body: input,
       organization: false,
       csrf: false
+    }),
+
+  verifyMfa: (input: { challengeToken: string; code: string }) =>
+    adminApiRequest<AdminSession>("/auth/mfa/verify", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+  mfaStatus: () =>
+    adminApiRequest<{ enabled: boolean }>("/auth/mfa", {
+      organization: false
+    }),
+
+  setupMfa: () =>
+    adminApiRequest<{ secret: string; provisioningUri: string }>("/auth/mfa/setup", {
+      method: "POST",
+      body: {},
+      organization: false
+    }),
+
+  confirmMfa: (code: string) =>
+    adminApiRequest<{ recoveryCodes: string[] }>("/auth/mfa/confirm", {
+      method: "POST",
+      body: { code },
+      organization: false
+    }),
+
+  disableMfa: (code: string) =>
+    adminApiRequest<{ disabled: true }>("/auth/mfa/disable", {
+      method: "POST",
+      body: { code },
+      organization: false
     }),
 
   me: () =>
