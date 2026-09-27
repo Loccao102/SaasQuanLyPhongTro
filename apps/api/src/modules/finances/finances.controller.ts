@@ -12,6 +12,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type { TenantPrincipal, TenantRequest } from "../identity/tenant-principal.js";
 import { FinancesService } from "./finances.service.js";
 import {
@@ -52,6 +53,7 @@ function requiredNumber(input: BodyInput, field: string): number {
   return num;
 }
 
+@RequireTenantFeature("reports")
 @Controller("admin/finances")
 @UseGuards(TenantPrincipalGuard)
 export class FinancesController {
