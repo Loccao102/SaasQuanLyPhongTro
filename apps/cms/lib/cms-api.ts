@@ -135,6 +135,19 @@ export type CmsSetting = {
   updatedAt: string;
 };
 
+export type CmsTenantFeatureKey =
+  | "properties"
+  | "leases"
+  | "metering"
+  | "billing"
+  | "payments"
+  | "maintenance"
+  | "notifications"
+  | "reports"
+  | "team_management"
+  | "advanced_reports"
+  | "audit_log";
+
 export type CmsPlan = {
   id: string;
   code: string;
@@ -146,6 +159,7 @@ export type CmsPlan = {
   roomLimit: number;
   staffLimit: number;
   automationQuota: number;
+  features: Record<CmsTenantFeatureKey, boolean>;
   effectiveFrom: string;
 };
 
@@ -423,8 +437,7 @@ export type CmsEntitlementOverride = {
     | "room_limit"
     | "staff_limit"
     | "automation_actions_monthly"
-    | "advanced_reports"
-    | "audit_log";
+    | CmsTenantFeatureKey;
   value: number | boolean;
   expiresAt: string | null;
   reason: string;
@@ -764,6 +777,7 @@ export const cmsApi = {
       roomLimit: number;
       staffLimit: number;
       automationQuota: number;
+      features: Record<CmsTenantFeatureKey, boolean>;
       expectedVersion: number;
       reason: string;
     }
