@@ -151,7 +151,8 @@ export function AdminAuthProvider({
   useEffect(() => {
     if (
       status === "unauthenticated" &&
-      pathname !== "/login"
+      pathname !== "/login" &&
+      pathname !== "/register"
     ) {
       router.replace(loginPath(pathname));
     }
