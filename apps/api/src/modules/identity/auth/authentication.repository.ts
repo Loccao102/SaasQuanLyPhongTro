@@ -34,6 +34,7 @@ export interface SessionIdentity {
   csrfHash: Buffer;
   expiresAt: Date;
   lastSeenAt: Date;
+  reauthenticatedAt: Date;
 }
 
 export interface MfaCredential {
@@ -72,8 +73,9 @@ export interface WebAuthnChallengeRecord {
   id: string;
   userId: string;
   challenge: string;
-  purpose: "REGISTRATION" | "AUTHENTICATION";
+  purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
   parentMfaTokenHash: Buffer | null;
+  sessionId: string | null;
   expiresAt: Date;
 }
 
@@ -112,6 +114,7 @@ type SessionRow = QueryResultRow & {
   csrf_hash: Buffer;
   expires_at: Date;
   last_seen_at: Date;
+  reauthenticated_at: Date;
   user_agent: string | null;
   device_label: string | null;
 };
@@ -998,9 +1001,10 @@ export class AuthenticationRepository {
   async replaceWebAuthnChallenge(input: {
     userId: string;
     challenge: string;
-    purpose: "REGISTRATION" | "AUTHENTICATION";
+    purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
     expiresAt: Date;
     parentMfaTokenHash?: Buffer | null;
+    sessionId?: string | null;
   }): Promise<void> {
     await this.db.withTransaction(async (client) => {
       await client.query(
@@ -1017,14 +1021,16 @@ export class AuthenticationRepository {
            challenge,
            purpose,
            parent_mfa_token_hash,
+           session_id,
            expires_at
          )
-         VALUES ($1::uuid, $2, $3, $4, $5)`,
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6)`,
         [
           input.userId,
           input.challenge,
           input.purpose,
           input.parentMfaTokenHash ?? null,
+          input.sessionId ?? null,
           input.expiresAt
         ]
       );
@@ -1033,16 +1039,18 @@ export class AuthenticationRepository {
 
   async getActiveWebAuthnChallenge(input: {
     userId: string;
-    purpose: "REGISTRATION" | "AUTHENTICATION";
+    purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
     parentMfaTokenHash?: Buffer | null;
+    sessionId?: string | null;
   }): Promise<WebAuthnChallengeRecord | null> {
     const result = await this.db.query<
       QueryResultRow & {
         id: string;
         user_id: string;
         challenge: string;
-        purpose: "REGISTRATION" | "AUTHENTICATION";
+        purpose: "REGISTRATION" | "AUTHENTICATION" | "STEP_UP";
         parent_mfa_token_hash: Buffer | null;
+        session_id: string | null;
         expires_at: Date;
       }
     >(
@@ -1052,11 +1060,13 @@ export class AuthenticationRepository {
          challenge,
          purpose,
          parent_mfa_token_hash,
+         session_id::text,
          expires_at
        FROM auth_webauthn_challenges
        WHERE user_id = $1::uuid
          AND purpose = $2
          AND parent_mfa_token_hash IS NOT DISTINCT FROM $3
+         AND session_id IS NOT DISTINCT FROM $4::uuid
          AND consumed_at IS NULL
          AND expires_at > now()
        ORDER BY created_at DESC
@@ -1064,7 +1074,8 @@ export class AuthenticationRepository {
       [
         input.userId,
         input.purpose,
-        input.parentMfaTokenHash ?? null
+        input.parentMfaTokenHash ?? null,
+        input.sessionId ?? null
       ]
     );
     const row = result.rows[0];
@@ -1075,6 +1086,7 @@ export class AuthenticationRepository {
           challenge: row.challenge,
           purpose: row.purpose,
           parentMfaTokenHash: row.parent_mfa_token_hash,
+          sessionId: row.session_id,
           expiresAt: row.expires_at
         }
       : null;
@@ -1145,6 +1157,7 @@ export class AuthenticationRepository {
          s.csrf_hash,
          s.expires_at,
          s.last_seen_at,
+         s.reauthenticated_at,
          s.user_agent,
          s.device_label
        FROM auth_sessions s
@@ -1172,8 +1185,72 @@ export class AuthenticationRepository {
       accountType: row.account_type,
       csrfHash: row.csrf_hash,
       expiresAt: row.expires_at,
-      lastSeenAt: row.last_seen_at
+      lastSeenAt: row.last_seen_at,
+      reauthenticatedAt: row.reauthenticated_at
     };
+  }
+
+  async markSessionReauthenticated(
+    userId: string,
+    sessionId: string
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE auth_sessions
+       SET reauthenticated_at = now(),
+           last_seen_at = now()
+       WHERE id = $1::uuid
+         AND user_id = $2::uuid
+         AND revoked_at IS NULL
+         AND expires_at > now()`,
+      [sessionId, userId]
+    );
+    return (result.rowCount ?? 0) === 1;
+  }
+
+  async completePasskeyStepUp(input: {
+    webauthnChallengeId: string;
+    userId: string;
+    sessionId: string;
+    passkeyId: string;
+    newCounter: number;
+  }): Promise<boolean> {
+    return this.db.withTransaction(async (client) => {
+      const challenge = await client.query(
+        `UPDATE auth_webauthn_challenges
+         SET consumed_at = now()
+         WHERE id = $1::uuid
+           AND user_id = $2::uuid
+           AND session_id = $3::uuid
+           AND purpose = 'STEP_UP'
+           AND consumed_at IS NULL
+           AND expires_at > now()`,
+        [input.webauthnChallengeId, input.userId, input.sessionId]
+      );
+      if ((challenge.rowCount ?? 0) !== 1) return false;
+
+      const passkey = await client.query(
+        `UPDATE user_passkeys
+         SET counter = $3,
+             last_used_at = now(),
+             updated_at = now()
+         WHERE id = $1::uuid
+           AND user_id = $2::uuid`,
+        [input.passkeyId, input.userId, input.newCounter]
+      );
+      if ((passkey.rowCount ?? 0) !== 1) return false;
+
+      const session = await client.query(
+        `UPDATE auth_sessions
+         SET reauthenticated_at = now(),
+             last_seen_at = now()
+         WHERE id = $1::uuid
+           AND user_id = $2::uuid
+           AND revoked_at IS NULL
+           AND expires_at > now()`,
+        [input.sessionId, input.userId]
+      );
+      return (session.rowCount ?? 0) === 1;
+    });
   }
 
   async touchSession(sessionId: string, touchBefore: Date): Promise<void> {
