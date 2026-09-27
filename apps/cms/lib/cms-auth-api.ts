@@ -177,6 +177,53 @@ export const cmsAuthApi = {
       true
     ),
 
+  stepUpStatus: () =>
+    request<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>("/auth/step-up/status"),
+
+  stepUpPassword: (password: string) =>
+    request<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>(
+      "/auth/step-up/password",
+      { method: "POST", body: JSON.stringify({ password }) },
+      true
+    ),
+
+  stepUpCode: (code: string) =>
+    request<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>(
+      "/auth/step-up/code",
+      { method: "POST", body: JSON.stringify({ code }) },
+      true
+    ),
+
+  stepUpPasskeyOptions: () =>
+    request<PasskeyAuthenticationOptionsJSON>(
+      "/auth/step-up/passkey/options",
+      { method: "POST", body: JSON.stringify({}) },
+      true
+    ),
+
+  stepUpPasskeyVerify: (response: unknown) =>
+    request<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>(
+      "/auth/step-up/passkey/verify",
+      { method: "POST", body: JSON.stringify({ response }) },
+      true
+    ),
+
   passkeys: () =>
     request<{ passkeys: CmsPasskeyItem[] }>("/auth/passkeys"),
 
