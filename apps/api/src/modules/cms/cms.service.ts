@@ -169,6 +169,19 @@ type AuthSecurityEventRow = QueryResultRow & {
   occurred_at: Date;
 };
 
+type AuthSecurityAlertRow = QueryResultRow & {
+  id: string;
+  alert_type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  user_id: string | null;
+  organization_id: string | null;
+  summary: string;
+  metadata: unknown;
+  delivery_status: string;
+  created_at: Date;
+  delivered_at: Date | null;
+};
+
 type BillingWebhookRow = QueryResultRow & {
   id: string;
   provider: string;
@@ -2730,6 +2743,39 @@ export class CmsService {
       userId: row.user_id,
       organizationId: row.organization_id,
       metadata: row.metadata
+    }));
+  }
+
+  async listAuthSecurityAlerts(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.audit.read");
+    const result = await this.db.query<AuthSecurityAlertRow>(
+      `SELECT
+         id::text,
+         alert_type,
+         severity,
+         user_id::text,
+         organization_id::text,
+         summary,
+         metadata,
+         delivery_status,
+         created_at,
+         delivered_at
+       FROM auth_security_alerts
+       ORDER BY created_at DESC, id DESC
+       LIMIT 200`
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      at: row.created_at.toISOString(),
+      alertType: row.alert_type,
+      severity: row.severity,
+      userId: row.user_id,
+      organizationId: row.organization_id,
+      summary: row.summary,
+      metadata: row.metadata,
+      deliveryStatus: row.delivery_status,
+      deliveredAt: row.delivered_at?.toISOString() ?? null
     }));
   }
 
