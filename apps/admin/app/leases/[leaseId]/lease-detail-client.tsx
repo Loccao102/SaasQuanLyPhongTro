@@ -236,6 +236,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
+    try {
       const start = String(form.get("startDate") ?? "").trim();
       const end = String(form.get("plannedEndDate") ?? "").trim() || null;
       if (!start) {
