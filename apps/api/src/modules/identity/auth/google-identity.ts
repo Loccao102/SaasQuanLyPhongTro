@@ -35,7 +35,10 @@ async function googleKeys(): Promise<GoogleJwk[]> {
     return cachedKeys;
   }
 
-  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs");
+  const response = await fetch(
+    "https://www.googleapis.com/oauth2/v3/certs",
+    { signal: AbortSignal.timeout(5_000) }
+  );
   if (!response.ok) {
     throw new Error("Không thể tải public key để xác thực Google.");
   }
@@ -55,6 +58,16 @@ export async function verifyGoogleIdentityToken(
   clientId: string,
   expectedNonce?: string
 ): Promise<VerifiedGoogleIdentity> {
+  if (
+    credential.length < 32 ||
+    credential.length > 16 * 1024 ||
+    !clientId.trim() ||
+    (expectedNonce !== undefined &&
+      (expectedNonce.length < 32 || expectedNonce.length > 256))
+  ) {
+    throw new Error("Google credential không hợp lệ.");
+  }
+
   const parts = credential.split(".");
   if (parts.length !== 3) {
     throw new Error("Google credential không hợp lệ.");
@@ -71,6 +84,7 @@ export async function verifyGoogleIdentityToken(
     sub?: string;
     aud?: string | string[];
     exp?: number;
+    iat?: number;
     email?: string;
     email_verified?: boolean | string;
     name?: string;
@@ -94,8 +108,12 @@ export async function verifyGoogleIdentityToken(
   }
 
   const signingKey = cachedKeys.find((item) => item.kid === header.kid);
-  if (!signingKey) {
-    throw new Error("Không tìm thấy Google signing key.");
+  if (
+    !signingKey ||
+    (signingKey.alg !== undefined && signingKey.alg !== "RS256") ||
+    (signingKey.use !== undefined && signingKey.use !== "sig")
+  ) {
+    throw new Error("Không tìm thấy Google signing key hợp lệ.");
   }
 
   const key = await crypto.subtle.importKey(
@@ -120,10 +138,16 @@ export async function verifyGoogleIdentityToken(
     audience.includes(clientId) &&
     typeof claims.exp === "number" &&
     claims.exp * 1000 > Date.now() &&
+    (
+      claims.iat === undefined ||
+      (typeof claims.iat === "number" && claims.iat * 1000 <= Date.now() + 60_000)
+    ) &&
     typeof claims.sub === "string" &&
     claims.sub.length > 0 &&
+    claims.sub.length <= 255 &&
     typeof claims.email === "string" &&
     claims.email.length > 0 &&
+    claims.email.length <= 320 &&
     (claims.email_verified === true || claims.email_verified === "true") &&
     (
       expectedNonce === undefined ||
