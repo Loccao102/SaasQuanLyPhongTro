@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MoneyDisplay, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 
 type CollectionStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
 
@@ -227,7 +227,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
           <strong><MoneyDisplay amountVnd={data.remainingVnd} /></strong>
           <small>
             Tổng <MoneyDisplay amountVnd={data.totalVnd} /> · đã thanh toán{" "}
-            <MoneyDisplay amountVnd={data.paidVnd} /> · hạn {data.dueDate}
+            <MoneyDisplay amountVnd={data.paidVnd} /> · hạn {formatDateVi(data.dueDate)}
           </small>
         </section>
 
