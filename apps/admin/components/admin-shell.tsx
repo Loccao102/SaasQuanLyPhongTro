@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { TotpQrCode } from "@propops/ui/totp-qr";
 import {
+  authenticateWithPasskey,
   browserSupportsPasskeys,
   createPasskey
 } from "@propops/ui/passkey";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAdminAuth } from "./admin-auth-provider";
 import {
   adminAuthApi,
@@ -14,6 +15,11 @@ import {
   type AdminTenantFeatureKey,
   type PasskeyItem
 } from "../lib/admin-auth-api";
+import {
+  rejectAdminStepUp,
+  resolveAdminStepUp,
+  subscribeToAdminStepUpRequired
+} from "../lib/step-up";
 
 const navItems: Array<{
   label: string;
@@ -89,6 +95,57 @@ export function AdminShell({
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyName, setPasskeyName] = useState("Thiết bị này");
   const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [stepUpOpen, setStepUpOpen] = useState(false);
+  const [stepUpBusy, setStepUpBusy] = useState(false);
+  const [stepUpError, setStepUpError] = useState<string | null>(null);
+  const [stepUpPassword, setStepUpPassword] = useState("");
+  const [stepUpCode, setStepUpCode] = useState("");
+
+  useEffect(() => {
+    setPasskeySupported(browserSupportsPasskeys());
+    return subscribeToAdminStepUpRequired(() => {
+      setStepUpError(null);
+      setStepUpPassword("");
+      setStepUpCode("");
+      setStepUpOpen(true);
+    });
+  }, []);
+
+  async function completeStepUp(
+    action: () => Promise<unknown>
+  ) {
+    setStepUpBusy(true);
+    setStepUpError(null);
+    try {
+      await action();
+      setStepUpOpen(false);
+      setStepUpPassword("");
+      setStepUpCode("");
+      resolveAdminStepUp();
+    } catch (err) {
+      setStepUpError(
+        err instanceof Error ? err.message : "Không thể xác thực lại phiên."
+      );
+    } finally {
+      setStepUpBusy(false);
+    }
+  }
+
+  async function completePasskeyStepUp() {
+    await completeStepUp(async () => {
+      const options = await adminAuthApi.stepUpPasskeyOptions();
+      const response = await authenticateWithPasskey(options);
+      await adminAuthApi.stepUpPasskeyVerify(response);
+    });
+  }
+
+  function cancelStepUp() {
+    setStepUpOpen(false);
+    setStepUpPassword("");
+    setStepUpCode("");
+    setStepUpError(null);
+    rejectAdminStepUp();
+  }
 
   async function loadSessions() {
     setSessionsLoading(true);
@@ -670,6 +727,127 @@ export function AdminShell({
               </div>
             </form>
           </div>
+        </div>
+      ) : null}
+
+      {stepUpOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-step-up-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 20000,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "rgba(15, 23, 42, 0.64)",
+            backdropFilter: "blur(5px)"
+          }}
+        >
+          <section
+            style={{
+              width: "min(480px, 100%)",
+              borderRadius: 16,
+              border: "1px solid var(--color-border, #e2e8f0)",
+              background: "var(--color-surface, #ffffff)",
+              padding: 22,
+              display: "grid",
+              gap: 14,
+              boxShadow: "0 24px 70px rgba(15,23,42,.24)"
+            }}
+          >
+            <div>
+              <span className="eyebrow">RECENT AUTHENTICATION</span>
+              <h3 id="admin-step-up-title" style={{ margin: "5px 0 6px" }}>
+                Xác thực lại để tiếp tục
+              </h3>
+              <p style={{ margin: 0, color: "var(--color-muted)" }}>
+                Thay đổi security cần một lần xác thực gần đây. Request hiện
+                tại sẽ tự tiếp tục sau khi xác thực thành công.
+              </p>
+            </div>
+
+            {stepUpError ? (
+              <div className="admin-state admin-state--error" role="alert">
+                <span>{stepUpError}</span>
+              </div>
+            ) : null}
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span>Mật khẩu hiện tại</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={stepUpPassword}
+                disabled={stepUpBusy}
+                onChange={(event) => setStepUpPassword(event.target.value)}
+                placeholder="Dùng nếu tài khoản có password"
+              />
+            </label>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={stepUpBusy || !stepUpPassword.trim()}
+              onClick={() =>
+                void completeStepUp(() =>
+                  adminAuthApi.stepUpPassword(stepUpPassword)
+                )
+              }
+            >
+              {stepUpBusy ? "Đang xác thực…" : "Xác thực bằng mật khẩu"}
+            </button>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gap: 8
+              }}
+            >
+              <input
+                autoComplete="one-time-code"
+                value={stepUpCode}
+                disabled={stepUpBusy}
+                onChange={(event) => setStepUpCode(event.target.value)}
+                placeholder="TOTP hoặc recovery code"
+              />
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={stepUpBusy || !stepUpCode.trim()}
+                onClick={() =>
+                  void completeStepUp(() =>
+                    adminAuthApi.stepUpCode(stepUpCode)
+                  )
+                }
+              >
+                Xác nhận mã
+              </button>
+            </div>
+
+            {passkeySupported ? (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={stepUpBusy}
+                onClick={() => void completePasskeyStepUp()}
+              >
+                Dùng passkey / Windows Hello / Touch ID
+              </button>
+            ) : null}
+
+            <button
+              className="text-button"
+              type="button"
+              disabled={stepUpBusy}
+              onClick={cancelStepUp}
+              style={{ justifySelf: "start" }}
+            >
+              Hủy thao tác
+            </button>
+          </section>
         </div>
       ) : null}
 
