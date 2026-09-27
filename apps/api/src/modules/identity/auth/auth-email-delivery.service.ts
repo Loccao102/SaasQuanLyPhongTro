@@ -7,6 +7,15 @@ type AuthEmailKind = "VERIFY_EMAIL" | "RESET_PASSWORD";
 
 @Injectable()
 export class AuthEmailDeliveryService {
+  isAvailable(): boolean {
+    if (process.env.NODE_ENV !== "production") return true;
+    return Boolean(
+      process.env.RESEND_API_KEY?.trim() &&
+      process.env.AUTH_EMAIL_FROM?.trim() &&
+      process.env.AUTH_PUBLIC_APP_URL?.trim()
+    );
+  }
+
   sendVerification(email: string, token: string): Promise<void> {
     return this.send({
       kind: "VERIFY_EMAIL",
