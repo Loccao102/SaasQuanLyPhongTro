@@ -58,15 +58,15 @@ export interface LoginResult {
 export class AuthenticationService {
   constructor(
     private readonly repository: AuthenticationRepository,
-    private readonly onboarding: TenantOnboardingService
+    private readonly onboarding?: TenantOnboardingService
   ) {}
 
   async authConfig() {
     const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim() || null;
     return {
-      registrationEnabled: await this.onboarding.registrationEnabled(),
+      registrationEnabled: await this.requireOnboarding().registrationEnabled(),
       googleEnabled:
-        Boolean(googleClientId) && (await this.onboarding.googleAuthEnabled()),
+        Boolean(googleClientId) && (await this.requireOnboarding().googleAuthEnabled()),
       googleClientId
     };
   }
@@ -115,7 +115,7 @@ export class AuthenticationService {
       throw error;
     }
 
-    await this.onboarding.register({
+    await this.requireOnboarding().register({
       email,
       displayName,
       organizationName,
@@ -183,7 +183,7 @@ export class AuthenticationService {
       "organizationName"
     );
 
-    await this.onboarding.register({
+    await this.requireOnboarding().register({
       email: google.email,
       displayName: google.displayName,
       organizationName,
@@ -320,6 +320,13 @@ export class AuthenticationService {
       throw new BadRequestException(field + " is required.");
     }
     return normalized;
+  }
+
+  private requireOnboarding(): TenantOnboardingService {
+    if (!this.onboarding) {
+      throw new Error("Tenant onboarding service is not configured.");
+    }
+    return this.onboarding;
   }
 
   private sessionTtlDays(): number {
