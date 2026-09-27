@@ -10,6 +10,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -92,6 +93,7 @@ function parseItems(value: unknown): CreatePricingPolicyInput["items"] {
   });
 }
 
+@RequireTenantFeature("billing")
 @Controller("admin/pricing")
 @UseGuards(TenantPrincipalGuard)
 export class PricingController {
