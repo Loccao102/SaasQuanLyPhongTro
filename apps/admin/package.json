@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.4",
     "@propops/ui": "workspace:*",
     "next": "16.3.5",
     "react": "19.3.0",

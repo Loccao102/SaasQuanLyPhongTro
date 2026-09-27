@@ -3,6 +3,23 @@
 import { useState, type ChangeEvent } from "react";
 import * as XLSX from "xlsx";
 import {
+  FileExcelOutlined,
+  DownloadOutlined,
+  InboxOutlined,
+  CheckCircleOutlined,
+  CheckCircleFilled,
+  CloseCircleOutlined,
+  ExclamationCircleOutlined,
+  LoadingOutlined,
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  CloseOutlined,
+  ApartmentOutlined,
+  AppstoreOutlined,
+  ToolOutlined,
+  EnvironmentOutlined
+} from "@ant-design/icons";
+import {
   adminAssetsApi,
   type PropertyImportPayload,
   type PropertyImportValidationReport
@@ -80,72 +97,116 @@ export function PropertyImportModal({
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: "680px", width: "95%", maxHeight: "90vh", overflowY: "auto" }}
+        style={{
+          maxWidth: "760px",
+          width: "95%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          borderRadius: "14px",
+          padding: "24px"
+        }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <div>
-            <span className="eyebrow" style={{ margin: 0, fontWeight: 700, color: "var(--color-primary)" }}>
-              EXCEL BATCH IMPORT
-            </span>
-            <h3 className="modal-title" style={{ margin: "2px 0 0", fontSize: "20px" }}>
-              Import Nhà trọ · Tầng · Phòng · Tài sản
-            </h3>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            paddingBottom: "16px",
+            borderBottom: "1px solid #e2e8f0",
+            marginBottom: "20px"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "10px",
+                background: "#f0fdf4",
+                color: "#16a34a",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+                border: "1px solid #bbf7d0"
+              }}
+            >
+              <FileExcelOutlined />
+            </div>
+            <div>
+              <h3 className="modal-title" style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
+                Nhập cơ sở, phòng & tài sản từ Excel
+              </h3>
+              <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: "13px" }}>
+                Import đồng bộ toàn bộ nhà trọ, danh sách tầng, danh mục phòng và trang thiết bị
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#64748b" }}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: "16px",
+              cursor: "pointer",
+              color: "#64748b",
+              padding: "4px"
+            }}
+            title="Đóng"
           >
-            ✕
+            <CloseOutlined />
           </button>
         </div>
 
         {errorMessage ? (
-          <div className="admin-state admin-state--error" style={{ marginBottom: "16px" }}>
-            <strong>Có lỗi xảy ra:</strong>
+          <div className="admin-state admin-state--error" style={{ marginBottom: "18px" }}>
+            <CloseCircleOutlined style={{ marginRight: "6px" }} />
             <span>{errorMessage}</span>
           </div>
         ) : null}
 
         {/* STEP 1: SELECT FILE & DOWNLOAD TEMPLATE */}
         {step === "SELECT" && (
-          <div>
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Template Card */}
             <div
               style={{
-                background: "#f0fdf4",
-                border: "1px solid #bbf7d0",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
                 borderRadius: "10px",
-                padding: "16px",
-                marginBottom: "20px",
+                padding: "16px 20px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
                 flexWrap: "wrap",
-                gap: "12px"
+                gap: "14px"
               }}
             >
               <div>
-                <strong style={{ display: "block", color: "#166534", fontSize: "14px", marginBottom: "4px" }}>
-                  Chưa có file mẫu Excel?
-                </strong>
-                <span style={{ fontSize: "13px", color: "#15803d" }}>
-                  Tải file mẫu chuẩn gồm 4 Sheet: Cơ sở (gắn Quận/Huyện/Phường), Tầng, Phòng và Tài sản.
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <FileExcelOutlined style={{ color: "#0284c7" }} />
+                  <strong style={{ fontSize: "14px", color: "#1e293b" }}>File mẫu chuẩn hệ thống</strong>
+                </div>
+                <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                  File mẫu gồm 4 Sheet chuẩn hóa: Thông tin cơ sở, Danh sách tầng, Danh sách phòng và Trang thiết bị nội thất.
+                </p>
               </div>
               <button
                 type="button"
                 className="secondary-button"
                 onClick={handleDownloadTemplate}
                 style={{
-                  background: "#ffffff",
-                  borderColor: "#86efac",
-                  color: "#166534",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "13px",
                   fontWeight: 600,
                   whiteSpace: "nowrap"
                 }}
               >
-                📥 Tải file mẫu (.xlsx)
+                <DownloadOutlined /> Tải file mẫu (.xlsx)
               </button>
             </div>
 
@@ -153,12 +214,13 @@ export function PropertyImportModal({
             <div
               style={{
                 border: "2px dashed #cbd5e1",
-                borderRadius: "14px",
-                padding: "36px 20px",
+                borderRadius: "12px",
+                padding: "40px 24px",
                 textAlign: "center",
-                background: "#f8fafc",
+                background: "#fafafa",
                 cursor: "pointer",
-                position: "relative"
+                position: "relative",
+                transition: "border-color 0.2s ease"
               }}
             >
               <input
@@ -174,127 +236,259 @@ export function PropertyImportModal({
                   height: "100%"
                 }}
               />
-              <div style={{ fontSize: "44px", marginBottom: "10px" }}>📑</div>
-              <h4 style={{ margin: "0 0 6px", fontSize: "16px" }}>Chọn hoặc Kéo thả file Excel vào đây</h4>
-              <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: "13px" }}>
-                Hỗ trợ file Excel (.xlsx, .xls) hoặc CSV. Tối đa 1 cơ sở / lần import.
+              <InboxOutlined style={{ fontSize: "42px", color: "#0284c7", marginBottom: "12px" }} />
+              <h4 style={{ margin: "0 0 6px", fontSize: "15px", fontWeight: 650, color: "#1e293b" }}>
+                Kéo thả file Excel vào đây hoặc bấm để chọn tệp
+              </h4>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
+                Định dạng hỗ trợ: Microsoft Excel (.xlsx, .xls) hoặc CSV. Hệ thống hỗ trợ xử lý 1 cơ sở / lần import.
               </p>
             </div>
           </div>
         )}
 
-        {/* STEP: VALIDATING SPINNER */}
+        {/* STEP 2: VALIDATING SPINNER */}
         {step === "VALIDATING" && (
-          <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: "36px", marginBottom: "12px" }}>⏳</div>
-            <h4 style={{ margin: "0 0 6px" }}>Đang kiểm tra dữ liệu file...</h4>
-            <span style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>
-              Đang phân tích cấu trúc, kiểm tra trùng lặp mã và phân cấp địa bàn hành chính.
+          <div style={{ textAlign: "center", padding: "50px 20px" }}>
+            <LoadingOutlined style={{ fontSize: "36px", color: "#0284c7", marginBottom: "16px" }} />
+            <h4 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>Đang kiểm tra dữ liệu file...</h4>
+            <span style={{ color: "#64748b", fontSize: "13px" }}>
+              Hệ thống đang rà soát cấu trúc cột, đối chiếu mã tầng/phòng và xác thực địa bàn hành chính.
             </span>
           </div>
         )}
 
-        {/* STEP: PREVIEW DRY-RUN REPORT */}
+        {/* STEP 3: PREVIEW DRY-RUN REPORT */}
         {step === "PREVIEW" && report && (
-          <div>
-            {/* Summary Box */}
+          <div style={{ display: "grid", gap: "18px" }}>
+            {/* Status Header */}
             <div
               style={{
-                background: report.isValid ? "#f0f9ff" : "#fff7ed",
-                border: report.isValid ? "1px solid #bae6fd" : "1px solid #fed7aa",
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "18px"
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                background: report.isValid ? "#f0fdf4" : "#fef2f2",
+                border: report.isValid ? "1px solid #bbf7d0" : "1px solid #fecaca"
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <strong style={{ fontSize: "15px", color: report.isValid ? "#0369a1" : "#c2410c" }}>
-                  {report.isValid ? "✔ Dữ liệu hợp lệ để import" : "⚠ Phát hiện lỗi cần xử lý"}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {report.isValid ? (
+                  <CheckCircleFilled style={{ color: "#16a34a", fontSize: "18px" }} />
+                ) : (
+                  <CloseCircleOutlined style={{ color: "#dc2626", fontSize: "18px" }} />
+                )}
+                <strong style={{ fontSize: "14px", color: report.isValid ? "#166534" : "#991b1b" }}>
+                  {report.isValid ? "Dữ liệu hợp lệ — Sẵn sàng nhập vào hệ thống" : "Phát hiện lỗi — Vui lòng sửa lại file Excel"}
                 </strong>
-                <span style={{ fontSize: "12px", color: "#64748b" }}>Tệp: {fileName}</span>
+              </div>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>Tệp: {fileName}</span>
+            </div>
+
+            {/* Property Overview Card */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: "10px",
+                padding: "16px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span
+                      style={{
+                        background: "#e0f2fe",
+                        color: "#0369a1",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: "4px"
+                      }}
+                    >
+                      MÃ: {report.summary.propertyCode || "CHƯA_CÓ_MÃ"}
+                    </span>
+                    <span
+                      style={{
+                        background: "#f1f5f9",
+                        color: "#475569",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        padding: "2px 8px",
+                        borderRadius: "4px"
+                      }}
+                    >
+                      {report.summary.propertyType === "BOARDING_HOUSE"
+                        ? "Nhà trọ"
+                        : report.summary.propertyType === "MINI_APARTMENT"
+                        ? "Chung cư mini"
+                        : report.summary.propertyType === "APARTMENT"
+                        ? "Căn hộ"
+                        : "Khác"}
+                    </span>
+                  </div>
+                  <h4 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                    {report.summary.propertyName || "Chưa đặt tên cơ sở"}
+                  </h4>
+                </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", marginTop: "12px" }}>
-                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>CƠ SỞ</small>
-                  <strong style={{ fontSize: "13px" }}>{report.summary.propertyName || "Chưa có tên"}</strong>
-                  <span style={{ fontSize: "11px", color: "#0284c7", display: "block" }}>{report.summary.propertyCode}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#475569", fontSize: "13px" }}>
+                <EnvironmentOutlined style={{ color: "#0284c7" }} />
+                <span>{report.summary.locationText}</span>
+              </div>
+            </div>
+
+            {/* Metrics Scale Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "22px", color: "#0284c7" }}>
+                  <ApartmentOutlined />
                 </div>
-                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>ĐỊA BÀN QUẢN LÝ</small>
-                  <strong style={{ fontSize: "12px", wordBreak: "break-word" }}>{report.summary.locationText}</strong>
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TỔNG SỐ TẦNG</small>
+                  <strong style={{ fontSize: "18px", color: "#0f172a" }}>{report.summary.floorCount}</strong>
                 </div>
-                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>SỐ LƯỢNG TẦNG</small>
-                  <strong style={{ fontSize: "16px", color: "#0f172a" }}>{report.summary.floorCount}</strong>
+              </div>
+
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "22px", color: "#0284c7" }}>
+                  <AppstoreOutlined />
                 </div>
-                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>SỐ LƯỢNG PHÒNG</small>
-                  <strong style={{ fontSize: "16px", color: "#0f172a" }}>{report.summary.roomCount}</strong>
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TỔNG SỐ PHÒNG</small>
+                  <strong style={{ fontSize: "18px", color: "#0f172a" }}>{report.summary.roomCount}</strong>
                 </div>
-                <div style={{ background: "white", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TÀI SẢN / THIẾT BỊ</small>
-                  <strong style={{ fontSize: "16px", color: "#16a34a" }}>{report.summary.equipmentCount}</strong>
+              </div>
+
+              <div
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "22px", color: "#16a34a" }}>
+                  <ToolOutlined />
+                </div>
+                <div>
+                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TÀI SẢN / NỘI THẤT</small>
+                  <strong style={{ fontSize: "18px", color: "#16a34a" }}>{report.summary.equipmentCount}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Error List */}
+            {/* Error Table if invalid */}
             {report.errors.length > 0 && (
-              <div style={{ marginBottom: "16px" }}>
-                <strong style={{ color: "#b91c1c", fontSize: "13px", display: "block", marginBottom: "6px" }}>
-                  Danh sách lỗi chi tiết ({report.errors.length} lỗi):
-                </strong>
-                <ul
+              <div
+                style={{
+                  border: "1px solid #fecaca",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  background: "#fff"
+                }}
+              >
+                <div
                   style={{
-                    margin: 0,
-                    padding: "10px 14px 10px 28px",
+                    padding: "10px 14px",
                     background: "#fef2f2",
-                    border: "1px solid #fecaca",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    color: "#991b1b",
-                    maxHeight: "160px",
-                    overflowY: "auto"
+                    borderBottom: "1px solid #fecaca",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px"
                   }}
                 >
-                  {report.errors.map((err, idx) => (
-                    <li key={idx} style={{ marginBottom: "4px" }}>
-                      <strong>[{err.section}{err.row ? ` Dòng ${err.row}` : ""}]</strong>: {err.message}
-                    </li>
-                  ))}
-                </ul>
+                  <CloseCircleOutlined style={{ color: "#dc2626" }} />
+                  <strong style={{ color: "#991b1b", fontSize: "13px" }}>
+                    Chi tiết lỗi phát hiện ({report.errors.length} lỗi)
+                  </strong>
+                </div>
+                <div style={{ maxHeight: "180px", overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569" }}>
+                        <th style={{ padding: "8px 12px", textAlign: "left", width: "120px" }}>Phần</th>
+                        <th style={{ padding: "8px 12px", textAlign: "left", width: "80px" }}>Dòng</th>
+                        <th style={{ padding: "8px 12px", textAlign: "left", width: "100px" }}>Mã</th>
+                        <th style={{ padding: "8px 12px", textAlign: "left" }}>Nội dung lỗi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.errors.map((err, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "8px 12px", fontWeight: 600, color: "#64748b" }}>{err.section}</td>
+                          <td style={{ padding: "8px 12px", color: "#64748b" }}>{err.row ? `Dòng ${err.row}` : "-"}</td>
+                          <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#dc2626" }}>{err.itemCode || "-"}</td>
+                          <td style={{ padding: "8px 12px", color: "#991b1b" }}>{err.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
-            {/* Warning List */}
+            {/* Warnings Alert */}
             {report.warnings.length > 0 && (
-              <div style={{ marginBottom: "16px" }}>
-                <strong style={{ color: "#b45309", fontSize: "13px", display: "block", marginBottom: "6px" }}>
-                  Cảnh báo ({report.warnings.length}):
-                </strong>
-                <ul
-                  style={{
-                    margin: 0,
-                    padding: "10px 14px 10px 28px",
-                    background: "#fffbeb",
-                    border: "1px solid #fde68a",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    color: "#92400e"
-                  }}
-                >
+              <div
+                style={{
+                  padding: "10px 14px",
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#92400e"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                  <ExclamationCircleOutlined />
+                  <strong>Lưu ý ({report.warnings.length}):</strong>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "20px" }}>
                   {report.warnings.map((warn, idx) => (
-                    <li key={idx} style={{ marginBottom: "4px" }}>
-                      {warn}
-                    </li>
+                    <li key={idx}>{warn}</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Actions */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "24px" }}>
+            {/* Action Bar */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: "14px",
+                borderTop: "1px solid #e2e8f0"
+              }}
+            >
               <button
                 type="button"
                 className="secondary-button"
@@ -303,8 +497,9 @@ export function PropertyImportModal({
                   setParsedPayload(null);
                   setReport(null);
                 }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}
               >
-                ← Chọn file khác
+                <ArrowLeftOutlined /> Chọn file khác
               </button>
 
               <button
@@ -312,34 +507,55 @@ export function PropertyImportModal({
                 className="primary-button"
                 disabled={!report.isValid}
                 onClick={handleExecuteImport}
-                style={{ minWidth: "180px" }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  minWidth: "160px"
+                }}
               >
-                🚀 Xác nhận Import
+                <CheckCircleOutlined /> Xác nhận nhập dữ liệu
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP: IMPORTING PROGRESS */}
+        {/* STEP 4: IMPORTING PROGRESS */}
         {step === "IMPORTING" && (
-          <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: "36px", marginBottom: "12px" }}>⚙</div>
-            <h4 style={{ margin: "0 0 6px" }}>Đang lưu cơ sở và tài sản...</h4>
-            <span style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>
-              Hệ thống đang thực hiện giao dịch an toàn để tạo cơ sở, phân tầng, phòng và tài sản.
+          <div style={{ textAlign: "center", padding: "50px 20px" }}>
+            <LoadingOutlined style={{ fontSize: "36px", color: "#0284c7", marginBottom: "16px" }} />
+            <h4 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>Đang lưu dữ liệu vào hệ thống...</h4>
+            <span style={{ color: "#64748b", fontSize: "13px" }}>
+              Toàn bộ cơ sở, tầng, phòng và tài sản đang được tạo an toàn trong một giao dịch cơ sở dữ liệu.
             </span>
           </div>
         )}
 
-        {/* STEP: SUCCESS */}
+        {/* STEP 5: SUCCESS RECEIPT */}
         {step === "SUCCESS" && successInfo && (
-          <div style={{ textAlign: "center", padding: "30px 20px" }}>
-            <div style={{ fontSize: "48px", marginBottom: "12px" }}>🎉</div>
-            <h3 style={{ margin: "0 0 8px", color: "#16a34a" }}>Import thành công!</h3>
-            <p style={{ margin: "0 0 24px", color: "#475569", fontSize: "14px" }}>
-              Cơ sở <strong>{successInfo.propertyName}</strong> cùng toàn bộ các tầng, phòng và trang thiết bị đã được lưu thành công.
+          <div style={{ textAlign: "center", padding: "24px 16px" }}>
+            <CheckCircleFilled style={{ fontSize: "48px", color: "#16a34a", marginBottom: "14px" }} />
+            <h3 style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 700, color: "#0f172a" }}>
+              Nhập dữ liệu thành công
+            </h3>
+            <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: "13px" }}>
+              Cơ sở <strong>{successInfo.propertyName}</strong> đã sẵn sàng để quản lý số điện nước và lập hợp đồng thuê.
             </p>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  onSuccess(successInfo.propertyId);
+                  onClose();
+                }}
+                style={{ fontSize: "13px" }}
+              >
+                Đóng
+              </button>
               <button
                 type="button"
                 className="primary-button"
@@ -347,8 +563,9 @@ export function PropertyImportModal({
                   onSuccess(successInfo.propertyId);
                   window.location.assign(`/assets/properties/${successInfo.propertyId}`);
                 }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}
               >
-                Xem chi tiết cơ sở ngay →
+                Xem chi tiết cơ sở <ArrowRightOutlined />
               </button>
             </div>
           </div>

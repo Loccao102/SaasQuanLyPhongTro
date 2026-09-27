@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  FileExcelOutlined,
+  PlusOutlined,
+  SyncOutlined,
+  ArrowRightOutlined
+} from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -193,13 +199,23 @@ export function AssetOverviewClient() {
                   onClick={() => setShowImport(true)}
                   style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}
                 >
-                  📥 Import Excel
+                  <FileExcelOutlined /> Import Excel
                 </button>
-                <button className="primary-button" type="button" onClick={() => setShowCreate(true)}>
-                  + Thêm cơ sở
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => setShowCreate(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <PlusOutlined /> Thêm cơ sở
                 </button>
-                <button className="secondary-button" type="button" onClick={() => void load()}>
-                  Refresh
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void load()}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <SyncOutlined /> Làm mới
                 </button>
               </div>
             </div>
@@ -224,7 +240,9 @@ export function AssetOverviewClient() {
                         <span className="asset-card__code">{property.code}</span>
                         <h3>{property.name}</h3>
                       </div>
-                      <span aria-hidden="true">→</span>
+                      <span aria-hidden="true" style={{ color: "#94a3b8" }}>
+                        <ArrowRightOutlined />
+                      </span>
                     </div>
                     <p>{property.address ?? property.administrativeArea ?? "Chưa cập nhật địa chỉ"}</p>
                     <div className="asset-card__stats">

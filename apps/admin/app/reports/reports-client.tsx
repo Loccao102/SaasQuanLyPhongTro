@@ -2,6 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  BarChartOutlined,
+  DollarOutlined,
+  LineChartOutlined,
+  ApartmentOutlined,
+  ExclamationCircleOutlined,
+  CheckCircleFilled,
+  DownloadOutlined
+} from "@ant-design/icons";
+import {
   MetricCard,
   MoneyDisplay,
   PageHeader,
@@ -129,13 +138,15 @@ export function ReportsClient() {
         <PageHeader title="Báo cáo & Xuất dữ liệu" />
 
         {error && (
-          <div className="alert alert-error" style={{ marginBottom: 16 }}>
-            ⚠ {error}
+          <div className="alert alert-error" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: "8px" }}>
+            <ExclamationCircleOutlined />
+            <span>{error}</span>
           </div>
         )}
         {exportSuccess && (
-          <div className="alert alert-success" style={{ marginBottom: 16 }}>
-            ✅ {exportSuccess}
+          <div className="alert alert-success" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: "8px" }}>
+            <CheckCircleFilled />
+            <span>{exportSuccess}</span>
           </div>
         )}
 
@@ -213,7 +224,9 @@ export function ReportsClient() {
               <h3 className="section-title">Xuất báo cáo CSV</h3>
               <div className="export-card-grid">
                 <div className="export-card">
-                  <div className="export-card__icon">📊</div>
+                  <div className="export-card__icon" style={{ fontSize: "24px", color: "#0284c7" }}>
+                    <BarChartOutlined />
+                  </div>
                   <div className="export-card__body">
                     <h4>Chỉ số đồng hồ</h4>
                     <p>Xuất tất cả chỉ số điện, nước theo kỳ và cơ sở</p>
@@ -222,13 +235,16 @@ export function ReportsClient() {
                     className="btn btn-primary"
                     onClick={() => handleExport("meter-readings")}
                     disabled={!!exporting}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    {exporting === "meter-readings" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "meter-readings" ? "Đang tải…" : "Tải CSV"}
                   </button>
                 </div>
 
                 <div className="export-card">
-                  <div className="export-card__icon">💰</div>
+                  <div className="export-card__icon" style={{ fontSize: "24px", color: "#16a34a" }}>
+                    <DollarOutlined />
+                  </div>
                   <div className="export-card__body">
                     <h4>Doanh thu & Công nợ</h4>
                     <p>Hóa đơn đã phát hành, đã thu, còn nợ theo kỳ</p>
@@ -237,13 +253,16 @@ export function ReportsClient() {
                     className="btn btn-primary"
                     onClick={() => handleExport("revenue-debt")}
                     disabled={!!exporting}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    {exporting === "revenue-debt" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "revenue-debt" ? "Đang tải…" : "Tải CSV"}
                   </button>
                 </div>
 
                 <div className="export-card">
-                  <div className="export-card__icon">📈</div>
+                  <div className="export-card__icon" style={{ fontSize: "24px", color: "#7c3aed" }}>
+                    <LineChartOutlined />
+                  </div>
                   <div className="export-card__body">
                     <h4>Dòng tiền Thu - Chi</h4>
                     <p>Chi tiết thu nhập và chi phí hoạt động theo thời gian</p>
@@ -252,13 +271,16 @@ export function ReportsClient() {
                     className="btn btn-primary"
                     onClick={() => handleExport("cashflow")}
                     disabled={!!exporting}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    {exporting === "cashflow" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "cashflow" ? "Đang tải…" : "Tải CSV"}
                   </button>
                 </div>
 
                 <div className="export-card">
-                  <div className="export-card__icon">🏢</div>
+                  <div className="export-card__icon" style={{ fontSize: "24px", color: "#ea580c" }}>
+                    <ApartmentOutlined />
+                  </div>
                   <div className="export-card__body">
                     <h4>Tổng hợp cơ sở</h4>
                     <p>Lấp đầy, doanh thu, chi phí, lợi nhuận từng cơ sở</p>
@@ -267,8 +289,9 @@ export function ReportsClient() {
                     className="btn btn-primary"
                     onClick={() => handleExport("property-summary")}
                     disabled={!!exporting}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    {exporting === "property-summary" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "property-summary" ? "Đang tải…" : "Tải CSV"}
                   </button>
                 </div>
               </div>

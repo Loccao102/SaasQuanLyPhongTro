@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  ApartmentOutlined,
+  HomeOutlined,
+  SettingOutlined,
+  EditOutlined,
+  PlusOutlined,
+  CloseOutlined,
+  EnvironmentOutlined
+} from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -223,8 +232,9 @@ export function PropertyDetailClient({
                 <StatusBadge tone="info">{propertyTypeLabel(data.property.type)}</StatusBadge>
               </div>
               <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 750 }}>{data.property.name}</h2>
-              <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: "13px" }}>
-                📍 {data.property.address || data.property.administrativeArea || "Chưa cập nhật địa chỉ"}
+              <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <EnvironmentOutlined style={{ color: "#0284c7" }} />
+                <span>{data.property.address || data.property.administrativeArea || "Chưa cập nhật địa chỉ"}</span>
               </p>
             </div>
 
@@ -236,7 +246,7 @@ export function PropertyDetailClient({
                 onClick={() => openAddRoom()}
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
               >
-                + Thêm phòng
+                <PlusOutlined /> Thêm phòng
               </button>
               <button
                 className="secondary-button"
@@ -247,7 +257,7 @@ export function PropertyDetailClient({
                 }}
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
               >
-                + Thêm tầng
+                <PlusOutlined /> Thêm tầng
               </button>
               <button
                 className="secondary-button"
@@ -256,9 +266,10 @@ export function PropertyDetailClient({
                   setMutationError(null);
                   setShowEditPropertyModal(true);
                 }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                 title="Chỉnh sửa thông tin cơ sở"
               >
-                ⚙ Sửa cơ sở
+                <SettingOutlined /> Sửa cơ sở
               </button>
             </div>
           </section>
@@ -360,7 +371,7 @@ export function PropertyDetailClient({
           {/* FLOORS & ROOMS STACK */}
           {data.floors.length === 0 ? (
             <div className="panel" style={{ textAlign: "center", padding: "48px 24px" }}>
-              <div style={{ fontSize: "40px", marginBottom: "12px" }}>🏢</div>
+              <ApartmentOutlined style={{ fontSize: "40px", color: "#94a3b8", marginBottom: "16px" }} />
               <h3 style={{ margin: "0 0 8px", fontSize: "18px" }}>Cơ sở này chưa có tầng nào</h3>
               <p style={{ margin: "0 0 20px", color: "var(--color-text-muted)", fontSize: "14px", maxWidth: "420px", marginLeft: "auto", marginRight: "auto" }}>
                 Để bắt đầu quản lý phòng, hãy thêm tầng trước (ví dụ: Tầng 1, Tầng 2, Tầng Trệt...) hoặc tạo phòng trực tiếp.
@@ -463,9 +474,9 @@ export function PropertyDetailClient({
                               })
                             }
                             title="Sửa tên hoặc mã tầng"
-                            style={{ fontSize: "12px", padding: "6px 10px" }}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "6px 10px" }}
                           >
-                            ✎ Sửa
+                            <EditOutlined /> Sửa
                           </button>
                         ) : null}
                         {floor.id && floor.rooms.length === 0 ? (
@@ -504,7 +515,7 @@ export function PropertyDetailClient({
                             textAlign: "center"
                           }}
                         >
-                          <div style={{ fontSize: "32px", marginBottom: "8px" }}>🏠</div>
+                          <HomeOutlined style={{ fontSize: "32px", color: "#94a3b8", marginBottom: "10px" }} />
                           <strong style={{ fontSize: "14px", color: "#334155" }}>
                             {floor.name} chưa có phòng nào
                           </strong>
@@ -608,9 +619,9 @@ export function PropertyDetailClient({
                   <button
                     type="button"
                     onClick={() => setShowAddRoomModal(false)}
-                    style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}
+                    style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
                   >
-                    ✕
+                    <CloseOutlined />
                   </button>
                 </div>
 
@@ -675,9 +686,9 @@ export function PropertyDetailClient({
                   <button
                     type="button"
                     onClick={() => setShowAddFloorModal(false)}
-                    style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}
+                    style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
                   >
-                    ✕
+                    <CloseOutlined />
                   </button>
                 </div>
 
@@ -728,9 +739,9 @@ export function PropertyDetailClient({
                   <button
                     type="button"
                     onClick={() => setEditingFloor(null)}
-                    style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}
+                    style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
                   >
-                    ✕
+                    <CloseOutlined />
                   </button>
                 </div>
 
@@ -778,9 +789,9 @@ export function PropertyDetailClient({
                   <button
                     type="button"
                     onClick={() => setShowEditPropertyModal(false)}
-                    style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b" }}
+                    style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
                   >
-                    ✕
+                    <CloseOutlined />
                   </button>
                 </div>
 
