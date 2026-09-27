@@ -11,12 +11,52 @@ export type AdminSession = {
     id: string;
     email: string;
     displayName: string;
+    organizationId: string | null;
+    accountType: "TENANT" | "PLATFORM";
   };
   memberships: AdminMembership[];
   expiresAt: string;
 };
 
+export type AuthConfig = {
+  registrationEnabled: boolean;
+  googleEnabled: boolean;
+  googleClientId: string | null;
+};
+
 export const adminAuthApi = {
+  config: () =>
+    adminApiRequest<AuthConfig>("/auth/config", {
+      organization: false,
+      csrf: false
+    }),
+
+  register: (input: {
+    email: string;
+    password: string;
+    displayName: string;
+    organizationName: string;
+  }) =>
+    adminApiRequest<AdminSession>("/auth/register", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+  google: (input: {
+    credential: string;
+    mode: "LOGIN" | "REGISTER";
+    organizationName?: string;
+  }) =>
+    adminApiRequest<AdminSession>("/auth/google", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+
   login: (input: { email: string; password: string }) =>
     adminApiRequest<AdminSession>("/auth/login", {
       method: "POST",
