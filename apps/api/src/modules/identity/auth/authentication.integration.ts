@@ -301,6 +301,58 @@ test("login creates opaque session, resolves memberships and supports revocation
     );
     assert.equal(storedPasskey?.counter, 1);
     assert.ok(storedPasskey?.lastUsedAt);
+    const tenantPasswordless =
+      await repository.findPasswordlessPasskeyByCredential(
+        "integration-passkey-credential",
+        "TENANT"
+      );
+    assert.equal(tenantPasswordless?.identity.userId, userId);
+    assert.equal(tenantPasswordless?.identity.accountType, "TENANT");
+
+    const platformPasswordless =
+      await repository.findPasswordlessPasskeyByCredential(
+        "integration-passkey-credential",
+        "PLATFORM"
+      );
+    assert.equal(platformPasswordless, null);
+
+    const passwordlessRequestId =
+      await repository.createPasswordlessWebAuthnChallenge({
+        challenge: "integration-passwordless-challenge",
+        purpose: "PASSWORDLESS_TENANT",
+        expiresAt: new Date(Date.now() + 60_000)
+      });
+    const passwordlessChallenge =
+      await repository.getPasswordlessWebAuthnChallenge({
+        id: passwordlessRequestId,
+        purpose: "PASSWORDLESS_TENANT"
+      });
+    assert.equal(
+      passwordlessChallenge?.challenge,
+      "integration-passwordless-challenge"
+    );
+
+    assert.equal(
+      await repository.completePasswordlessPasskeyAuthentication({
+        challengeId: passwordlessRequestId,
+        purpose: "PASSWORDLESS_TENANT",
+        userId,
+        passkeyId: passkey.id,
+        newCounter: 2
+      }),
+      true
+    );
+    assert.equal(
+      await repository.completePasswordlessPasskeyAuthentication({
+        challengeId: passwordlessRequestId,
+        purpose: "PASSWORDLESS_TENANT",
+        userId,
+        passkeyId: passkey.id,
+        newCounter: 3
+      }),
+      false
+    );
+
 
     await fixture.query(
       `UPDATE auth_sessions
@@ -330,7 +382,7 @@ test("login creates opaque session, resolves memberships and supports revocation
         userId,
         sessionId: secondLogin.sessionId,
         passkeyId: passkey.id,
-        newCounter: 2
+        newCounter: 3
       }),
       true
     );
@@ -340,7 +392,7 @@ test("login creates opaque session, resolves memberships and supports revocation
         userId,
         sessionId: secondLogin.sessionId,
         passkeyId: passkey.id,
-        newCounter: 3
+        newCounter: 4
       }),
       false
     );
