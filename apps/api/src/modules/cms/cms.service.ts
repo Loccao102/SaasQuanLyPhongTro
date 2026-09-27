@@ -1329,7 +1329,7 @@ export class CmsService {
        LEFT JOIN LATERAL (
          SELECT count(*) AS staff_count
          FROM organization_memberships om
-         WHERE om.organization_id = o.id AND om.status = 'ACTIVE'
+         WHERE om.organization_id = o.id
        ) staff_usage ON true
        LEFT JOIN organization_subscriptions s
          ON s.organization_id = o.id
