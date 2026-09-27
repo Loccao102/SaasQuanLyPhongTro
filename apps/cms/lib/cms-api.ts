@@ -481,6 +481,8 @@ export type CmsTenantAccount = {
   userStatus: "ACTIVE" | "SUSPENDED";
   role: "OWNER" | "ADMIN" | "MANAGER" | "STAFF" | "ACCOUNTANT" | "VIEWER";
   membershipStatus: "INVITED" | "ACTIVE" | "SUSPENDED";
+  totpEnabled: boolean;
+  passkeyCount: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -826,6 +828,29 @@ export const cmsApi = {
       {
         method: "POST",
         body: JSON.stringify({ temporaryPassword, reason })
+      }
+    ),
+
+  resetTenantAccountAuthenticators: (
+    organizationId: string,
+    userId: string,
+    reason: string
+  ) =>
+    request<{
+      userId: string;
+      authenticatorsReset: true;
+      removedPasskeys: number;
+      sessionsRevoked: number;
+      passwordResetTokensInvalidated: true;
+    }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/accounts/" +
+        encodeURIComponent(userId) +
+        "/reset-authenticators",
+      {
+        method: "POST",
+        body: JSON.stringify({ reason })
       }
     ),
 
