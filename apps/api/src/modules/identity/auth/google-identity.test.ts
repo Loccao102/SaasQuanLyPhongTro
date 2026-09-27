@@ -23,7 +23,8 @@ const jwk = {
 function jwt(input: {
   nonce: string;
   email?: string;
-  audience?: string;
+  audience?: string | string[];
+  authorizedParty?: string;
   issuer?: string;
   expiresAt?: number;
 }) {
@@ -35,6 +36,7 @@ function jwt(input: {
       iss: input.issuer ?? "https://accounts.google.com",
       sub: "google-user-123",
       aud: input.audience ?? clientId,
+      azp: input.authorizedParty,
       exp: input.expiresAt ?? Math.floor(Date.now() / 1000) + 300,
       email: input.email ?? "owner@gmail.com",
       email_verified: true,
@@ -96,4 +98,45 @@ test("Google identity rejects a token issued for another client", async () => {
       ),
     /không vượt qua bước xác thực/
   );
+});
+
+
+test("Google identity rejects a multi-audience token with a different authorized party", async () => {
+  await assert.rejects(
+    () =>
+      verifyGoogleIdentityToken(
+        jwt({
+          nonce: validNonce,
+          audience: [clientId, "other-client.apps.googleusercontent.com"],
+          authorizedParty: "other-client.apps.googleusercontent.com"
+        }),
+        clientId,
+        validNonce
+      ),
+    /không vượt qua bước xác thực/
+  );
+});
+
+test("Google identity accepts a multi-audience token when azp matches Habi", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ keys: [jwk] }), {
+      status: 200,
+      headers: { "cache-control": "public, max-age=3600" }
+    });
+
+  try {
+    const identity = await verifyGoogleIdentityToken(
+      jwt({
+        nonce: validNonce,
+        audience: [clientId, "other-client.apps.googleusercontent.com"],
+        authorizedParty: clientId
+      }),
+      clientId,
+      validNonce
+    );
+    assert.equal(identity.subject, "google-user-123");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
