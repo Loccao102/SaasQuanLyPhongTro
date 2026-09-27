@@ -136,6 +136,24 @@ async function request<T>(
 }
 
 export const cmsAuthApi = {
+  passkeyLoginOptions: () =>
+    request<{
+      requestId: string;
+      options: PasskeyAuthenticationOptionsJSON;
+    }>("/auth/platform/passkey/login/options", {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+
+  verifyPasskeyLogin: (input: {
+    requestId: string;
+    response: unknown;
+  }) =>
+    request<CmsAuthSession>("/auth/platform/passkey/login/verify", {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
+
   login: (input: { email: string; password: string }) =>
     request<CmsAuthenticationResult>("/auth/platform/login", {
       method: "POST",
