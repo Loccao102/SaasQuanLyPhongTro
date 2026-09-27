@@ -29,11 +29,20 @@ export default function CmsLoginPage() {
   } | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [passkeySupported, setPasskeySupported] = useState(false);
+  const [passkeyPasswordlessEnabled, setPasskeyPasswordlessEnabled] =
+    useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setPasskeySupported(browserSupportsPasskeys());
+    void cmsAuthApi.config()
+      .then((config) =>
+        setPasskeyPasswordlessEnabled(
+          config.passkeyPasswordlessEnabled
+        )
+      )
+      .catch(() => setPasskeyPasswordlessEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -445,7 +454,7 @@ export default function CmsLoginPage() {
             <button type="submit" disabled={submitting} style={{ padding: "11px 14px" }}>
               {submitting ? "Đang xác thực…" : "Xác nhận & vào Control Plane"}
             </button>
-            {passkeySupported ? (
+            {passkeySupported && passkeyPasswordlessEnabled ? (
               <button
                 type="button"
                 disabled={submitting}
