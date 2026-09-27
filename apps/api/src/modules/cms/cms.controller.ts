@@ -287,6 +287,11 @@ export class CmsController {
     return this.cms.listAudit(this.principal(request));
   }
 
+  @Get("security/auth-events")
+  listAuthSecurityEvents(@Req() request: CmsRequest) {
+    return this.cms.listAuthSecurityEvents(this.principal(request));
+  }
+
   @Get("jobs")
   listJobs(@Req() request: CmsRequest) {
     return this.cms.getJobsIntegrationStatus(this.principal(request));
