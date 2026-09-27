@@ -12,7 +12,8 @@ type RateLimitAction =
   | "PASSWORD_LOGIN_IP"
   | "GOOGLE_AUTH_IP"
   | "REGISTER_IP"
-  | "GOOGLE_CHALLENGE_IP";
+  | "GOOGLE_CHALLENGE_IP"
+  | "PASSWORD_CHANGE_USER";
 
 type SecurityEventOutcome = "SUCCESS" | "FAILURE" | "BLOCKED";
 
@@ -46,6 +47,16 @@ export class AuthSecurityService {
       email.trim().toLowerCase(),
       this.positiveInteger("AUTH_LOGIN_RATE_MAX_PER_EMAIL", 30),
       windowSeconds
+    );
+  }
+
+  async assertPasswordChangeAllowed(userId: string): Promise<void> {
+    await this.consume(
+      "PASSWORD_CHANGE_USER",
+      "email",
+      userId,
+      this.positiveInteger("AUTH_PASSWORD_CHANGE_MAX_PER_WINDOW", 10),
+      this.positiveInteger("AUTH_PASSWORD_CHANGE_WINDOW_SECONDS", 3600)
     );
   }
 
