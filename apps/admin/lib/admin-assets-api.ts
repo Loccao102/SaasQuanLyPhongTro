@@ -229,13 +229,13 @@ export const adminAssetsApi = {
     ),
 
   validateImport: (payload: PropertyImportPayload) =>
-    request<PropertyImportValidationReport>("/assets/import/validate", {
+    request<PropertyImportValidationReport>("/import/validate", {
       method: "POST",
       body: { payload }
     }),
 
   executeImport: (payload: PropertyImportPayload) =>
-    request<PropertyImportResult>("/assets/import/execute", {
+    request<PropertyImportResult>("/import/execute", {
       method: "POST",
       body: { payload }
     })
