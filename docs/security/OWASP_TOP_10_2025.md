@@ -126,6 +126,8 @@ Implemented controls:
 - WebAuthn verification requires user verification and validates the configured relying-party ID and exact allowed origins.
 - browser sessions track recent-auth separately from ordinary activity; stale sessions must complete password/TOTP/recovery/passkey step-up before protected security or Control Plane writes;
 - Control Plane step-up uses HTTP 428 and transparent client retry with the original idempotency key, avoiding duplicate billing/settings mutations.
+- auth telemetry derives persistent security alerts for credential changes, unfamiliar network hashes and repeated step-up failures; notification delivery is best-effort after database persistence;
+- security alerts have an independent bounded retention window and are visible both to the affected account and authorized platform audit operators.
 
 Residual work before public launch:
 
