@@ -219,6 +219,59 @@ export const adminAuthApi = {
       csrf: false
     }),
 
+  stepUpStatus: () =>
+    adminApiRequest<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>("/auth/step-up/status", {
+      organization: false,
+      csrf: false
+    }),
+
+  stepUpPassword: (password: string) =>
+    adminApiRequest<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>("/auth/step-up/password", {
+      method: "POST",
+      body: { password },
+      organization: false
+    }),
+
+  stepUpCode: (code: string) =>
+    adminApiRequest<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>("/auth/step-up/code", {
+      method: "POST",
+      body: { code },
+      organization: false
+    }),
+
+  stepUpPasskeyOptions: () =>
+    adminApiRequest<PasskeyAuthenticationOptionsJSON>(
+      "/auth/step-up/passkey/options",
+      {
+        method: "POST",
+        body: {},
+        organization: false
+      }
+    ),
+
+  stepUpPasskeyVerify: (response: unknown) =>
+    adminApiRequest<{
+      recent: boolean;
+      reauthenticatedAt: string;
+      expiresAt: string;
+    }>("/auth/step-up/passkey/verify", {
+      method: "POST",
+      body: { response },
+      organization: false
+    }),
+
   passkeys: () =>
     adminApiRequest<{ passkeys: PasskeyItem[] }>("/auth/passkeys", {
       organization: false,
