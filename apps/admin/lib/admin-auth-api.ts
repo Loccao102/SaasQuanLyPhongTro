@@ -99,6 +99,7 @@ export type AuthConfig = {
   passwordRecoveryEnabled: boolean;
   googleEnabled: boolean;
   googleClientId: string | null;
+  passkeyPasswordlessEnabled: boolean;
 };
 
 export const adminAuthApi = {
