@@ -83,7 +83,21 @@ test("login creates opaque session, resolves memberships and supports revocation
       InvalidCredentialsError
     );
 
-    const loginResult = await service.login({ email, password });
+    await assert.rejects(
+      () =>
+        service.login({
+          email,
+          password,
+          accountType: "PLATFORM"
+        }),
+      InvalidCredentialsError
+    );
+
+    const loginResult = await service.login({
+      email,
+      password,
+      accountType: "TENANT"
+    });
     assert.equal("mfaRequired" in loginResult, false);
     if ("mfaRequired" in loginResult) {
       throw new Error("Fixture user unexpectedly requires MFA.");
@@ -126,7 +140,11 @@ test("login creates opaque session, resolves memberships and supports revocation
     await service.logout(login.sessionToken);
     assert.equal(await service.authenticateSession(login.sessionToken), null);
 
-    const secondLoginResult = await service.login({ email, password });
+    const secondLoginResult = await service.login({
+      email,
+      password,
+      accountType: "TENANT"
+    });
     assert.equal("mfaRequired" in secondLoginResult, false);
     if ("mfaRequired" in secondLoginResult) {
       throw new Error("Fixture user unexpectedly requires MFA.");
