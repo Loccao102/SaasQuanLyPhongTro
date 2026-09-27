@@ -16,6 +16,8 @@ export const platformPermissions = [
   "platform.billing.read",
   "platform.billing.manage",
   "platform.organizations.inspect",
+  "platform.accounts.read",
+  "platform.accounts.manage",
   "platform.jobs.read",
   "platform.jobs.manage",
   "platform.audit.read",
@@ -31,6 +33,7 @@ const rolePermissions: Record<PlatformRole, ReadonlySet<PlatformPermission>> = {
   SUPPORT_OPERATOR: new Set([
     "platform.cms.read",
     "platform.organizations.inspect",
+    "platform.accounts.read",
     "platform.audit.read"
   ]),
   OPS_OPERATOR: new Set([
