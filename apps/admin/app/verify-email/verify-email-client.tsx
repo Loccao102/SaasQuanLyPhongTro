@@ -10,7 +10,9 @@ export function VerifyEmailClient() {
   const { refresh } = useAdminAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [state, setState] = useState<"loading" | "success" | "error">("loading");
+  const [state, setState] = useState<
+    "loading" | "success" | "mfa-required" | "error"
+  >("loading");
   const [message, setMessage] = useState("Đang xác minh email…");
 
   useEffect(() => {
@@ -23,8 +25,27 @@ export function VerifyEmailClient() {
 
     let cancelled = false;
     void adminAuthApi.verifyEmail(token)
-      .then(async () => {
+      .then(async (result) => {
         if (cancelled) return;
+
+        if ("mfaEnrollmentRequired" in result) {
+          setState("mfa-required");
+          setMessage(
+            "Email đã được xác minh và tenant đã được tạo. Role " +
+              result.requiredByRole +
+              " bắt buộc bật MFA trước khi đăng nhập."
+          );
+          return;
+        }
+
+        if ("mfaRequired" in result) {
+          setState("mfa-required");
+          setMessage(
+            "Email đã được xác minh. Tài khoản đã bật MFA; hãy đăng nhập để xác thực hai bước."
+          );
+          return;
+        }
+
         await refresh();
         if (cancelled) return;
         setState("success");
@@ -64,7 +85,11 @@ export function VerifyEmailClient() {
           <p>{message}</p>
         </div>
 
-        {state === "error" ? (
+        {state === "mfa-required" ? (
+          <Link className="primary-button login-submit" href="/login">
+            Đăng nhập để thiết lập MFA
+          </Link>
+        ) : state === "error" ? (
           <Link className="secondary-button login-submit" href="/register">
             Đăng ký lại
           </Link>
