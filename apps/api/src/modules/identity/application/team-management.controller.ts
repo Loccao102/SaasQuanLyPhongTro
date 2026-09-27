@@ -11,6 +11,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../tenant-principal.guard.js";
+import { RequireTenantFeature } from "../tenant-feature.js";
 import type { TenantRequest } from "../tenant-principal.js";
 import { roles, type Role } from "../domain/access-control.js";
 import {
@@ -20,6 +21,7 @@ import {
 
 type BodyInput = Record<string, unknown>;
 
+@RequireTenantFeature("team_management")
 @Controller("admin/team")
 @UseGuards(TenantPrincipalGuard)
 export class TeamManagementController {
