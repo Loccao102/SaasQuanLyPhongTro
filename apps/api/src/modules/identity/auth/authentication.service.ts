@@ -227,7 +227,28 @@ export class AuthenticationService {
   ): Promise<SessionIdentity | null> {
     const tokenHash = safeTokenHash(sessionToken);
     if (!tokenHash) return null;
-    return this.repository.findSessionByTokenHash(tokenHash);
+
+    const now = Date.now();
+    const idleCutoff = new Date(
+      now - this.sessionIdleTtlHours() * 60 * 60 * 1000
+    );
+    const session = await this.repository.findSessionByTokenHash(
+      tokenHash,
+      idleCutoff
+    );
+    if (!session) return null;
+
+    const touchIntervalMs =
+      this.sessionTouchIntervalMinutes() * 60 * 1000;
+    if (now - session.lastSeenAt.getTime() >= touchIntervalMs) {
+      await this.repository.touchSession(
+        session.sessionId,
+        new Date(now - touchIntervalMs)
+      );
+      session.lastSeenAt = new Date(now);
+    }
+
+    return session;
   }
 
   membershipsForUser(userId: string): Promise<AuthMembershipSummary[]> {
@@ -375,6 +396,28 @@ export class AuthenticationService {
     if (!Number.isInteger(value) || value < 1 || value > 365) {
       throw new Error(
         "AUTH_SESSION_TTL_DAYS must be an integer between 1 and 365."
+      );
+    }
+    return value;
+  }
+
+  private sessionIdleTtlHours(): number {
+    const value = Number(process.env.AUTH_SESSION_IDLE_TTL_HOURS ?? "24");
+    if (!Number.isInteger(value) || value < 1 || value > 720) {
+      throw new Error(
+        "AUTH_SESSION_IDLE_TTL_HOURS must be an integer between 1 and 720."
+      );
+    }
+    return value;
+  }
+
+  private sessionTouchIntervalMinutes(): number {
+    const value = Number(
+      process.env.AUTH_SESSION_TOUCH_INTERVAL_MINUTES ?? "5"
+    );
+    if (!Number.isInteger(value) || value < 1 || value > 60) {
+      throw new Error(
+        "AUTH_SESSION_TOUCH_INTERVAL_MINUTES must be an integer between 1 and 60."
       );
     }
     return value;
