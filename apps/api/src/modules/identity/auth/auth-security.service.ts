@@ -472,7 +472,10 @@ export class AuthSecurityService {
     candidate: SecurityAlertCandidate;
   }): Promise<void> {
     const initialDeliveryStatus =
-      input.userId && input.email && input.candidate.severity !== "LOW"
+      input.userId &&
+      input.email &&
+      input.candidate.severity !== "LOW" &&
+      this.emailDelivery.isSecurityAlertAvailable()
         ? "PENDING"
         : "SKIPPED";
 
