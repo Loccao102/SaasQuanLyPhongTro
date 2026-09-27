@@ -11,6 +11,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -86,6 +87,7 @@ function optionalPropertyType(input: AssetBody): PropertyType | undefined {
   return requiredPropertyType(input);
 }
 
+@RequireTenantFeature("properties")
 @Controller("admin/assets")
 @UseGuards(TenantPrincipalGuard)
 export class AssetCommandController {
