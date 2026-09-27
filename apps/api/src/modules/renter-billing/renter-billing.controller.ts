@@ -11,6 +11,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -41,6 +42,7 @@ function requiredUuid(input: BodyInput, field: string): string {
   return value;
 }
 
+@RequireTenantFeature("billing")
 @Controller("admin/renter-billing")
 @UseGuards(TenantPrincipalGuard)
 export class RenterBillingController {
