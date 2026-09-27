@@ -28,7 +28,17 @@ export type MfaRequiredResult = {
   expiresAt: string;
 };
 
-export type AdminAuthenticationResult = AdminSession | MfaRequiredResult;
+export type MfaEnrollmentRequiredResult = {
+  mfaEnrollmentRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  requiredByRole: string;
+};
+
+export type AdminAuthenticationResult =
+  | AdminSession
+  | MfaRequiredResult
+  | MfaEnrollmentRequiredResult;
 
 export type AdminSession = {
   user: {
@@ -139,6 +149,32 @@ export const adminAuthApi = {
       csrf: false
     }),
 
+  setupRequiredMfa: (challengeToken: string) =>
+    adminApiRequest<{
+      secret: string;
+      provisioningUri: string;
+      requiredByRole: string;
+    }>("/auth/mfa/enrollment/setup", {
+      method: "POST",
+      body: { challengeToken },
+      organization: false,
+      csrf: false
+    }),
+
+  confirmRequiredMfa: (input: {
+    challengeToken: string;
+    code: string;
+  }) =>
+    adminApiRequest<AdminSession & { recoveryCodes: string[] }>(
+      "/auth/mfa/enrollment/confirm",
+      {
+        method: "POST",
+        body: input,
+        organization: false,
+        csrf: false
+      }
+    ),
+
   verifyMfa: (input: { challengeToken: string; code: string }) =>
     adminApiRequest<AdminSession>("/auth/mfa/verify", {
       method: "POST",
@@ -148,7 +184,11 @@ export const adminAuthApi = {
     }),
 
   mfaStatus: () =>
-    adminApiRequest<{ enabled: boolean }>("/auth/mfa", {
+    adminApiRequest<{
+      enabled: boolean;
+      required: boolean;
+      requiredByRole: string | null;
+    }>("/auth/mfa", {
       organization: false
     }),
 
