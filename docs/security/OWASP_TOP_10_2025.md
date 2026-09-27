@@ -120,13 +120,17 @@ Implemented controls:
 - OWNER and PLATFORM_ADMIN are required to enroll by default before a new browser session is issued;
 - mandatory enrollment uses a short-lived ENROLL challenge and never grants a temporary business session;
 - Authenticator QR codes are rendered locally in the Habi frontend, so the TOTP provisioning secret is not sent to a third-party QR service;
-- accounts whose role is still covered by MFA policy cannot disable MFA.
+- accounts whose role is still covered by MFA policy cannot disable MFA;
+- WebAuthn/passkeys can be registered from an authenticated CSRF-protected session and used as a phishing-resistant second factor after primary login;
+- passkey registration/authentication challenges are short-lived and one-time, and passkey authentication atomically consumes both the WebAuthn challenge and its parent MFA challenge;
+- WebAuthn verification requires user verification and validates the configured relying-party ID and exact allowed origins.
 
 Residual work before public launch:
 
 - decide whether additional roles should be added to the mandatory MFA policy;
 - decide whether already-active pre-policy sessions should be force-revoked at rollout or allowed to age out;
-- add WebAuthn/passkeys if phishing-resistant MFA is required;
+- decide whether to enable passwordless/passkey-first login after the second-factor rollout is proven in production;
+- decide whether mandatory MFA enrollment should allow passkey-first enrollment instead of requiring initial TOTP enrollment;
 - connect production authentication alerts to the chosen incident channel.
 
 ## A08 — Software or Data Integrity Failures
