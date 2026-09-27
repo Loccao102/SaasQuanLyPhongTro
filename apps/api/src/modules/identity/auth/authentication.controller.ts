@@ -128,6 +128,9 @@ export class AuthenticationController {
       memberships: await this.authentication.membershipsForUser(
         session.userId
       ),
+      features: await this.authentication.featuresForOrganization(
+        session.organizationId
+      ),
       expiresAt: session.expiresAt.toISOString()
     };
   }
@@ -212,6 +215,7 @@ export class AuthenticationController {
     return {
       user: result.user,
       memberships: result.memberships,
+      features: result.features,
       expiresAt: result.expiresAt.toISOString()
     };
   }
