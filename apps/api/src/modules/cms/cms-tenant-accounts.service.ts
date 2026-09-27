@@ -9,6 +9,10 @@ import {
   CommercialPolicyService,
   CommercialResourceLimitExceededError
 } from "../commercial/application/commercial-policy.service.js";
+import {
+  tenantFeatureEnabled,
+  tenantFeatureKeys
+} from "../commercial/domain/entitlements.js";
 import { DatabaseService } from "../database/database.service.js";
 import { roles, type Role } from "../identity/domain/access-control.js";
 import { hashPassword, InvalidPasswordPolicyError } from "../identity/auth/password.js";
@@ -71,6 +75,17 @@ export class CmsTenantAccountsService {
         organizationId,
         used: result.rows.length,
         limit: policy.entitlements.staffLimit,
+        planCode: policy.planCode,
+        subscriptionStatus: policy.subscriptionStatus,
+        features: Object.fromEntries(
+          tenantFeatureKeys.map((key) => [
+            key,
+            {
+              enabled: tenantFeatureEnabled(policy.entitlements, key),
+              source: policy.entitlements.source[key]
+            }
+          ])
+        ),
         accounts: result.rows.map((row) => this.mapAccount(row))
       };
     });
@@ -202,6 +217,85 @@ export class CmsTenantAccountsService {
         role,
         membershipStatus: "ACTIVE" as const
       };
+    });
+  }
+
+  async setRole(
+    principal: PlatformPrincipal,
+    organizationId: string,
+    userId: string,
+    roleInput: string,
+    reason: string
+  ) {
+    this.requirePermission(principal, "platform.accounts.manage");
+    const role = this.role(roleInput);
+    const auditReason = this.required(reason, "reason");
+
+    return this.db.withTransaction(async (client) => {
+      const before = await this.accountForUpdate(client, organizationId, userId);
+
+      if (before.role === "OWNER" && role !== "OWNER") {
+        const owners = await client.query<QueryResultRow & { count: number }>(
+          `SELECT count(*)::int AS count
+           FROM organization_memberships
+           WHERE organization_id = $1::uuid
+             AND role = 'OWNER'
+             AND status = 'ACTIVE'`,
+          [organizationId]
+        );
+        if ((owners.rows[0]?.count ?? 0) <= 1) {
+          throw new ConflictException(
+            "Tenant phải luôn còn ít nhất một OWNER đang hoạt động."
+          );
+        }
+      }
+
+      await client.query(
+        `UPDATE organization_memberships
+         SET role = $3,
+             updated_at = now()
+         WHERE organization_id = $1::uuid
+           AND user_id = $2::uuid`,
+        [organizationId, userId, role]
+      );
+
+      if (role === "OWNER") {
+        const membership = await client.query<QueryResultRow & { id: string }>(
+          `SELECT id::text
+           FROM organization_memberships
+           WHERE organization_id = $1::uuid
+             AND user_id = $2::uuid
+           LIMIT 1`,
+          [organizationId, userId]
+        );
+        const membershipId = membership.rows[0]?.id;
+        if (membershipId) {
+          await client.query(
+            `DELETE FROM membership_scopes
+             WHERE organization_id = $1::uuid
+               AND membership_id = $2::uuid`,
+            [organizationId, membershipId]
+          );
+          await client.query(
+            `INSERT INTO membership_scopes (
+               organization_id, membership_id, scope_type
+             )
+             VALUES ($1, $2, 'ORGANIZATION')`,
+            [organizationId, membershipId]
+          );
+        }
+      }
+
+      await this.audit(client, principal, {
+        action: "TENANT_ACCOUNT_ROLE_CHANGED",
+        organizationId,
+        targetKey: userId,
+        before: { role: before.role },
+        after: { role },
+        reason: auditReason
+      });
+
+      return { userId, organizationId, role };
     });
   }
 
