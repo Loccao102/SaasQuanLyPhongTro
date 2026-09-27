@@ -1,13 +1,13 @@
 # ADR-0014: DB-backed Browser Sessions and Trusted Principals
 
-- Status: Accepted
+- Status: Accepted, amended by ADR-0017
 - Date: 2026-09-25
 
 ## Context
 
 Tenant and CMS guards already understand trusted `authenticatedUserId`, but development currently falls back to environment user IDs. The product needs real browser authentication before production tenant/CMS mutations can rely on those guards.
 
-The product also has multiple organizations per user, so the browser-selected organization cannot itself be trusted as authorization.
+At the time of this decision the product allowed multiple organizations per user. ADR-0017 later narrows tenant accounts to one organization per account and binds that organization into the session.
 
 ## Decision
 
@@ -34,9 +34,9 @@ Browser transport:
 - production cookies are Secure and use host-only `__Host-` defaults.
 
 Organization selection:
-- client sends `X-Organization-Id`;
-- server treats it only as a selector;
-- `TenantPrincipalGuard` loads membership/scopes from PostgreSQL before authorization.
+- ADR-0017 makes the tenant stored in the authenticated session authoritative;
+- a conflicting `X-Organization-Id` is rejected;
+- `TenantPrincipalGuard` still loads membership/scopes from PostgreSQL before authorization.
 
 Platform access:
 - CMS session resolves user identity first;
