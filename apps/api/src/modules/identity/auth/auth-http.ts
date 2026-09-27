@@ -15,6 +15,10 @@ export function allowedBrowserOrigins(): string[] {
     return configured;
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CORS_ORIGINS must be configured in production.");
+  }
+
   return [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -27,7 +31,17 @@ export function assertTrustedBrowserOrigin(request: HeaderCarrier): void {
   const value = request.headers?.origin;
   const origin = Array.isArray(value) ? value[0] : value;
 
-  if (origin && !allowedBrowserOrigins().includes(origin)) {
+  if (!origin) {
+    if (
+      process.env.NODE_ENV === "production" &&
+      isUnsafeHttpMethod(request.method)
+    ) {
+      throw new ForbiddenException("Request origin is required.");
+    }
+    return;
+  }
+
+  if (!allowedBrowserOrigins().includes(origin)) {
     throw new ForbiddenException("Request origin is not allowed.");
   }
 }
@@ -43,7 +57,12 @@ export function authCookieNames() {
       process.env.AUTH_CSRF_COOKIE_NAME?.trim() ||
       (process.env.NODE_ENV === "production"
         ? "__Host-propops_csrf"
-        : "propops_csrf")
+        : "propops_csrf"),
+    googleNonce:
+      process.env.AUTH_GOOGLE_NONCE_COOKIE_NAME?.trim() ||
+      (process.env.NODE_ENV === "production"
+        ? "__Host-propops_google_nonce"
+        : "propops_google_nonce")
   };
 }
 
