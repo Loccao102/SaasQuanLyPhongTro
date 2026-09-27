@@ -24,20 +24,6 @@ type PropertySummaryRow = QueryResultRow & {
 
 type PropertyDetailRow = PropertySummaryRow;
 
-type FloorRoomRow = QueryResultRow & {
-  floor_id: string | null;
-  floor_code: string | null;
-  floor_name: string | null;
-  floor_sort_order: number | null;
-  room_id: string;
-  room_code: string;
-  room_name: string;
-  room_sort_order: number;
-  lease_id: string | null;
-  lease_code: string | null;
-  lease_status: string | null;
-};
-
 type RoomDetailRow = QueryResultRow & {
   id: string;
   code: string;
