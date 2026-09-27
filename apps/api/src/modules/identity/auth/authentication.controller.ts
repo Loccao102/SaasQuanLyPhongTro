@@ -16,6 +16,8 @@ import {
   readCsrfHeader,
   serializeAuthCookie
 } from "./auth-http.js";
+import { AuthSecurityService } from "./auth-security.service.js";
+import { generateOpaqueToken } from "./session-token.js";
 import {
   AuthenticationService,
   InvalidCredentialsError,
@@ -26,11 +28,35 @@ type BodyInput = Record<string, unknown>;
 
 @Controller("auth")
 export class AuthenticationController {
-  constructor(private readonly authentication: AuthenticationService) {}
+  constructor(
+    private readonly authentication: AuthenticationService,
+    private readonly security: AuthSecurityService
+  ) {}
 
   @Get("config")
   config() {
     return this.authentication.authConfig();
+  }
+
+  @Get("google/challenge")
+  async googleChallenge(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    assertTrustedBrowserOrigin(request);
+    await this.security.assertGoogleChallengeAllowed(this.requestIp(request));
+
+    const nonce = generateOpaqueToken();
+    const names = authCookieNames();
+    response.setHeader("Cache-Control", "no-store");
+    response.append(
+      "Set-Cookie",
+      serializeAuthCookie(names.googleNonce, nonce, {
+        httpOnly: true,
+        maxAgeSeconds: 5 * 60
+      })
+    );
+    return { nonce };
   }
 
   @Post("login")
@@ -41,13 +67,31 @@ export class AuthenticationController {
   ) {
     assertTrustedBrowserOrigin(request);
 
+    const email = this.requiredString(body.email, "email");
+    const ip = this.requestIp(request);
+    await this.security.assertPasswordLoginAllowed(email, ip);
+
     try {
       const result = await this.authentication.login({
-        email: this.requiredString(body.email, "email"),
+        email,
         password: this.requiredString(body.password, "password")
+      });
+      await this.security.recordEvent({
+        eventType: "PASSWORD_LOGIN",
+        outcome: "SUCCESS",
+        email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
       });
       return this.finishAuthentication(response, result);
     } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PASSWORD_LOGIN",
+        outcome: "FAILURE",
+        email,
+        ip
+      });
       if (error instanceof InvalidCredentialsError) {
         throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
       }
@@ -63,17 +107,40 @@ export class AuthenticationController {
   ) {
     assertTrustedBrowserOrigin(request);
 
-    const result = await this.authentication.register({
-      email: this.requiredString(body.email, "email"),
-      password: this.requiredString(body.password, "password"),
-      displayName: this.requiredString(body.displayName, "displayName"),
-      organizationName: this.requiredString(
-        body.organizationName,
-        "organizationName"
-      )
-    });
+    const ip = this.requestIp(request);
+    const email = this.requiredString(body.email, "email");
+    await this.security.assertRegistrationAllowed(ip);
 
-    return this.finishAuthentication(response, result);
+    try {
+      const result = await this.authentication.register({
+        email,
+        password: this.requiredString(body.password, "password"),
+        displayName: this.requiredString(body.displayName, "displayName"),
+        organizationName: this.requiredString(
+          body.organizationName,
+          "organizationName"
+        )
+      });
+      await this.security.recordEvent({
+        eventType: "TENANT_REGISTER",
+        outcome: "SUCCESS",
+        email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId,
+        metadata: { method: "PASSWORD" }
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "TENANT_REGISTER",
+        outcome: "FAILURE",
+        email,
+        ip,
+        metadata: { method: "PASSWORD" }
+      });
+      throw error;
+    }
   }
 
   @Post("google")
@@ -89,17 +156,57 @@ export class AuthenticationController {
       throw new BadRequestException("mode must be LOGIN or REGISTER.");
     }
 
+    const ip = this.requestIp(request);
+    await this.security.assertGoogleAllowed(ip);
+
+    const names = authCookieNames();
+    const nonce = parseCookies(request.headers.cookie)[names.googleNonce];
+    response.append(
+      "Set-Cookie",
+      serializeAuthCookie(names.googleNonce, "", {
+        httpOnly: true,
+        maxAgeSeconds: 0
+      })
+    );
+    if (!nonce) {
+      await this.security.recordEvent({
+        eventType: "GOOGLE_AUTH",
+        outcome: "FAILURE",
+        ip,
+        metadata: { mode, reason: "MISSING_NONCE" }
+      });
+      throw new UnauthorizedException(
+        "Google sign-in challenge đã hết hạn. Vui lòng thử lại."
+      );
+    }
+
     try {
       const result = await this.authentication.google({
         credential: this.requiredString(body.credential, "credential"),
         mode,
+        expectedNonce: nonce,
         organizationName:
           typeof body.organizationName === "string"
             ? body.organizationName
             : undefined
       });
+      await this.security.recordEvent({
+        eventType: "GOOGLE_AUTH",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId,
+        metadata: { mode }
+      });
       return this.finishAuthentication(response, result);
     } catch (error) {
+      await this.security.recordEvent({
+        eventType: "GOOGLE_AUTH",
+        outcome: "FAILURE",
+        ip,
+        metadata: { mode }
+      });
       if (error instanceof InvalidCredentialsError) {
         throw new UnauthorizedException("Tài khoản không còn hoạt động.");
       }
@@ -201,16 +308,21 @@ export class AuthenticationController {
     const names = authCookieNames();
     const maxAgeSeconds = this.authentication.sessionTtlSeconds();
 
-    response.setHeader("Set-Cookie", [
+    response.setHeader("Cache-Control", "no-store");
+    response.append(
+      "Set-Cookie",
       serializeAuthCookie(names.session, result.sessionToken, {
         httpOnly: true,
         maxAgeSeconds
-      }),
+      })
+    );
+    response.append(
+      "Set-Cookie",
       serializeAuthCookie(names.csrf, result.csrfToken, {
         httpOnly: false,
         maxAgeSeconds
       })
-    ]);
+    );
 
     return {
       user: result.user,
@@ -222,6 +334,10 @@ export class AuthenticationController {
 
   private sessionCookie(request: Request): string | undefined {
     return parseCookies(request.headers.cookie)[authCookieNames().session];
+  }
+
+  private requestIp(request: Request): string {
+    return request.ip || request.socket.remoteAddress || "unknown";
   }
 
   private requiredString(value: unknown, field: string): string {
