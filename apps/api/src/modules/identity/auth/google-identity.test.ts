@@ -7,6 +7,8 @@ import test from "node:test";
 import { verifyGoogleIdentityToken } from "./google-identity.js";
 
 const clientId = "test-client.apps.googleusercontent.com";
+const validNonce = "nonce-a-0123456789abcdef0123456789abcdef";
+const replayNonce = "nonce-b-fedcba9876543210fedcba9876543210";
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048
 });
@@ -56,9 +58,9 @@ test("Google identity accepts a valid signed token with the expected nonce", asy
 
   try {
     const identity = await verifyGoogleIdentityToken(
-      jwt({ nonce: "nonce-123" }),
+      jwt({ nonce: validNonce }),
       clientId,
-      "nonce-123"
+      validNonce
     );
 
     assert.equal(identity.subject, "google-user-123");
@@ -73,9 +75,9 @@ test("Google identity rejects replay with the wrong nonce", async () => {
   await assert.rejects(
     () =>
       verifyGoogleIdentityToken(
-        jwt({ nonce: "nonce-original" }),
+        jwt({ nonce: validNonce }),
         clientId,
-        "nonce-attacker"
+        replayNonce
       ),
     /không vượt qua bước xác thực/
   );
@@ -86,11 +88,11 @@ test("Google identity rejects a token issued for another client", async () => {
     () =>
       verifyGoogleIdentityToken(
         jwt({
-          nonce: "nonce-123",
+          nonce: validNonce,
           audience: "attacker.apps.googleusercontent.com"
         }),
         clientId,
-        "nonce-123"
+        validNonce
       ),
     /không vượt qua bước xác thực/
   );
