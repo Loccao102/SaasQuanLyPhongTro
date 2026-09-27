@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { ConflictException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable
+} from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { SubscriptionManagementService } from "../../commercial/application/subscription-management.service.js";
 import { DatabaseService } from "../../database/database.service.js";
@@ -61,8 +65,19 @@ export class TenantOnboardingService {
       }
 
       const organizationName = input.organizationName.trim();
+      const displayName = input.displayName.trim();
       if (!organizationName) {
-        throw new ConflictException("Tên tenant/cơ sở quản lý là bắt buộc.");
+        throw new BadRequestException("Tên tenant/cơ sở quản lý là bắt buộc.");
+      }
+      if (organizationName.length > 160) {
+        throw new BadRequestException(
+          "Tên tenant/cơ sở quản lý không được vượt quá 160 ký tự."
+        );
+      }
+      if (!displayName || displayName.length > 120) {
+        throw new BadRequestException(
+          "Họ tên phải có từ 1 đến 120 ký tự."
+        );
       }
 
       const slugBase = this.slug(organizationName);
@@ -84,7 +99,7 @@ export class TenantOnboardingService {
          )
          VALUES ($1, 'TENANT', $2, $3, 'ACTIVE')
          RETURNING id::text, auth_version`,
-        [organizationId, email, input.displayName.trim()]
+        [organizationId, email, displayName]
       );
       const userId = user.rows[0]!.id;
 
@@ -163,7 +178,7 @@ export class TenantOnboardingService {
         userId,
         organizationId,
         email,
-        displayName: input.displayName.trim(),
+        displayName,
         authVersion: user.rows[0]!.auth_version
       };
     });
