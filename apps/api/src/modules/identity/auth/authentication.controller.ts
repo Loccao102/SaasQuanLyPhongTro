@@ -38,7 +38,7 @@ export class AuthenticationController {
     return this.authentication.authConfig();
   }
 
-  @Get("google/challenge")
+  @Post("google/challenge")
   async googleChallenge(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response
