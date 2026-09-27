@@ -78,7 +78,9 @@ export class AuthenticationService {
     return {
       registrationEnabled: await this.requireOnboarding().registrationEnabled(),
       passwordRegistrationEnabled:
-        await this.requireOnboarding().passwordRegistrationEnabled(),
+        (await this.requireOnboarding().passwordRegistrationEnabled()) &&
+        this.requireAuthEmail().isAvailable(),
+      passwordRecoveryEnabled: this.requireAuthEmail().isAvailable(),
       googleEnabled:
         Boolean(googleClientId) && (await this.requireOnboarding().googleAuthEnabled()),
       googleClientId
@@ -112,6 +114,12 @@ export class AuthenticationService {
     displayName: string;
     organizationName: string;
   }): Promise<{ pendingVerification: true; email: string }> {
+    if (!this.requireAuthEmail().isAvailable()) {
+      throw new ConflictException(
+        "Đăng ký bằng email/mật khẩu chưa được cấu hình."
+      );
+    }
+
     const email = this.email(input.email);
     const displayName = this.required(input.displayName, "displayName");
     const organizationName = this.required(
