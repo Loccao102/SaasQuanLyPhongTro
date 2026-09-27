@@ -1,5 +1,7 @@
 "use client";
 
+import { DateTimeInput } from "@propops/ui/date-input";
+
 import {
   useCallback,
   useEffect,
@@ -7,7 +9,7 @@ import {
   type FormEvent
 } from "react";
 import { ExportOutlined, CopyOutlined, LinkOutlined } from "@ant-design/icons";
-import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../../components/admin-shell";
 import { renterBillingApi } from "../../../../../lib/renter-billing-api";
 import {
@@ -207,7 +209,7 @@ export function ManualPaymentAllocationClient({
               </span>
               <h2>{data.invoice.primaryResidentName}</h2>
               <p>
-                Hạn {data.invoice.dueDate} · Invoice {data.invoice.status}
+                Hạn {formatDateVi(data.invoice.dueDate)} · Invoice {data.invoice.status}
               </p>
               <code>{data.invoice.paymentReference}</code>
             </div>
@@ -312,9 +314,9 @@ export function ManualPaymentAllocationClient({
                 </label>
                 <label>
                   <span>Thời điểm nhận tiền</span>
-                  <input
+                  <DateTimeInput
                     name="occurredAt"
-                    type="datetime-local"
+                    
                     required
                     defaultValue={localDateTimeDefault()}
                   />
