@@ -61,6 +61,12 @@ export function RegisterClient() {
     setError(null);
 
     try {
+      if (config?.passwordRegistrationEnabled === false) {
+        throw new Error(
+          "Đăng ký bằng email/mật khẩu đang tắt. Hãy dùng Google hoặc liên hệ quản trị viên."
+        );
+      }
+
       const session = await auth.register({
         displayName: String(form.get("displayName") ?? ""),
         organizationName: String(form.get("organizationName") ?? ""),
@@ -179,40 +185,49 @@ export function RegisterClient() {
             </>
           ) : null}
 
-          <label>
-            <span>Họ tên OWNER</span>
-            <input
-              name="displayName"
-              autoComplete="name"
-              required
-              disabled={submitting}
-            />
-          </label>
+          {config?.passwordRegistrationEnabled !== false ? (
+            <>
+              <label>
+                <span>Họ tên OWNER</span>
+                <input
+                  name="displayName"
+                  autoComplete="name"
+                  required
+                  disabled={submitting}
+                />
+              </label>
 
-          <label>
-            <span>Email</span>
-            <input
-              name="email"
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              required
-              disabled={submitting}
-            />
-          </label>
+              <label>
+                <span>Email</span>
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  required
+                  disabled={submitting}
+                />
+              </label>
 
-          <label>
-            <span>Mật khẩu</span>
-            <input
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              minLength={12}
-              required
-              disabled={submitting}
-            />
-            <small>Tối thiểu 12 ký tự.</small>
-          </label>
+              <label>
+                <span>Mật khẩu</span>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  required
+                  disabled={submitting}
+                />
+                <small>Tối thiểu 12 ký tự.</small>
+              </label>
+            </>
+          ) : (
+            <div className="login-inline-state">
+              CMS đang tắt đăng ký bằng mật khẩu. Hãy dùng Google để xác minh
+              email hoặc liên hệ quản trị viên.
+            </div>
+          )}
 
           {error ? (
             <div className="login-error" role="alert">
@@ -220,13 +235,15 @@ export function RegisterClient() {
             </div>
           ) : null}
 
-          <button
-            className="primary-button login-submit"
-            type="submit"
-            disabled={submitting || auth.status === "loading"}
-          >
-            {submitting ? "Đang tạo tenant…" : "Tạo tenant & bắt đầu dùng thử"}
-          </button>
+          {config?.passwordRegistrationEnabled !== false ? (
+            <button
+              className="primary-button login-submit"
+              type="submit"
+              disabled={submitting || auth.status === "loading"}
+            >
+              {submitting ? "Đang tạo tenant…" : "Tạo tenant & bắt đầu dùng thử"}
+            </button>
+          ) : null}
         </form>
 
         <p className="login-footnote">
