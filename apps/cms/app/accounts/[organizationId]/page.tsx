@@ -23,6 +23,10 @@ type AccountAction =
       enabled: boolean;
       source: "PLAN" | "OVERRIDE";
     }
+  | {
+      kind: "featureReset";
+      feature: CmsTenantFeatureKey;
+    }
   | null;
 
 const roles: CmsTenantAccount["role"][] = [
@@ -164,6 +168,15 @@ export default function TenantAccountsPage() {
           (!action.enabled ? "Đã bật " : "Đã tắt ") +
             featureLabels[action.feature] +
             " cho tenant."
+        );
+      } else if (action.kind === "featureReset") {
+        await cmsApi.revokeEntitlementOverride(
+          organizationId,
+          action.feature,
+          reason
+        );
+        setSuccess(
+          "Đã trả " + featureLabels[action.feature] + " về cấu hình theo plan."
         );
       } else if (action.kind === "resetPassword") {
         await cmsApi.resetTenantAccountPassword(
@@ -321,20 +334,36 @@ export default function TenantAccountsPage() {
                   </StatusBadge>
                 </div>
                 <small>Nguồn: {state.source}</small>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() =>
-                    setAction({
-                      kind: "feature",
-                      feature,
-                      enabled: state.enabled,
-                      source: state.source
-                    })
-                  }
-                >
-                  {state.enabled ? "Tắt cho tenant" : "Bật cho tenant"}
-                </button>
+                <div className="table-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() =>
+                      setAction({
+                        kind: "feature",
+                        feature,
+                        enabled: state.enabled,
+                        source: state.source
+                      })
+                    }
+                  >
+                    {state.enabled ? "Tắt cho tenant" : "Bật cho tenant"}
+                  </button>
+                  {state.source === "OVERRIDE" ? (
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() =>
+                        setAction({
+                          kind: "featureReset",
+                          feature
+                        })
+                      }
+                    >
+                      Dùng lại plan
+                    </button>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
@@ -442,14 +471,18 @@ export default function TenantAccountsPage() {
                   ? "Đổi role tài khoản"
                   : action.kind === "feature"
                     ? (action.enabled ? "Tắt " : "Bật ") + featureLabels[action.feature]
-                    : action.kind === "resetPassword"
+                    : action.kind === "featureReset"
+                      ? "Trả về cấu hình theo plan: " + featureLabels[action.feature]
+                      : action.kind === "resetPassword"
                       ? "Reset mật khẩu"
                       : "Thu hồi toàn bộ session"}
             </h2>
             <p className="modal-warning">
               {action.kind === "feature"
                 ? `Thay đổi này áp cho toàn tenant và được backend enforce ngay. Nguồn hiện tại: ${action.source}.`
-                : `${action.account.displayName} · ${action.account.email}`}
+                : action.kind === "featureReset"
+                  ? "Override hiện tại sẽ bị revoke và feature quay về giá trị của plan."
+                  : `${action.account.displayName} · ${action.account.email}`}
               {action.kind === "status" && action.status === "SUSPENDED"
                 ? ". Session đang hoạt động sẽ bị thu hồi ngay."
                 : action.kind === "resetPassword"
