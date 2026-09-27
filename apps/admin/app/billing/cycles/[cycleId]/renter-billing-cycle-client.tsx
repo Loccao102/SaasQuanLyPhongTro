@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExportOutlined, CopyOutlined } from "@ant-design/icons";
-import { MoneyDisplay, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
   renterBillingApi,
@@ -301,8 +301,8 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
               <span className="eyebrow">{data.cycle.property.code}</span>
               <h2>{data.cycle.code}</h2>
               <p>
-                {data.cycle.periodStart} → {data.cycle.periodEnd} · hạn{" "}
-                {data.cycle.dueDate}
+                {formatDateVi(data.cycle.periodStart)} → {formatDateVi(data.cycle.periodEnd)} · hạn{" "}
+                {formatDateVi(data.cycle.dueDate)}
               </p>
             </div>
             <div className="button-row">

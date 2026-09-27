@@ -2,11 +2,20 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
+  CheckOutlined,
+  CloseOutlined,
+  ToolOutlined,
+  PlayCircleOutlined,
+  StopOutlined,
+  DeleteOutlined
+} from "@ant-design/icons";
+import {
   MetricCard,
   MoneyDisplay,
   PageHeader,
   SectionHeader,
-  StatusBadge
+  StatusBadge,
+  formatDateVi
 } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -439,10 +448,10 @@ export function MaintenanceClient() {
                     </div>
 
                     <div style={{ textAlign: "right", fontSize: "0.8rem", color: "var(--color-muted, #64748b)" }}>
-                      <div>Báo lúc: {new Date(ticket.reportedAt).toLocaleString("vi-VN")}</div>
+                      <div>Báo lúc: {formatDateVi(ticket.reportedAt)}</div>
                       {ticket.resolvedAt ? (
                         <div style={{ color: "#16a34a", fontWeight: 500 }}>
-                          Khắc phục: {new Date(ticket.resolvedAt).toLocaleString("vi-VN")}
+                          Khắc phục: {formatDateVi(ticket.resolvedAt)}
                         </div>
                       ) : null}
                     </div>
@@ -487,7 +496,7 @@ export function MaintenanceClient() {
                         </strong>
                         {ticket.linkedExpenseId ? (
                           <span style={{ marginLeft: "0.4rem", color: "#16a34a", fontSize: "0.75rem" }}>
-                            ✓ Đã hạch toán sổ quỹ
+                            <CheckOutlined /> Đã hạch toán sổ quỹ
                           </span>
                         ) : null}
                       </div>
@@ -540,7 +549,7 @@ export function MaintenanceClient() {
                         style={{ padding: "0.35rem 0.75rem", fontSize: "0.85rem" }}
                         onClick={() => setResolvingTicket(ticket)}
                       >
-                        ✓ Hoàn thành khắc phục
+                        <CheckOutlined /> Hoàn thành khắc phục
                       </button>
                     ) : null}
 
@@ -616,7 +625,7 @@ export function MaintenanceClient() {
                 onClick={() => setShowCreateModal(false)}
                 style={{ background: "none", border: "none", fontSize: "1.25rem", cursor: "pointer", color: "#64748b" }}
               >
-                ✕
+                <CloseOutlined />
               </button>
             </div>
 
@@ -731,7 +740,7 @@ export function MaintenanceClient() {
                 onClick={() => setResolvingTicket(null)}
                 style={{ background: "none", border: "none", fontSize: "1.25rem", cursor: "pointer", color: "#64748b" }}
               >
-                ✕
+                <CloseOutlined />
               </button>
             </div>
 

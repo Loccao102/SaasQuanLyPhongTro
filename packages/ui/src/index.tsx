@@ -77,3 +77,31 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
 export function MoneyDisplay({ amountVnd }: { amountVnd: number }) {
   return <>{new Intl.NumberFormat("vi-VN").format(amountVnd)}đ</>;
 }
+
+export function formatDateVi(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return "—";
+    const day = String(value.getDate()).padStart(2, "0");
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const year = value.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  const str = String(value).trim();
+  const dateMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    return `${day}/${month}/${year}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    return str;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const day = String(parsed.getDate()).padStart(2, "0");
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const year = parsed.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  return str;
+}

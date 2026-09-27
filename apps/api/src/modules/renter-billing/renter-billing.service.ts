@@ -314,8 +314,8 @@ export class RenterBillingService {
     const periodStart = this.isoDate(input.periodStart, "periodStart");
     const periodEnd = this.isoDate(input.periodEnd, "periodEnd");
     const dueDate = this.isoDate(input.dueDate, "dueDate");
-    if (periodEnd < periodStart) {
-      throw new ConflictException("periodEnd cannot be earlier than periodStart.");
+    if (periodEnd <= periodStart) {
+      throw new ConflictException("periodEnd must be greater than periodStart.");
     }
     if (dueDate < periodStart) {
       throw new ConflictException("dueDate cannot be earlier than periodStart.");

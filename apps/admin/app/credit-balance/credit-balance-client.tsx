@@ -8,7 +8,7 @@ import {
   PlusOutlined,
   MinusOutlined
 } from "@ant-design/icons";
-import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   creditBalanceApi,
@@ -26,15 +26,7 @@ function formatVnd(amount: number) {
   }).format(amount);
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
+
 
 function movementMeta(type: CreditMovementType) {
   switch (type) {
@@ -295,7 +287,7 @@ export function CreditBalanceClient() {
                         const isPositive = m.amountVnd > 0;
                         return (
                           <tr key={m.id}>
-                            <td>{formatDate(m.createdAt)}</td>
+                            <td>{formatDateVi(m.createdAt)}</td>
                             <td>
                               <StatusBadge tone={meta.tone}>
                                 {meta.label}
@@ -337,7 +329,7 @@ export function CreditBalanceClient() {
                     <tbody>
                       {refunds.map((r) => (
                         <tr key={r.id}>
-                          <td>{formatDate(r.createdAt)}</td>
+                          <td>{formatDateVi(r.createdAt)}</td>
                           <td style={{ fontWeight: 600 }}>{formatVnd(r.amountVnd)}</td>
                           <td>
                             <StatusBadge tone="neutral">

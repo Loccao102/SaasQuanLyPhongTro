@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { MetricCard, StatusBadge } from "@propops/ui";
+import { CloseOutlined } from "@ant-design/icons";
+import { MetricCard, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
   adminAssetsApi,
@@ -389,7 +390,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                         onClick={() => void handleDeleteEquipment(item.id, item.name)}
                         title="Xoá thiết bị"
                       >
-                        ✕
+                        <CloseOutlined />
                       </button>
                     </div>
                   </div>
@@ -403,8 +404,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               <section className="metrics-grid">
                 <MetricCard label="Tiền thuê" value={money(data.currentLease.baseRentVnd)} detail="Snapshot trên hợp đồng hiện tại" tone="info" />
                 <MetricCard label="Tiền cọc yêu cầu" value={money(data.currentLease.depositRequiredVnd)} detail="Snapshot trên hợp đồng hiện tại" tone="info" />
-                <MetricCard label="Bắt đầu" value={data.currentLease.startDate ?? "—"} detail={data.currentLease.code} tone="success" />
-                <MetricCard label="Kết thúc dự kiến" value={data.currentLease.plannedEndDate ?? "Chưa đặt"} detail={data.currentLease.status} tone="warning" />
+                <MetricCard label="Bắt đầu" value={formatDateVi(data.currentLease.startDate)} detail={data.currentLease.code} tone="success" />
+                <MetricCard label="Kết thúc dự kiến" value={data.currentLease.plannedEndDate ? formatDateVi(data.currentLease.plannedEndDate) : "Chưa đặt"} detail={data.currentLease.status} tone="warning" />
               </section>
 
               <section className="panel">
@@ -420,8 +421,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 <div className="detail-grid">
                   <div><span>Lease ID</span><strong>{data.currentLease.id}</strong></div>
                   <div><span>Trạng thái</span><strong>{data.currentLease.status}</strong></div>
-                  <div><span>Ngày bắt đầu</span><strong>{data.currentLease.startDate ?? "—"}</strong></div>
-                  <div><span>Ngày kết thúc dự kiến</span><strong>{data.currentLease.plannedEndDate ?? "—"}</strong></div>
+                  <div><span>Ngày bắt đầu</span><strong>{formatDateVi(data.currentLease.startDate)}</strong></div>
+                  <div><span>Ngày kết thúc dự kiến</span><strong>{data.currentLease.plannedEndDate ? formatDateVi(data.currentLease.plannedEndDate) : "—"}</strong></div>
                 </div>
               </section>
             </>

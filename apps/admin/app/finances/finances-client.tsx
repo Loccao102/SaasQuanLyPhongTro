@@ -7,7 +7,8 @@ import {
   PageHeader,
   ProgressBar,
   SectionHeader,
-  StatusBadge
+  StatusBadge,
+  formatDateVi
 } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -90,6 +91,10 @@ export function FinancesClient() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
+    if (fromDate && toDate && toDate <= fromDate) {
+      setError("Ngày kết thúc phải lớn hơn ngày bắt đầu.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -253,7 +258,7 @@ export function FinancesClient() {
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
-            <span style={{ fontWeight: 600 }}>Từ ngày</span>
+            <span style={{ fontWeight: 600 }}>Từ ngày (dd/mm/yyyy)</span>
             <input
               type="date"
               value={fromDate}
@@ -263,10 +268,11 @@ export function FinancesClient() {
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
-            <span style={{ fontWeight: 600 }}>Đến ngày</span>
+            <span style={{ fontWeight: 600 }}>Đến ngày (dd/mm/yyyy)</span>
             <input
               type="date"
               value={toDate}
+              min={fromDate || undefined}
               onChange={(e) => setToDate(e.target.value)}
               style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
             />
@@ -515,7 +521,7 @@ export function FinancesClient() {
                       style={{ borderBottom: "1px solid var(--color-border)", verticalAlign: "middle" }}
                     >
                       <td style={{ padding: "10px", whiteSpace: "nowrap" }}>
-                        {new Date(exp.occurredAt).toLocaleDateString("vi-VN")}
+                        {formatDateVi(exp.occurredAt)}
                       </td>
                       <td style={{ padding: "10px", fontWeight: 500 }}>
                         {exp.propertyName ? `${exp.propertyName} (${exp.propertyCode})` : "Chi phí chung"}

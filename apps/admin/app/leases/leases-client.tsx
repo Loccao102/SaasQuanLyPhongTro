@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MetricCard, MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
+import { MetricCard, MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminLeasesApi,
@@ -201,8 +201,8 @@ export function LeasesClient() {
                         <small>{lease.primaryResident?.phone ?? "—"}</small>
                       </span>
                       <span role="cell">
-                        <strong>{lease.startDate}</strong>
-                        <small>đến {lease.plannedEndDate ?? "Không thời hạn"}</small>
+                        <strong>{formatDateVi(lease.startDate)}</strong>
+                        <small>đến {lease.plannedEndDate ? formatDateVi(lease.plannedEndDate) : "Không thời hạn"}</small>
                       </span>
                       <strong role="cell">
                         <MoneyDisplay amountVnd={lease.baseRentVnd} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminLeasesApi,
@@ -236,12 +236,24 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
-    try {
+      const start = String(form.get("startDate") ?? "").trim();
+      const end = String(form.get("plannedEndDate") ?? "").trim() || null;
+      if (!start) {
+        setActionError("Vui lòng chọn ngày bắt đầu hợp đồng.");
+        setSaving(false);
+        return;
+      }
+      if (end && end <= start) {
+        setActionError("Ngày kết thúc phải lớn hơn ngày bắt đầu.");
+        setSaving(false);
+        return;
+      }
+
       await adminLeasesApi.updateDraft(leaseId, {
         expectedVersion: data.lease.version,
         leaseCode: String(form.get("leaseCode") ?? ""),
-        startDate: String(form.get("startDate") ?? ""),
-        plannedEndDate: String(form.get("plannedEndDate") ?? "") || null,
+        startDate: start,
+        plannedEndDate: end,
         baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
         depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
         billingDay: Number(form.get("billingDay") ?? 1)
@@ -510,13 +522,26 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
+    const renewStart = String(form.get("startDate") ?? "").trim();
+    const renewEnd = String(form.get("plannedEndDate") ?? "").trim() || null;
+    if (!renewStart) {
+      setActionError("Vui lòng chọn ngày bắt đầu gia hạn.");
+      setSaving(false);
+      return;
+    }
+    if (renewEnd && renewEnd <= renewStart) {
+      setActionError("Ngày kết thúc phải lớn hơn ngày bắt đầu.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const result = await adminLeasesApi.renewLease(leaseId, {
         newLeaseId,
         idempotencyKey,
         newLeaseCode: String(form.get("newLeaseCode") ?? "").trim(),
-        startDate: String(form.get("startDate") ?? "").trim(),
-        plannedEndDate: String(form.get("plannedEndDate") ?? "").trim() || null,
+        startDate: renewStart,
+        plannedEndDate: renewEnd,
         baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
         depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
         billingDay: Number(form.get("billingDay") ?? 1),
@@ -605,6 +630,15 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       const adjustedRent = form.get("adjustedBaseRentVnd");
       const adjustedDeposit = form.get("adjustedDepositRequiredVnd");
       const adjustedEndDate = form.get("adjustedPlannedEndDate");
+
+      if (adjustedEndDate) {
+        const adjustedEndDateStr = String(adjustedEndDate).trim();
+        if (data && adjustedEndDateStr <= data.lease.startDate) {
+          setActionError("Ngày kết thúc mới phải lớn hơn ngày bắt đầu hợp đồng.");
+          setSaving(false);
+          return;
+        }
+      }
 
       await adminLeasesApi.createAmendment(leaseId, {
         amendmentNumber: String(form.get("amendmentNumber") ?? "").trim(),
@@ -807,7 +841,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               />
             </label>
             <label>
-              <span>Ngày bắt đầu mới</span>
+              <span>Ngày bắt đầu mới (dd/mm/yyyy) *</span>
               <input
                 name="startDate"
                 type="date"
@@ -824,7 +858,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               />
             </label>
             <label>
-              <span>Ngày kết thúc dự kiến</span>
+              <span>Ngày kết thúc dự kiến (dd/mm/yyyy)</span>
               <input
                 name="plannedEndDate"
                 type="date"
@@ -919,8 +953,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
           <dl className="detail-list">
             <div><dt>Mã hợp đồng</dt><dd>{lease.code}</dd></div>
             <div><dt>Cơ sở / phòng</dt><dd>{lease.property.name} · {lease.room.code}</dd></div>
-            <div><dt>Ngày bắt đầu</dt><dd>{lease.startDate}</dd></div>
-            <div><dt>Ngày kết thúc dự kiến</dt><dd>{lease.plannedEndDate ?? "Không thời hạn"}</dd></div>
+            <div><dt>Ngày bắt đầu</dt><dd>{formatDateVi(lease.startDate)}</dd></div>
+            <div><dt>Ngày kết thúc dự kiến</dt><dd>{lease.plannedEndDate ? formatDateVi(lease.plannedEndDate) : "Không thời hạn"}</dd></div>
             <div><dt>Ngày chốt hàng tháng</dt><dd>Ngày {lease.billingDay}</dd></div>
             <div><dt>Phiên bản</dt><dd>v{lease.version}</dd></div>
             {lease.renewedFromLeaseId ? (
@@ -1113,11 +1147,11 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 <input name="leaseCode" defaultValue={lease.code} required />
               </label>
               <label>
-                <span>Ngày bắt đầu</span>
+                <span>Ngày bắt đầu (dd/mm/yyyy) *</span>
                 <input name="startDate" type="date" defaultValue={lease.startDate} required />
               </label>
               <label>
-                <span>Ngày kết thúc dự kiến</span>
+                <span>Ngày kết thúc dự kiến (dd/mm/yyyy)</span>
                 <input name="plannedEndDate" type="date" defaultValue={lease.plannedEndDate ?? ""} />
               </label>
               <label>
@@ -1648,7 +1682,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 />
               </label>
               <label>
-                <span>Ngày có hiệu lực</span>
+                <span>Ngày có hiệu lực (dd/mm/yyyy) *</span>
                 <input
                   name="effectiveDate"
                   type="date"
@@ -1688,12 +1722,16 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 </label>
               </div>
               <label>
-                <span>Ngày kết thúc mới - Để trống nếu không đổi</span>
+                <span>Ngày kết thúc mới (dd/mm/yyyy) - Để trống nếu không đổi</span>
                 <input
                   name="adjustedPlannedEndDate"
                   type="date"
+                  min={lease.startDate}
                   placeholder={lease.plannedEndDate ?? ""}
                 />
+                <small style={{ color: "var(--color-muted, #64748b)", fontSize: "11px", marginTop: "2px" }}>
+                  Phải lớn hơn ngày bắt đầu ({formatDateVi(lease.startDate)})
+                </small>
               </label>
               <label>
                 <span>Ghi chú thêm</span>
@@ -1724,10 +1762,10 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <strong style={{ fontSize: "14px" }}>{am.amendmentNumber}</strong>
-                    <StatusBadge tone="info">Hiệu lực: {am.effectiveDate}</StatusBadge>
+                    <StatusBadge tone="info">Hiệu lực: {formatDateVi(am.effectiveDate)}</StatusBadge>
                   </div>
                   <span style={{ fontSize: "12px", color: "var(--color-muted, #64748b)" }}>
-                    {new Date(am.createdAt).toLocaleDateString("vi-VN")}
+                    {formatDateVi(am.createdAt)}
                   </span>
                 </div>
                 <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "var(--color-text, #1e293b)" }}>
@@ -1741,7 +1779,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                     <div>Cọc mới: <strong><MoneyDisplay amountVnd={am.adjustedDepositRequiredVnd} /></strong></div>
                   ) : null}
                   {am.adjustedPlannedEndDate !== null ? (
-                    <div>Kết thúc mới: <strong>{am.adjustedPlannedEndDate}</strong></div>
+                    <div>Kết thúc mới: <strong>{formatDateVi(am.adjustedPlannedEndDate)}</strong></div>
                   ) : null}
                   {am.note ? (
                     <div style={{ color: "var(--color-muted, #64748b)" }}>Ghi chú: {am.note}</div>

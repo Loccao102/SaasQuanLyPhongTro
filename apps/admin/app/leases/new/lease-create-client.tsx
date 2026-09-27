@@ -16,7 +16,7 @@ import {
   CalendarOutlined,
   DollarCircleOutlined
 } from "@ant-design/icons";
-import { PageHeader, StatusBadge } from "@propops/ui";
+import { PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
   adminAssetsApi,
@@ -55,6 +55,17 @@ export function LeaseCreateClient() {
   const [selectedFloorId, setSelectedFloorId] = useState("ALL");
   const [selectedRoomId, setSelectedRoomId] = useState(paramRoomId);
   const [vacantOnlyFilter, setVacantOnlyFilter] = useState(false);
+
+  // Date selection state with strict endDate > startDate rule
+  const [startDate, setStartDate] = useState("");
+  const [plannedEndDate, setPlannedEndDate] = useState("");
+
+  const minPlannedEndDate = useMemo(() => {
+    if (!startDate) return undefined;
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, [startDate]);
 
   // Resident search
   const [residentQuery, setResidentQuery] = useState("");
@@ -227,6 +238,19 @@ export function LeaseCreateClient() {
       return;
     }
 
+    const startDateVal = String(form.get("startDate") ?? "").trim();
+    const plannedEndDateVal = String(form.get("plannedEndDate") ?? "").trim() || null;
+
+    if (!startDateVal) {
+      setMutationError("Vui lòng chọn ngày bắt đầu hợp đồng.");
+      return;
+    }
+
+    if (plannedEndDateVal && plannedEndDateVal <= startDateVal) {
+      setMutationError("Ngày kết thúc dự kiến phải lớn hơn ngày bắt đầu.");
+      return;
+    }
+
     if (!commandIdentity.current) {
       commandIdentity.current = {
         leaseId: crypto.randomUUID(),
@@ -242,8 +266,8 @@ export function LeaseCreateClient() {
         ...commandIdentity.current,
         roomId,
         leaseCode: String(form.get("leaseCode") ?? ""),
-        startDate: String(form.get("startDate") ?? ""),
-        plannedEndDate: String(form.get("plannedEndDate") ?? "") || null,
+        startDate: startDateVal,
+        plannedEndDate: plannedEndDateVal,
         baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
         depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
         billingDay: Number(form.get("billingDay") ?? 1),
@@ -502,16 +526,48 @@ export function LeaseCreateClient() {
 
               <label>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <CalendarOutlined /> Ngày bắt đầu *
+                  <CalendarOutlined /> Ngày bắt đầu (dd/mm/yyyy) *
                 </span>
-                <input name="startDate" type="date" required />
+                <input
+                  name="startDate"
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    setStartDate(newStart);
+                    if (plannedEndDate && plannedEndDate <= newStart) {
+                      setPlannedEndDate("");
+                    }
+                  }}
+                />
+                {startDate ? (
+                  <small style={{ color: "var(--color-primary, #2563eb)", fontSize: "11px", marginTop: "2px" }}>
+                    Bắt đầu: {formatDateVi(startDate)}
+                  </small>
+                ) : null}
               </label>
 
               <label>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <CalendarOutlined /> Ngày kết thúc dự kiến
+                  <CalendarOutlined /> Ngày kết thúc dự kiến (dd/mm/yyyy)
                 </span>
-                <input name="plannedEndDate" type="date" />
+                <input
+                  name="plannedEndDate"
+                  type="date"
+                  min={minPlannedEndDate}
+                  value={plannedEndDate}
+                  onChange={(e) => setPlannedEndDate(e.target.value)}
+                />
+                {plannedEndDate ? (
+                  <small style={{ color: "var(--color-primary, #2563eb)", fontSize: "11px", marginTop: "2px" }}>
+                    Kết thúc: {formatDateVi(plannedEndDate)} (sau {formatDateVi(startDate)})
+                  </small>
+                ) : (
+                  <small style={{ color: "var(--color-muted, #64748b)", fontSize: "11px", marginTop: "2px" }}>
+                    {startDate ? "Ngày kết thúc phải lớn hơn ngày bắt đầu" : "Chọn ngày bắt đầu trước"}
+                  </small>
+                )}
               </label>
 
               <label>

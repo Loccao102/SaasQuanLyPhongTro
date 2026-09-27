@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { MoneyDisplay, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminAssetsApi,
@@ -60,15 +60,26 @@ export function RenterBillingClient() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setSaving(true);
-    setError(null);
-    setActionMessage(null);
+    const periodStart = String(form.get("periodStart") ?? "").trim();
+    const periodEnd = String(form.get("periodEnd") ?? "").trim();
+    if (!periodStart) {
+      setError("Vui lòng chọn ngày bắt đầu kỳ.");
+      setSaving(false);
+      return;
+    }
+    if (periodEnd <= periodStart) {
+      setError("Ngày kết thúc kỳ phải lớn hơn ngày bắt đầu.");
+      setSaving(false);
+      return;
+    }
+
     try {
       await renterBillingApi.createCycle({
         id: crypto.randomUUID(),
         propertyId: String(form.get("propertyId") ?? ""),
         code: String(form.get("code") ?? ""),
-        periodStart: String(form.get("periodStart") ?? ""),
-        periodEnd: String(form.get("periodEnd") ?? ""),
+        periodStart,
+        periodEnd,
         dueDate: String(form.get("dueDate") ?? "")
       });
       formElement?.reset();
@@ -204,15 +215,15 @@ export function RenterBillingClient() {
             <input name="code" required placeholder="T10-2026-TX01" />
           </label>
           <label>
-            <span>Từ ngày</span>
+            <span>Từ ngày (dd/mm/yyyy) *</span>
             <input name="periodStart" type="date" required />
           </label>
           <label>
-            <span>Đến ngày</span>
+            <span>Đến ngày (dd/mm/yyyy) *</span>
             <input name="periodEnd" type="date" required />
           </label>
           <label>
-            <span>Hạn thanh toán</span>
+            <span>Hạn thanh toán (dd/mm/yyyy) *</span>
             <input name="dueDate" type="date" required />
           </label>
           <div className="button-row">
@@ -250,7 +261,7 @@ export function RenterBillingClient() {
                     <span className="eyebrow">{cycle.property.code}</span>
                     <h3>{cycle.code}</h3>
                     <p>
-                      {cycle.periodStart} → {cycle.periodEnd} · hạn {cycle.dueDate}
+                      {formatDateVi(cycle.periodStart)} → {formatDateVi(cycle.periodEnd)} · hạn {formatDateVi(cycle.dueDate)}
                     </p>
                   </div>
                   <StatusBadge tone={statusTone(cycle.status)}>

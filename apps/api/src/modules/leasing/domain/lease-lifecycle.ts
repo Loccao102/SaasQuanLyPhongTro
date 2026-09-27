@@ -122,9 +122,9 @@ export function activateLease(lease: LeaseState): LeaseTransitionResult {
   if (lease.plannedEndDate !== null) {
     assertIsoDate(lease.plannedEndDate, "plannedEndDate");
 
-    if (lease.plannedEndDate < lease.startDate) {
+    if (lease.plannedEndDate <= lease.startDate) {
       throw new InvalidLeaseDateError(
-        "plannedEndDate cannot be earlier than startDate."
+        "plannedEndDate must be greater than startDate."
       );
     }
   }

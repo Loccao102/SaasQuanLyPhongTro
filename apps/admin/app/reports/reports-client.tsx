@@ -14,7 +14,8 @@ import {
   MetricCard,
   MoneyDisplay,
   PageHeader,
-  StatusBadge
+  StatusBadge,
+  formatDateVi
 } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -62,6 +63,10 @@ export function ReportsClient() {
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (fromDate && toDate && toDate <= fromDate) {
+      setError("Ngày kết thúc phải lớn hơn ngày bắt đầu.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -154,7 +159,7 @@ export function ReportsClient() {
         <div className="report-filters">
           <div className="report-filters__row">
             <div className="form-group" style={{ minWidth: 160 }}>
-              <label className="form-label">Từ ngày</label>
+              <label className="form-label">Từ ngày (dd/mm/yyyy)</label>
               <input
                 type="date"
                 className="form-input"
@@ -163,11 +168,12 @@ export function ReportsClient() {
               />
             </div>
             <div className="form-group" style={{ minWidth: 160 }}>
-              <label className="form-label">Đến ngày</label>
+              <label className="form-label">Đến ngày (dd/mm/yyyy)</label>
               <input
                 type="date"
                 className="form-input"
                 value={toDate}
+                min={fromDate || undefined}
                 onChange={(e) => setToDate(e.target.value)}
               />
             </div>

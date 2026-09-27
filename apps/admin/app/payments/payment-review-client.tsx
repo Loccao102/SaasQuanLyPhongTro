@@ -1,6 +1,6 @@
 "use client";
 
-import { MoneyDisplay, PageHeader, StatusBadge } from "@propops/ui";
+import { MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { useEffect, useMemo, useState } from "react";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -25,12 +25,7 @@ function reasonLabel(code: string | null): string {
   }
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "short",
-    timeStyle: "short"
-  }).format(new Date(value));
-}
+
 
 export function PaymentReviewClient() {
   const [items, setItems] = useState<ProviderPaymentReviewItem[]>([]);
@@ -180,7 +175,7 @@ export function PaymentReviewClient() {
                 </div>
                 <div>
                   <StatusBadge tone="warning">{reasonLabel(item.reason.code)}</StatusBadge>
-                  <span>{formatDate(item.occurredAt)}</span>
+                  <span>{formatDateVi(item.occurredAt)}</span>
                 </div>
                 <div>
                   <strong>{item.invoice.number}</strong>

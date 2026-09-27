@@ -429,9 +429,9 @@ export class LeaseAdminService {
       input.plannedEndDate === undefined || input.plannedEndDate === null || input.plannedEndDate === ""
         ? null
         : this.isoDate(input.plannedEndDate, "plannedEndDate");
-    if (plannedEndDate !== null && plannedEndDate < startDate) {
+    if (plannedEndDate !== null && plannedEndDate <= startDate) {
       throw new ConflictException(
-        "plannedEndDate cannot be earlier than startDate."
+        "plannedEndDate must be greater than startDate."
       );
     }
     const baseRentVnd = this.money(input.baseRentVnd, "baseRentVnd");
@@ -769,9 +769,9 @@ export class LeaseAdminService {
       input.plannedEndDate === undefined || input.plannedEndDate === null || input.plannedEndDate === ""
         ? null
         : this.isoDate(input.plannedEndDate, "plannedEndDate");
-    if (plannedEndDate !== null && plannedEndDate < startDate) {
+    if (plannedEndDate !== null && plannedEndDate <= startDate) {
       throw new ConflictException(
-        "plannedEndDate cannot be earlier than startDate."
+        "plannedEndDate must be greater than startDate."
       );
     }
     const baseRentVnd = this.money(input.baseRentVnd, "baseRentVnd");
@@ -1361,8 +1361,8 @@ export class LeaseAdminService {
     let adjustedPlannedEndDate: string | null = null;
     if (input.adjustedPlannedEndDate !== undefined && input.adjustedPlannedEndDate !== null) {
       adjustedPlannedEndDate = this.isoDate(input.adjustedPlannedEndDate, "adjustedPlannedEndDate");
-      if (adjustedPlannedEndDate < this.dateOnly(lease.start_date)!) {
-        throw new ConflictException("Adjusted planned end date cannot precede lease start date.");
+      if (adjustedPlannedEndDate <= this.dateOnly(lease.start_date)!) {
+        throw new ConflictException("Adjusted planned end date must be after lease start date.");
       }
     }
 
