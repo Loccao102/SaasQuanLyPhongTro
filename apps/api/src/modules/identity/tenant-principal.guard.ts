@@ -124,7 +124,10 @@ export class TenantPrincipalGuard implements CanActivate {
          u.status AS user_status,
          o.status AS organization_status
        FROM organization_memberships om
-       JOIN users u ON u.id = om.user_id
+       JOIN users u
+         ON u.id = om.user_id
+        AND u.organization_id = om.organization_id
+        AND u.account_type = 'TENANT'
        JOIN organizations o ON o.id = om.organization_id
        WHERE om.user_id = $1::uuid
          AND om.organization_id = $2::uuid
