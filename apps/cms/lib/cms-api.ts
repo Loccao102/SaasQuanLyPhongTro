@@ -1,3 +1,4 @@
+import { requestCmsStepUp } from "./step-up";
 export type CmsDashboard = {
   branding: {
     productName: string;
@@ -683,7 +684,11 @@ function isUnsafeMethod(method: string): boolean {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  stepUpRetried = false
+): Promise<T> {
   const headers = new Headers(init?.headers);
   const method = init?.method ?? "GET";
 
@@ -703,6 +708,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
     credentials: "include"
   });
+
+  if (response.status === 428 && !stepUpRetried) {
+    await requestCmsStepUp();
+    return request<T>(path, init, true);
+  }
 
   if (!response.ok) {
     const text = await response.text();
