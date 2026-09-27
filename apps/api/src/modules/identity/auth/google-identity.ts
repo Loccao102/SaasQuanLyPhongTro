@@ -16,12 +16,23 @@ export type VerifiedGoogleIdentity = {
   authoritativeEmail: boolean;
 };
 
+export class InvalidGoogleIdentityTokenError extends Error {
+  constructor(message = "Google credential không hợp lệ.") {
+    super(message);
+    this.name = "InvalidGoogleIdentityTokenError";
+  }
+}
+
 let cachedKeys: GoogleJwk[] = [];
 let cachedUntil = 0;
 
 function decodeJsonPart<T>(value: string): T {
-  const text = Buffer.from(value, "base64url").toString("utf8");
-  return JSON.parse(text) as T;
+  try {
+    const text = Buffer.from(value, "base64url").toString("utf8");
+    return JSON.parse(text) as T;
+  } catch {
+    throw new InvalidGoogleIdentityTokenError();
+  }
 }
 
 function cacheMaxAge(headers: Headers): number {
@@ -65,17 +76,17 @@ export async function verifyGoogleIdentityToken(
     (expectedNonce !== undefined &&
       (expectedNonce.length < 32 || expectedNonce.length > 256))
   ) {
-    throw new Error("Google credential không hợp lệ.");
+    throw new InvalidGoogleIdentityTokenError();
   }
 
   const parts = credential.split(".");
   if (parts.length !== 3) {
-    throw new Error("Google credential không hợp lệ.");
+    throw new InvalidGoogleIdentityTokenError();
   }
 
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   if (!encodedHeader || !encodedPayload || !encodedSignature) {
-    throw new Error("Google credential không hợp lệ.");
+    throw new InvalidGoogleIdentityTokenError();
   }
 
   const header = decodeJsonPart<{ alg?: string; kid?: string }>(encodedHeader);
@@ -94,7 +105,7 @@ export async function verifyGoogleIdentityToken(
   }>(encodedPayload);
 
   if (header.alg !== "RS256" || !header.kid) {
-    throw new Error("Google credential sử dụng thuật toán không được hỗ trợ.");
+    throw new InvalidGoogleIdentityTokenError("Google credential sử dụng thuật toán không được hỗ trợ.");
   }
 
   const jwk = (await googleKeys()).find((item) => item.kid === header.kid);
@@ -103,7 +114,7 @@ export async function verifyGoogleIdentityToken(
     const refreshed = await googleKeys();
     const retryKey = refreshed.find((item) => item.kid === header.kid);
     if (!retryKey) {
-      throw new Error("Không tìm thấy Google signing key.");
+      throw new InvalidGoogleIdentityTokenError("Không tìm thấy Google signing key.");
     }
     cachedKeys = refreshed;
   }
@@ -114,7 +125,7 @@ export async function verifyGoogleIdentityToken(
     (signingKey.alg !== undefined && signingKey.alg !== "RS256") ||
     (signingKey.use !== undefined && signingKey.use !== "sig")
   ) {
-    throw new Error("Không tìm thấy Google signing key hợp lệ.");
+    throw new InvalidGoogleIdentityTokenError("Không tìm thấy Google signing key hợp lệ.");
   }
 
   const key = await crypto.subtle.importKey(
@@ -159,7 +170,7 @@ export async function verifyGoogleIdentityToken(
     );
 
   if (!verified) {
-    throw new Error("Google credential không vượt qua bước xác thực.");
+    throw new InvalidGoogleIdentityTokenError("Google credential không vượt qua bước xác thực.");
   }
 
   const email = claims.email!.trim().toLowerCase();
