@@ -294,12 +294,35 @@ export class AuthenticationController {
       throw new UnauthorizedException("CSRF token không hợp lệ.");
     }
 
-    await this.authentication.changePassword(
-      session.userId,
-      session.sessionId,
-      this.requiredString(body.currentPassword, "currentPassword"),
-      this.requiredString(body.newPassword, "newPassword")
-    );
+    const ip = this.requestIp(request);
+    await this.security.assertPasswordLoginAllowed(session.email, ip);
+
+    try {
+      await this.authentication.changePassword(
+        session.userId,
+        session.sessionId,
+        this.requiredString(body.currentPassword, "currentPassword"),
+        this.requiredString(body.newPassword, "newPassword")
+      );
+      await this.security.recordEvent({
+        eventType: "PASSWORD_CHANGED",
+        outcome: "SUCCESS",
+        email: session.email,
+        ip,
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PASSWORD_CHANGE_ATTEMPT",
+        outcome: "FAILURE",
+        email: session.email,
+        ip,
+        userId: session.userId,
+        organizationId: session.organizationId
+      });
+      throw error;
+    }
 
     return { success: true, message: "Đổi mật khẩu thành công." };
   }
