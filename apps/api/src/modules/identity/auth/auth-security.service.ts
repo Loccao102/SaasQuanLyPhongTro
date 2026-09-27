@@ -22,6 +22,8 @@ type RateLimitRow = QueryResultRow & {
 
 @Injectable()
 export class AuthSecurityService {
+  private lastCleanupAt = 0;
+
   constructor(private readonly db: DatabaseService) {}
 
   async assertPasswordLoginAllowed(email: string, ip: string): Promise<void> {
@@ -29,18 +31,20 @@ export class AuthSecurityService {
       "AUTH_LOGIN_RATE_WINDOW_SECONDS",
       900
     );
-    await this.consume(
-      "PASSWORD_LOGIN_IDENTIFIER",
-      "email",
-      email.trim().toLowerCase(),
-      this.positiveInteger("AUTH_LOGIN_RATE_MAX_PER_EMAIL", 30),
-      windowSeconds
-    );
+    // Check the bounded IP key first so rotating arbitrary email values cannot
+    // create an unbounded number of identifier buckets from one source.
     await this.consume(
       "PASSWORD_LOGIN_IP",
       "ip",
       ip,
       this.positiveInteger("AUTH_LOGIN_RATE_MAX_PER_IP", 120),
+      windowSeconds
+    );
+    await this.consume(
+      "PASSWORD_LOGIN_IDENTIFIER",
+      "email",
+      email.trim().toLowerCase(),
+      this.positiveInteger("AUTH_LOGIN_RATE_MAX_PER_EMAIL", 30),
       windowSeconds
     );
   }
@@ -147,6 +151,7 @@ export class AuthSecurityService {
     );
 
     const attempts = result.rows[0]?.attempt_count ?? 1;
+    await this.cleanupExpiredSecurityData();
     if (attempts > limit) {
       await this.recordEvent({
         eventType: "AUTH_RATE_LIMITED",
@@ -158,6 +163,34 @@ export class AuthSecurityService {
       throw new HttpException(
         "Có quá nhiều yêu cầu xác thực. Vui lòng thử lại sau.",
         HttpStatus.TOO_MANY_REQUESTS
+      );
+    }
+  }
+
+  private async cleanupExpiredSecurityData(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastCleanupAt < 60 * 60 * 1000) return;
+    this.lastCleanupAt = now;
+
+    const retentionDays = this.positiveInteger(
+      "AUTH_SECURITY_EVENT_RETENTION_DAYS",
+      90
+    );
+
+    try {
+      await this.db.query(
+        `DELETE FROM auth_rate_limit_buckets
+         WHERE updated_at < now() - interval '48 hours'`
+      );
+      await this.db.query(
+        `DELETE FROM auth_security_events
+         WHERE occurred_at < now() - ($1::int * interval '1 day')`,
+        [retentionDays]
+      );
+    } catch (error) {
+      console.error(
+        "[auth-security] retention cleanup failed",
+        error instanceof Error ? error.message : String(error)
       );
     }
   }
