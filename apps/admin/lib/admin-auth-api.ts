@@ -48,6 +48,12 @@ export const adminAuthApi = {
       csrf: false
     }),
 
+  googleChallenge: () =>
+    adminApiRequest<{ nonce: string }>("/auth/google/challenge", {
+      organization: false,
+      csrf: false
+    }),
+
   register: (input: {
     email: string;
     password: string;
