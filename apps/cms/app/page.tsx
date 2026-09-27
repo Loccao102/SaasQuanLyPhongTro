@@ -18,6 +18,7 @@ import {
 import {
   cmsApi,
   type CmsAuditEvent,
+  type CmsAuthSecurityEvent,
   type CmsBillingReconciliation,
   type CmsBillingWebhookEvent,
   type CmsBootstrap,
@@ -220,6 +221,8 @@ export default function CmsPage() {
   const [organizations, setOrganizations] = useState<CmsOrganization[]>([]);
   const [entitlementOverrides, setEntitlementOverrides] = useState<CmsEntitlementOverride[]>([]);
   const [audit, setAudit] = useState<CmsAuditEvent[]>([]);
+  const [authSecurityEvents, setAuthSecurityEvents] =
+    useState<CmsAuthSecurityEvent[]>([]);
   const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
   const [billingReconciliation, setBillingReconciliation] =
     useState<CmsBillingReconciliation | null>(null);
@@ -294,6 +297,7 @@ export default function CmsPage() {
         nextOrganizations,
         nextEntitlementOverrides,
         nextAudit,
+        nextAuthSecurityEvents,
         nextJobs,
         nextBillingReconciliation,
         nextLogs,
@@ -310,6 +314,9 @@ export default function CmsPage() {
           : Promise.resolve([]),
         can("platform.audit.read")
           ? cmsApi.audit()
+          : Promise.resolve([]),
+        can("platform.audit.read")
+          ? cmsApi.authSecurityEvents()
           : Promise.resolve([]),
         can("platform.jobs.read")
           ? cmsApi.jobs()
@@ -331,6 +338,7 @@ export default function CmsPage() {
       setOrganizations(nextOrganizations);
       setEntitlementOverrides(nextEntitlementOverrides);
       setAudit(nextAudit);
+      setAuthSecurityEvents(nextAuthSecurityEvents);
       setJobsStatus(nextJobs);
       setBillingReconciliation(nextBillingReconciliation);
       setLogsStatus(nextLogs);
@@ -3521,33 +3529,65 @@ export default function CmsPage() {
           )}
 
           {!loading && view === "audit" && (
-            <section className="cms-panel">
-              <SectionHeader
-                title="Platform audit"
-                action={<span className="cms-note">Read-only.</span>}
-              />
-              {audit.length === 0 ? (
-                <div className="empty-state">Chưa có platform audit event.</div>
-              ) : (
-                <div className="audit-list">
-                  {audit.map((item) => (
-                    <article className="audit-item" key={item.id}>
-                      <div>
-                        <strong>{item.action}</strong>
-                        <StatusBadge>{item.target}</StatusBadge>
-                      </div>
-                      <p>
-                        {pretty(item.before)} → {pretty(item.after)}
-                      </p>
-                      <small>
-                        {new Date(item.at).toLocaleString("vi-VN")} ·{" "}
-                        {item.actor} · Reason: {item.reason}
-                      </small>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+            <>
+              <section className="cms-panel">
+                <SectionHeader
+                  title="Authentication security"
+                  action={<span className="cms-note">Read-only · hashed identifiers/IP.</span>}
+                />
+                {authSecurityEvents.length === 0 ? (
+                  <div className="empty-state">Chưa có auth security event.</div>
+                ) : (
+                  <div className="audit-list">
+                    {authSecurityEvents.map((item) => (
+                      <article className="audit-item" key={item.id}>
+                        <div>
+                          <strong>{item.eventType}</strong>
+                          <StatusBadge tone={statusTone(item.outcome)}>
+                            {item.outcome}
+                          </StatusBadge>
+                        </div>
+                        <p>
+                          Tenant: {item.organizationId ?? "—"} · User: {item.userId ?? "—"}
+                        </p>
+                        <small>
+                          {new Date(item.at).toLocaleString("vi-VN")} ·{" "}
+                          {pretty(item.metadata)}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="cms-panel">
+                <SectionHeader
+                  title="Platform audit"
+                  action={<span className="cms-note">Read-only.</span>}
+                />
+                {audit.length === 0 ? (
+                  <div className="empty-state">Chưa có platform audit event.</div>
+                ) : (
+                  <div className="audit-list">
+                    {audit.map((item) => (
+                      <article className="audit-item" key={item.id}>
+                        <div>
+                          <strong>{item.action}</strong>
+                          <StatusBadge>{item.target}</StatusBadge>
+                        </div>
+                        <p>
+                          {pretty(item.before)} → {pretty(item.after)}
+                        </p>
+                        <small>
+                          {new Date(item.at).toLocaleString("vi-VN")} ·{" "}
+                          {item.actor} · Reason: {item.reason}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
           )}
         </div>
       </main>
