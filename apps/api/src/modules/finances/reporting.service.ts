@@ -75,10 +75,20 @@ export interface PropertyFilter extends ReportDateRange {
 
 // ── CSV helpers ──────────────────────────────────────────────
 
-function escCsv(value: string | null | undefined): string {
+export function escCsv(value: string | null | undefined): string {
   if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+
+  const raw = String(value);
+  // Spreadsheet applications can evaluate text that starts with formula
+  // sigils. Prefixing an apostrophe keeps user-controlled values as text.
+  const str = /^[=+\-@\t\r]/.test(raw) ? "'" + raw : raw;
+
+  if (
+    str.includes(",") ||
+    str.includes('"') ||
+    str.includes("\n") ||
+    str.includes("\r")
+  ) {
     return '"' + str.replace(/"/g, '""') + '"';
   }
   return str;
@@ -88,9 +98,6 @@ function dateOnly(d: Date | string): string {
   return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
 }
 
-function timestamp(d: Date | string): string {
-  return d instanceof Date ? d.toISOString() : new Date(d).toISOString();
-}
 
 // ── Service ──────────────────────────────────────────────────
 
