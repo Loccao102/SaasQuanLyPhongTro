@@ -3,24 +3,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   CheckOutlined,
-  CloseOutlined,
-  ToolOutlined,
-  PlayCircleOutlined,
-  StopOutlined,
-  DeleteOutlined
+  CloseOutlined
 } from "@ant-design/icons";
 import {
   MetricCard,
-  MoneyDisplay,
   PageHeader,
-  SectionHeader,
   StatusBadge,
   formatDateVi
 } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminMaintenanceApi,
-  type CreateMaintenanceTicketInput,
   type MaintenanceFilterQuery,
   type MaintenanceTicket,
   type MaintenanceTicketCategory,
