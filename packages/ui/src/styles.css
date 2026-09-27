@@ -62,3 +62,43 @@ a { color: inherit; }
   .page-header { display: grid; }
   .page-header__action { width: 100%; }
 }
+
+.date-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+  position: relative;
+}
+.date-input > input[type="text"] {
+  width: 100%;
+  min-width: 0;
+}
+.date-input__picker-button {
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.date-input__picker-button:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+}
+.date-input__picker-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.date-input__native-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
