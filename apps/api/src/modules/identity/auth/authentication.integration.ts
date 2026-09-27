@@ -140,6 +140,22 @@ test("login creates opaque session, resolves memberships and supports revocation
       ),
       false
     );
+    const freshStepUp = service.stepUpStatus(session);
+    assert.equal(freshStepUp.recent, true);
+
+    await fixture.query(
+      `UPDATE auth_sessions
+       SET reauthenticated_at = now() - interval '20 minutes'
+       WHERE id = $1::uuid`,
+      [login.sessionId]
+    );
+    const staleSession = await service.authenticateSession(login.sessionToken);
+    assert.ok(staleSession);
+    assert.equal(service.stepUpStatus(staleSession).recent, false);
+
+    await service.stepUpWithPassword(staleSession, password);
+    assert.equal(service.stepUpStatus(staleSession).recent, true);
+
 
     await service.logout(login.sessionToken);
     assert.equal(await service.authenticateSession(login.sessionToken), null);
@@ -285,6 +301,55 @@ test("login creates opaque session, resolves memberships and supports revocation
     );
     assert.equal(storedPasskey?.counter, 1);
     assert.ok(storedPasskey?.lastUsedAt);
+
+    await fixture.query(
+      `UPDATE auth_sessions
+       SET reauthenticated_at = now() - interval '20 minutes'
+       WHERE id = $1::uuid`,
+      [secondLogin.sessionId]
+    );
+
+    await repository.replaceWebAuthnChallenge({
+      userId,
+      challenge: "integration-step-up-challenge",
+      purpose: "STEP_UP",
+      sessionId: secondLogin.sessionId,
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const stepUpChallenge =
+      await repository.getActiveWebAuthnChallenge({
+        userId,
+        purpose: "STEP_UP",
+        sessionId: secondLogin.sessionId
+      });
+    assert.ok(stepUpChallenge);
+
+    assert.equal(
+      await repository.completePasskeyStepUp({
+        webauthnChallengeId: stepUpChallenge.id,
+        userId,
+        sessionId: secondLogin.sessionId,
+        passkeyId: passkey.id,
+        newCounter: 2
+      }),
+      true
+    );
+    assert.equal(
+      await repository.completePasskeyStepUp({
+        webauthnChallengeId: stepUpChallenge.id,
+        userId,
+        sessionId: secondLogin.sessionId,
+        passkeyId: passkey.id,
+        newCounter: 3
+      }),
+      false
+    );
+
+    const refreshedSession = await service.authenticateSession(
+      secondLogin.sessionToken
+    );
+    assert.ok(refreshedSession);
+    assert.equal(service.stepUpStatus(refreshedSession).recent, true);
 
     await fixture.query(
       "UPDATE users SET auth_version = auth_version + 1 WHERE id = $1",
