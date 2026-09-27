@@ -93,7 +93,8 @@ export function TeamManagementClient() {
         email: String(form.get("email") ?? ""),
         displayName: String(form.get("displayName") ?? ""),
         role,
-        scopes
+        scopes,
+        temporaryPassword: String(form.get("temporaryPassword") ?? "")
       })
     );
     setShowInvite(false);
@@ -143,10 +144,20 @@ export function TeamManagementClient() {
 
       {showInvite ? (
         <section className="panel">
-          <div className="asset-section-heading"><div><span className="eyebrow">INVITE</span><h2>Thêm thành viên</h2></div></div>
+          <div className="asset-section-heading"><div><span className="eyebrow">TENANT ACCOUNT</span><h2>Thêm tài khoản</h2></div></div>
           <form className="team-form" onSubmit={(event) => void invite(event)}>
             <label><span>Họ tên</span><input name="displayName" required /></label>
             <label><span>Email</span><input name="email" type="email" required /></label>
+            <label>
+              <span>Mật khẩu tạm</span>
+              <input
+                name="temporaryPassword"
+                type="password"
+                minLength={12}
+                autoComplete="new-password"
+                required
+              />
+            </label>
             <label>
               <span>Role</span>
               <select name="role" defaultValue="STAFF">
@@ -180,10 +191,10 @@ export function TeamManagementClient() {
               ))}
             </fieldset>
             <div className="button-row team-form__wide">
-              <button className="primary-button" type="submit" disabled={saving}>Tạo lời mời</button>
+              <button className="primary-button" type="submit" disabled={saving}>Tạo tài khoản</button>
             </div>
           </form>
-          <p className="inline-note">Membership được tạo ở trạng thái INVITED. Việc gửi email/token mời sẽ được nối vào auth/session flow sau.</p>
+          <p className="inline-note">Tài khoản được gắn cố định với tenant hiện tại, chiếm quota ngay khi tạo và có thể đăng nhập bằng mật khẩu tạm hoặc Google cùng email.</p>
         </section>
       ) : null}
 
