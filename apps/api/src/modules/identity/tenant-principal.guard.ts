@@ -1,10 +1,14 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException
 } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import type { QueryResultRow } from "pg";
+import { CommercialFeatureDisabledError, CommercialPolicyService } from "../commercial/application/commercial-policy.service.js";
+import type { TenantFeatureKey } from "../commercial/domain/entitlements.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
   assertTrustedBrowserOrigin,
@@ -21,6 +25,7 @@ import type {
 } from "./domain/access-control.js";
 import { roles } from "./domain/access-control.js";
 import type { TenantPrincipal, TenantRequest } from "./tenant-principal.js";
+import { TENANT_FEATURE_METADATA } from "./tenant-feature.js";
 
 type MembershipRow = QueryResultRow & {
   id: string;
@@ -43,7 +48,9 @@ type ScopeRow = QueryResultRow & {
 export class TenantPrincipalGuard implements CanActivate {
   constructor(
     private readonly db: DatabaseService,
-    private readonly authentication: AuthenticationService
+    private readonly authentication: AuthenticationService,
+    private readonly commercialPolicy: CommercialPolicyService,
+    private readonly reflector: Reflector
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -69,6 +76,7 @@ export class TenantPrincipalGuard implements CanActivate {
       userId = session.userId;
       request.authenticatedUserId = session.userId;
       request.authSessionId = session.sessionId;
+      request.authenticatedOrganizationId = session.organizationId ?? undefined;
     }
 
     if (!userId && process.env.NODE_ENV !== "production") {
@@ -79,8 +87,22 @@ export class TenantPrincipalGuard implements CanActivate {
     const headerOrganizationId = Array.isArray(headerValue)
       ? headerValue[0]
       : headerValue;
+    const sessionOrganizationId = request.authenticatedOrganizationId;
+    const requestedOrganizationId = headerOrganizationId?.trim();
+
+    if (
+      sessionOrganizationId &&
+      requestedOrganizationId &&
+      requestedOrganizationId !== sessionOrganizationId
+    ) {
+      throw new UnauthorizedException(
+        "The selected organization does not match the authenticated tenant."
+      );
+    }
+
     const organizationId =
-      headerOrganizationId?.trim() ||
+      sessionOrganizationId ||
+      requestedOrganizationId ||
       (process.env.NODE_ENV !== "production"
         ? process.env.ADMIN_DEV_ORGANIZATION_ID
         : undefined);
@@ -170,6 +192,27 @@ export class TenantPrincipalGuard implements CanActivate {
       membership
     };
     request.tenantPrincipal = principal;
+
+    const requiredFeature = this.reflector.getAllAndOverride<TenantFeatureKey>(
+      TENANT_FEATURE_METADATA,
+      [context.getHandler(), context.getClass()]
+    );
+    if (requiredFeature) {
+      try {
+        const policy = await this.db.withTransaction((client) =>
+          this.commercialPolicy.loadPolicy(client, principal.organizationId)
+        );
+        this.commercialPolicy.assertFeatureAllowed(policy, requiredFeature);
+      } catch (error) {
+        if (error instanceof CommercialFeatureDisabledError) {
+          throw new ForbiddenException(
+            "Tính năng này chưa được bật cho tenant hiện tại."
+          );
+        }
+        throw error;
+      }
+    }
+
     return true;
   }
 }
