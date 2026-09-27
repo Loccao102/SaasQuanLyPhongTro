@@ -26,8 +26,6 @@ export type MfaRequiredResult = {
   mfaRequired: true;
   challengeToken: string;
   expiresAt: string;
-  userAgent: string | null;
-  deviceLabel: string | null;
 };
 
 export type AdminAuthenticationResult = AdminSession | MfaRequiredResult;
@@ -57,6 +55,8 @@ export type AdminAuthSessionItem = {
   createdAt: string;
   lastSeenAt: string;
   expiresAt: string;
+  userAgent: string | null;
+  deviceLabel: string | null;
 };
 
 export type AuthConfig = {
