@@ -162,7 +162,7 @@ export class CreditBalanceController {
     @Body() input: BodyInput
   ) {
     const refundMethod = requiredString(input, "refundMethod");
-    if (!validRefundMethods.includes(refundMethod as any)) {
+    if (!(validRefundMethods as readonly string[]).includes(refundMethod)) {
       throw new BadRequestException(
         "refundMethod must be one of: " + validRefundMethods.join(", ")
       );
