@@ -48,9 +48,11 @@ jobs:
         run: pnpm typecheck
 
       - name: Unit tests
+        if: always()
         run: pnpm test
 
       - name: Database setup command smoke test
+        if: always()
         run: |
           docker run --rm --network host             -e PGPASSWORD=propops             postgres:17-alpine             psql -h 127.0.0.1 -U propops -d postgres -v ON_ERROR_STOP=1             -c "DROP DATABASE IF EXISTS propops_runtime WITH (FORCE);"             -c "CREATE DATABASE propops_runtime;"
 
@@ -66,6 +68,7 @@ jobs:
         run: pnpm --filter @propops/api sepay:preflight
 
       - name: Migration smoke test
+        if: always()
         run: |
           run_psql() {
             docker run --rm --network host \
@@ -113,4 +116,5 @@ jobs:
         run: pnpm --filter @propops/api test:integration
 
       - name: Build
+        if: always()
         run: pnpm build
