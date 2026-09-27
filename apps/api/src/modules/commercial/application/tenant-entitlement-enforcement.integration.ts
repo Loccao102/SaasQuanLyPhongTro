@@ -58,10 +58,10 @@ async function cleanup(pool: Pool): Promise<void> {
     "DELETE FROM organization_memberships WHERE organization_id = $1",
     [organizationId]
   );
-  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
   await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [
     [actorUserId, invitedUserId]
   ]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
 }
 
 test("tenant resource increases enforce effective commercial limits transactionally", async () => {
