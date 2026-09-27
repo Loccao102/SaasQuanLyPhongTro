@@ -1,4 +1,5 @@
 "use client";
+import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
@@ -357,9 +358,9 @@ export function FinancesClient() {
 
               <label>
                 <span>Ngày phát sinh chi *</span>
-                <input
+                <DateInput
                   name="occurredAt"
-                  type="date"
+                  
                   required
                   defaultValue={new Date().toISOString().slice(0, 10)}
                 />
