@@ -35,7 +35,7 @@ export class CmsPlatformGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<CmsRequest>();
     let userId = request.authenticatedUserId;
     const sessionToken = readSessionToken(request);
-    let authenticatedSession = sessionToken
+    const authenticatedSession = sessionToken
       ? await this.authentication.authenticateSession(sessionToken)
       : null;
 
