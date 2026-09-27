@@ -67,7 +67,17 @@ export interface MfaRequiredResult {
   expiresAt: string;
 }
 
-export type AuthenticationResult = LoginResult | MfaRequiredResult;
+export interface MfaEnrollmentRequiredResult {
+  mfaEnrollmentRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  requiredByRole: string;
+}
+
+export type AuthenticationResult =
+  | LoginResult
+  | MfaRequiredResult
+  | MfaEnrollmentRequiredResult;
 
 export interface LoginResult {
   user: {
@@ -186,7 +196,7 @@ export class AuthenticationService {
   async verifyEmail(
     token: string,
     sessionContext?: SessionContext
-  ): Promise<LoginResult> {
+  ): Promise<AuthenticationResult> {
     const tokenHash = safeTokenHash(token);
     if (!tokenHash) {
       throw new BadRequestException(
@@ -208,7 +218,7 @@ export class AuthenticationService {
     if (!identity) {
       throw new Error("Verified account could not be loaded.");
     }
-    return this.issueSession(identity, sessionContext);
+    return this.completePrimaryAuthentication(identity, sessionContext);
   }
 
   async requestPasswordReset(emailInput: string): Promise<void> {
@@ -416,6 +426,141 @@ export class AuthenticationService {
     await this.repository.disableMfa(userId, currentSessionId);
   }
 
+  async beginRequiredMfaEnrollment(input: {
+    challengeToken: string;
+  }): Promise<{
+    secret: string;
+    provisioningUri: string;
+    requiredByRole: string;
+  }> {
+    const tokenHash = safeTokenHash(input.challengeToken);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Phiên thiết lập MFA không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findMfaChallenge(
+      tokenHash,
+      "ENROLL",
+      false
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        "Phiên thiết lập MFA không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const requirement = await this.repository.getMfaPolicyRequirement(
+      identity.userId,
+      identity.accountType
+    );
+    if (!requirement.required || !requirement.role) {
+      throw new ConflictException(
+        "Tài khoản này không còn thuộc policy bắt buộc MFA."
+      );
+    }
+
+    const existing = await this.repository.getMfaCredential(
+      identity.userId,
+      false
+    );
+    if (existing?.confirmed) {
+      throw new ConflictException(
+        "MFA đã được bật. Hãy đăng nhập lại để xác thực hai bước."
+      );
+    }
+
+    const secret = generateTotpSecret();
+    const encrypted = encryptTotpSecret(secret);
+    await this.repository.upsertMfaSetup({
+      userId: identity.userId,
+      ciphertext: encrypted.ciphertext,
+      iv: encrypted.iv,
+      tag: encrypted.tag
+    });
+
+    return {
+      secret,
+      provisioningUri: totpProvisioningUri({
+        secret,
+        email: identity.email
+      }),
+      requiredByRole: requirement.role
+    };
+  }
+
+  async confirmRequiredMfaEnrollment(input: {
+    challengeToken: string;
+    code: string;
+    sessionContext?: SessionContext;
+  }): Promise<LoginResult & { recoveryCodes: string[] }> {
+    const tokenHash = safeTokenHash(input.challengeToken);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Phiên thiết lập MFA không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findMfaChallenge(
+      tokenHash,
+      "ENROLL",
+      false
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        "Phiên thiết lập MFA không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const credential = await this.repository.getMfaCredential(
+      identity.userId,
+      false
+    );
+    if (
+      !credential ||
+      credential.confirmed ||
+      !verifyTotpCode(
+        decryptTotpSecret({
+          ciphertext: credential.ciphertext,
+          iv: credential.iv,
+          tag: credential.tag
+        }),
+        input.code
+      )
+    ) {
+      throw new BadRequestException("Mã xác thực không hợp lệ.");
+    }
+
+    const recoveryCodes = generateRecoveryCodes();
+    const confirmed = await this.repository.confirmMfaSetup(
+      identity.userId,
+      recoveryCodes.map(hashRecoveryCode)
+    );
+    if (!confirmed) {
+      throw new BadRequestException(
+        "Thiết lập MFA đã thay đổi. Hãy đăng nhập lại."
+      );
+    }
+
+    const consumed = await this.repository.consumeMfaChallenge(
+      identity.userId,
+      tokenHash,
+      "ENROLL"
+    );
+    if (!consumed) {
+      throw new BadRequestException(
+        "Phiên thiết lập MFA đã được sử dụng hoặc đã hết hạn."
+      );
+    }
+
+    const session = await this.issueSession(identity, input.sessionContext);
+    return {
+      ...session,
+      recoveryCodes
+    };
+  }
+
   async verifyMfaChallenge(input: {
     challengeToken: string;
     code: string;
@@ -428,13 +573,21 @@ export class AuthenticationService {
       );
     }
 
-    const identity = await this.repository.findMfaChallenge(tokenHash);
+    const identity = await this.repository.findMfaChallenge(
+      tokenHash,
+      "VERIFY",
+      true
+    );
     if (!identity || !(await this.verifySecondFactor(identity.userId, input.code))) {
       throw new BadRequestException("Mã xác thực không hợp lệ hoặc đã hết hạn.");
     }
 
     if (
-      !(await this.repository.consumeMfaChallenge(identity.userId, tokenHash))
+      !(await this.repository.consumeMfaChallenge(
+        identity.userId,
+        tokenHash,
+        "VERIFY"
+      ))
     ) {
       throw new BadRequestException(
         "Phiên xác thực hai bước đã được sử dụng hoặc đã hết hạn."
@@ -591,24 +744,45 @@ export class AuthenticationService {
     sessionContext?: SessionContext
   ): Promise<AuthenticationResult> {
     const mfa = await this.repository.getMfaCredential(identity.userId);
-    if (!mfa) {
-      return this.issueSession(identity, sessionContext);
-    }
-
     const challengeToken = generateOpaqueToken();
     const expiresAt = new Date(
       Date.now() + this.mfaChallengeTtlMinutes() * 60 * 1000
     );
-    await this.repository.createMfaChallenge({
-      userId: identity.userId,
-      tokenHash: hashOpaqueToken(challengeToken),
-      expiresAt
-    });
-    return {
-      mfaRequired: true,
-      challengeToken,
-      expiresAt: expiresAt.toISOString()
-    };
+
+    if (mfa) {
+      await this.repository.createMfaChallenge({
+        userId: identity.userId,
+        tokenHash: hashOpaqueToken(challengeToken),
+        expiresAt,
+        purpose: "VERIFY"
+      });
+      return {
+        mfaRequired: true,
+        challengeToken,
+        expiresAt: expiresAt.toISOString()
+      };
+    }
+
+    const requirement = await this.repository.getMfaPolicyRequirement(
+      identity.userId,
+      identity.accountType
+    );
+    if (requirement.required && requirement.role) {
+      await this.repository.createMfaChallenge({
+        userId: identity.userId,
+        tokenHash: hashOpaqueToken(challengeToken),
+        expiresAt,
+        purpose: "ENROLL"
+      });
+      return {
+        mfaEnrollmentRequired: true,
+        challengeToken,
+        expiresAt: expiresAt.toISOString(),
+        requiredByRole: requirement.role
+      };
+    }
+
+    return this.issueSession(identity, sessionContext);
   }
 
   private async verifySecondFactor(
