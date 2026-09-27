@@ -39,6 +39,8 @@ See [Local Development Runtime](../../docs/operations/LOCAL_DEVELOPMENT.md) for 
 ## Scope
 
 Connected to PostgreSQL/API now:
+- real PLATFORM password login backed by the shared database session model;
+- TOTP MFA/recovery-code challenge and platform security/session screen;
 - system settings;
 - SaaS plan versions and limits;
 - organization/room/staff inspection;
@@ -55,7 +57,7 @@ Connected to PostgreSQL/API now:
 - dashboard counts.
 
 Explicitly pending:
-- real login/session middleware (local dev uses a server-side dev principal);
+- policy rollout for mandatory MFA on privileged platform roles;
 - Loki/observability integration;
 - provider-specific payment webhook adapter/signature verification;
 - self-service paid upgrade/downgrade checkout;
