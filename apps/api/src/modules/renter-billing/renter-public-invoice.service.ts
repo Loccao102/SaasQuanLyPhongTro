@@ -393,7 +393,7 @@ export class RenterPublicInvoiceService {
 
   private requireToken(token: string) {
     const normalized = token.trim();
-    if (!/^habi_inv_[A-Za-z0-9_-]{24,64}$/.test(normalized)) {
+    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(normalized)) {
       throw new NotFoundException("Public invoice link is invalid or no longer active.");
     }
     return normalized;
