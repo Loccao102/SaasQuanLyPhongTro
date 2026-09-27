@@ -9,6 +9,8 @@ export interface CredentialIdentity {
   displayName: string;
   userStatus: string;
   authVersion: number;
+  organizationId: string | null;
+  accountType: "TENANT" | "PLATFORM";
   credential: PasswordCredential;
 }
 
@@ -17,6 +19,8 @@ export interface SessionIdentity {
   userId: string;
   email: string;
   displayName: string;
+  organizationId: string | null;
+  accountType: "TENANT" | "PLATFORM";
   csrfHash: Buffer;
   expiresAt: Date;
 }
@@ -33,6 +37,8 @@ type CredentialRow = QueryResultRow & {
   display_name: string;
   user_status: string;
   auth_version: number;
+  organization_id: string | null;
+  account_type: "TENANT" | "PLATFORM";
   password_hash: Buffer;
   password_salt: Buffer;
   scrypt_n: number;
@@ -45,6 +51,8 @@ type SessionRow = QueryResultRow & {
   user_id: string;
   email: string;
   display_name: string;
+  organization_id: string | null;
+  account_type: "TENANT" | "PLATFORM";
   csrf_hash: Buffer;
   expires_at: Date;
 };
@@ -69,6 +77,8 @@ export class AuthenticationRepository {
          u.display_name,
          u.status AS user_status,
          u.auth_version,
+         u.organization_id::text,
+         u.account_type,
          c.password_hash,
          c.password_salt,
          c.scrypt_n,
@@ -90,6 +100,8 @@ export class AuthenticationRepository {
       displayName: row.display_name,
       userStatus: row.user_status,
       authVersion: row.auth_version,
+      organizationId: row.organization_id,
+      accountType: row.account_type,
       credential: {
         hash: row.password_hash,
         salt: row.password_salt,
@@ -110,6 +122,8 @@ export class AuthenticationRepository {
          u.display_name,
          u.status AS user_status,
          u.auth_version,
+         u.organization_id::text,
+         u.account_type,
          c.password_hash,
          c.password_salt,
          c.scrypt_n,
@@ -131,6 +145,8 @@ export class AuthenticationRepository {
       displayName: row.display_name,
       userStatus: row.user_status,
       authVersion: row.auth_version,
+      organizationId: row.organization_id,
+      accountType: row.account_type,
       credential: {
         hash: row.password_hash,
         salt: row.password_salt,
@@ -191,18 +207,20 @@ export class AuthenticationRepository {
   async createSession(input: {
     userId: string;
     authVersion: number;
+    organizationId: string | null;
     tokenHash: Buffer;
     csrfHash: Buffer;
     expiresAt: Date;
   }): Promise<string> {
     const result = await this.db.query<QueryResultRow & { id: string }>(
       `INSERT INTO auth_sessions (
-         user_id, auth_version, token_hash, csrf_hash, expires_at
+         user_id, organization_id, auth_version, token_hash, csrf_hash, expires_at
        )
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id::text`,
       [
         input.userId,
+        input.organizationId,
         input.authVersion,
         input.tokenHash,
         input.csrfHash,
@@ -221,6 +239,8 @@ export class AuthenticationRepository {
          s.user_id::text,
          u.email,
          u.display_name,
+         u.organization_id::text,
+         u.account_type,
          s.csrf_hash,
          s.expires_at
        FROM auth_sessions s
@@ -230,6 +250,7 @@ export class AuthenticationRepository {
          AND s.expires_at > now()
          AND u.status = 'ACTIVE'
          AND u.auth_version = s.auth_version
+         AND s.organization_id IS NOT DISTINCT FROM u.organization_id
        LIMIT 1`,
       [tokenHash]
     );
@@ -242,6 +263,8 @@ export class AuthenticationRepository {
       userId: row.user_id,
       email: row.email,
       displayName: row.display_name,
+      organizationId: row.organization_id,
+      accountType: row.account_type,
       csrfHash: row.csrf_hash,
       expiresAt: row.expires_at
     };
