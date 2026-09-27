@@ -1,5 +1,7 @@
 "use client";
 
+import { DateInput, DateTimeInput } from "@propops/ui/date-input";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
@@ -1016,7 +1018,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </label>
               <label>
                 <span>Thời điểm thu</span>
-                <input name="occurredAt" type="datetime-local" required />
+                <DateTimeInput name="occurredAt"  required />
               </label>
               <label className="asset-form__wide">
                 <span>Ghi chú</span>
@@ -1070,7 +1072,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </label>
               <label>
                 <span>Thời điểm tất toán</span>
-                <input name="occurredAt" type="datetime-local" required />
+                <DateTimeInput name="occurredAt"  required />
               </label>
               <label className="asset-form__wide">
                 <span>Lý do / biên bản đối soát</span>
@@ -1149,11 +1151,11 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </label>
               <label>
                 <span>Ngày bắt đầu (dd/mm/yyyy) *</span>
-                <input name="startDate" type="date" defaultValue={lease.startDate} required />
+                <DateInput name="startDate"  defaultValue={lease.startDate} required />
               </label>
               <label>
                 <span>Ngày kết thúc dự kiến (dd/mm/yyyy)</span>
-                <input name="plannedEndDate" type="date" defaultValue={lease.plannedEndDate ?? ""} />
+                <DateInput name="plannedEndDate"  defaultValue={lease.plannedEndDate ?? ""} />
               </label>
               <label>
                 <span>Tiền phòng / tháng</span>
@@ -1684,9 +1686,9 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </label>
               <label>
                 <span>Ngày có hiệu lực (dd/mm/yyyy) *</span>
-                <input
+                <DateInput
                   name="effectiveDate"
-                  type="date"
+                  
                   required
                   defaultValue={new Date().toISOString().slice(0, 10)}
                 />
@@ -1724,9 +1726,9 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               </div>
               <label>
                 <span>Ngày kết thúc mới (dd/mm/yyyy) - Để trống nếu không đổi</span>
-                <input
+                <DateInput
                   name="adjustedPlannedEndDate"
-                  type="date"
+                  
                   min={lease.startDate}
                   placeholder={lease.plannedEndDate ?? ""}
                 />
@@ -1865,9 +1867,9 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
 
               <label>
                 <span>Ngày bắt đầu gửi</span>
-                <input
+                <DateInput
                   name="registeredAt"
-                  type="date"
+                  
                   defaultValue={new Date().toISOString().slice(0, 10)}
                 />
               </label>
