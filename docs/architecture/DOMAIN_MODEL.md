@@ -22,7 +22,18 @@ Một organization là một tài khoản khách hàng SaaS. Có thể là:
 
 Không giả định khách hàng phải là doanh nghiệp.
 
-## 3. SaaS Commercial
+## 3. Identity / Tenant Account
+
+Habi có hai lớp identity:
+
+- `TENANT`: account thuộc đúng một `Organization` qua `users.organization_id`;
+- `PLATFORM`: account CMS/control-plane, không thuộc tenant.
+
+Tenant account có đúng một tenant binding. `OrganizationMembership` vẫn giữ role, status và resource scope để authorization rõ ràng và audit được.
+
+Self-service registration tạo organization + OWNER + ORGANIZATION scope + STARTER trial trong cùng transaction. OWNER/CMS có thể tạo thêm tenant account trong giới hạn account-seat của plan.
+
+## 5. SaaS Commercial
 
 SaaS Commercial là business concern của nền tảng, không thuộc CMS UI.
 
@@ -51,7 +62,7 @@ Subscription baseline:
 - `SUSPENDED`;
 - `CANCELLED`.
 
-## 4. Administrative Area
+## 5. Administrative Area
 
 Mô hình dạng cây:
 
@@ -68,7 +79,7 @@ Tránh hard-code schema theo một phiên bản địa giới hành chính. Enti
 - type;
 - effective_from/effective_to nếu cần lịch sử.
 
-## 5. Operational Group
+## 6. Operational Group
 
 Nhóm vận hành do organization tự định nghĩa, độc lập với địa giới hành chính.
 
@@ -79,13 +90,13 @@ Ví dụ:
 
 Một property có thể thuộc một administrative area và một hoặc nhiều operational group.
 
-## 6. Property / Floor / Room
+## 7. Property / Floor / Room
 
 Property là một địa điểm/cơ sở cụ thể. Room không mang trực tiếp thông tin người thuê hiện tại; quan hệ người thuê đi qua Lease.
 
 Room occupancy được suy ra từ Lease có trạng thái `ACTIVE` hoặc `TERMINATION_SCHEDULED`; không lưu một `current_tenant_id` mutable trên Room.
 
-## 7. Lease / Resident
+## 8. Lease / Resident
 
 ```text
 Room
@@ -119,7 +130,7 @@ Một Lease lưu contractual snapshot cơ bản:
 
 Các số tiền dùng integer VND.
 
-## 8. Pricing
+## 9. Pricing
 
 Pricing Policy chứa các Pricing Item:
 - ROOM_RENT
@@ -133,7 +144,7 @@ Pricing Policy chứa các Pricing Item:
 
 Invoice phải snapshot mô tả, quantity, unit_price và amount; sửa pricing hiện tại không được làm thay đổi invoice lịch sử.
 
-## 9. Metering
+## 10. Metering
 
 Các entity chính:
 - Meter
@@ -143,7 +154,7 @@ Các entity chính:
 
 Reading có client UUID/idempotency key để offline retry không tạo duplicate.
 
-## 10. Invoice
+## 11. Invoice
 
 ```text
 Invoice
@@ -162,7 +173,7 @@ Invoice lưu:
 - public token;
 - payment code.
 
-## 11. Payment
+## 12. Payment
 
 ```text
 PaymentTransaction
@@ -172,7 +183,7 @@ PaymentTransaction
 
 Không gắn một transaction trực tiếp vào một invoice vì cần hỗ trợ partial payment, nhiều transaction/1 invoice và tương lai 1 transaction/nhiều invoice.
 
-## 12. Notification
+## 13. Notification
 
 ```text
 NotificationJob
