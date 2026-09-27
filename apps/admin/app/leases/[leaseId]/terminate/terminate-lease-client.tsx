@@ -160,7 +160,8 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
   ) {
     event.preventDefault();
     if (!meterReadiness?.effectiveDate) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     setSaving(true);
     setActionError(null);
@@ -176,7 +177,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
       setActionSuccess(
         "Đã ghi chỉ số cuối. Meter readiness được đồng bộ tự động."
       );
-      event.currentTarget.reset();
+      formElement?.reset();
       await load();
     } catch (action) {
       setActionError(

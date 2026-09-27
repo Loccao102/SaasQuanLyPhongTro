@@ -307,7 +307,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   ) {
     event.preventDefault();
     if (!data) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
@@ -333,7 +334,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       setPrimaryResidentResults([]);
       setPrimaryResidentQuery("");
       setPrimaryReplacementConfirmed(false);
-      event.currentTarget.reset();
+      formElement?.reset();
       setActionSuccess(
         "Đã đổi người thuê chính trên bản nháp hợp đồng."
       );
@@ -351,7 +352,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
 
   async function addParty(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
@@ -372,7 +374,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       setSelectedPartyResident(null);
       setResidentResults([]);
       setResidentQuery("");
-      event.currentTarget.reset();
+      formElement?.reset();
       setActionSuccess("Đã thêm người vào bản nháp hợp đồng.");
       await load();
     } catch (action) {
@@ -406,7 +408,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   ) {
     event.preventDefault();
     if (!deposit) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const occurredAt = new Date(String(form.get("occurredAt") ?? ""));
     if (Number.isNaN(occurredAt.getTime())) {
       setActionError("Thời điểm thu cọc không hợp lệ.");
@@ -424,7 +427,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         note: String(form.get("note") ?? "") || null
       });
       clearKey("deposit-collection");
-      event.currentTarget.reset();
+      formElement?.reset();
       setActionSuccess("Đã ghi nhận khoản thu tiền cọc.");
       await load();
     } catch (action) {
@@ -441,7 +444,8 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   async function settleDeposit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!deposit) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const occurredAt = new Date(String(form.get("occurredAt") ?? ""));
     if (Number.isNaN(occurredAt.getTime())) {
       setActionError("Thời điểm tất toán cọc không hợp lệ.");
@@ -460,7 +464,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         note: String(form.get("note") ?? "")
       });
       clearKey("deposit-settlement");
-      event.currentTarget.reset();
+      formElement?.reset();
       setActionSuccess(
         "Đã tất toán tiền cọc và cập nhật readiness trả phòng."
       );

@@ -77,7 +77,8 @@ export function PropertyDetailClient({
 
   function submitFloor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     void mutate(async () => {
       await adminAssetsApi.createFloor(propertyId, {
         id: crypto.randomUUID(),
@@ -85,13 +86,14 @@ export function PropertyDetailClient({
         name: String(form.get("name") ?? ""),
         sortOrder: Number(form.get("sortOrder") ?? 0)
       });
-      event.currentTarget.reset();
+      formElement?.reset();
     });
   }
 
   function submitRoom(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     void mutate(async () => {
       await adminAssetsApi.createRoom(propertyId, {
         id: crypto.randomUUID(),
@@ -100,7 +102,7 @@ export function PropertyDetailClient({
         name: String(form.get("name") ?? ""),
         sortOrder: Number(form.get("sortOrder") ?? 0)
       });
-      event.currentTarget.reset();
+      formElement?.reset();
     });
   }
 

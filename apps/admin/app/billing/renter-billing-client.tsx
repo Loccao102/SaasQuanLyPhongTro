@@ -57,7 +57,8 @@ export function RenterBillingClient() {
 
   async function createCycle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setError(null);
     setActionMessage(null);
@@ -70,7 +71,7 @@ export function RenterBillingClient() {
         periodEnd: String(form.get("periodEnd") ?? ""),
         dueDate: String(form.get("dueDate") ?? "")
       });
-      event.currentTarget.reset();
+      formElement?.reset();
       setActionMessage("Đã tạo kỳ hóa đơn OPEN.");
       await load();
     } catch (actionError) {

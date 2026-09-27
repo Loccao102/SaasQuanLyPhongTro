@@ -45,7 +45,8 @@ export function AssetOverviewClient() {
 
   async function createProperty(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setMutationError(null);
     try {
@@ -58,7 +59,7 @@ export function AssetOverviewClient() {
         ) as "BOARDING_HOUSE" | "MINI_APARTMENT" | "APARTMENT" | "OTHER",
         addressText: String(form.get("addressText") ?? "") || null
       });
-      event.currentTarget.reset();
+      formElement?.reset();
       setShowCreate(false);
       await load();
     } catch (createError) {
