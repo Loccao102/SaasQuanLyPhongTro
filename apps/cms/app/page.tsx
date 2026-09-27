@@ -18,6 +18,7 @@ import {
 import {
   cmsApi,
   type CmsAuditEvent,
+  type CmsAuthSecurityAlert,
   type CmsAuthSecurityEvent,
   type CmsBillingReconciliation,
   type CmsBillingWebhookEvent,
@@ -229,6 +230,8 @@ export default function CmsPage() {
   const [audit, setAudit] = useState<CmsAuditEvent[]>([]);
   const [authSecurityEvents, setAuthSecurityEvents] =
     useState<CmsAuthSecurityEvent[]>([]);
+  const [authSecurityAlerts, setAuthSecurityAlerts] =
+    useState<CmsAuthSecurityAlert[]>([]);
   const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
   const [billingReconciliation, setBillingReconciliation] =
     useState<CmsBillingReconciliation | null>(null);
@@ -304,6 +307,7 @@ export default function CmsPage() {
         nextEntitlementOverrides,
         nextAudit,
         nextAuthSecurityEvents,
+        nextAuthSecurityAlerts,
         nextJobs,
         nextBillingReconciliation,
         nextLogs,
@@ -323,6 +327,9 @@ export default function CmsPage() {
           : Promise.resolve([]),
         can("platform.audit.read")
           ? cmsApi.authSecurityEvents()
+          : Promise.resolve([]),
+        can("platform.audit.read")
+          ? cmsApi.authSecurityAlerts()
           : Promise.resolve([]),
         can("platform.jobs.read")
           ? cmsApi.jobs()
@@ -345,6 +352,7 @@ export default function CmsPage() {
       setEntitlementOverrides(nextEntitlementOverrides);
       setAudit(nextAudit);
       setAuthSecurityEvents(nextAuthSecurityEvents);
+      setAuthSecurityAlerts(nextAuthSecurityAlerts);
       setJobsStatus(nextJobs);
       setBillingReconciliation(nextBillingReconciliation);
       setLogsStatus(nextLogs);
@@ -3536,6 +3544,41 @@ export default function CmsPage() {
 
           {!loading && view === "audit" && (
             <>
+              <section className="cms-panel">
+                <SectionHeader
+                  title="Security alerts"
+                  action={<span className="cms-note">Derived signals · newest first.</span>}
+                />
+                {authSecurityAlerts.length === 0 ? (
+                  <div className="empty-state">Chưa có security alert.</div>
+                ) : (
+                  <div className="audit-list">
+                    {authSecurityAlerts.map((item) => (
+                      <article className="audit-item" key={item.id}>
+                        <div>
+                          <strong>{item.alertType}</strong>
+                          <StatusBadge tone={statusTone(
+                            item.severity === "HIGH"
+                              ? "ERROR"
+                              : item.severity === "MEDIUM"
+                                ? "WARN"
+                                : "INFO"
+                          )}>
+                            {item.severity}
+                          </StatusBadge>
+                        </div>
+                        <p>{item.summary}</p>
+                        <small>
+                          {new Date(item.at).toLocaleString("vi-VN")} · Tenant:{" "}
+                          {item.organizationId ?? "—"} · User: {item.userId ?? "—"} ·{" "}
+                          Delivery: {item.deliveryStatus}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               <section className="cms-panel">
                 <SectionHeader
                   title="Authentication security"
