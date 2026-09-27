@@ -17,6 +17,9 @@ ALTER TABLE auth_webauthn_challenges
   DROP CONSTRAINT IF EXISTS auth_webauthn_challenges_check;
 
 ALTER TABLE auth_webauthn_challenges
+  DROP CONSTRAINT IF EXISTS auth_webauthn_challenges_check1;
+
+ALTER TABLE auth_webauthn_challenges
   ADD CONSTRAINT auth_webauthn_challenges_context_check
   CHECK (
     (purpose = 'REGISTRATION' AND parent_mfa_token_hash IS NULL AND session_id IS NULL)
