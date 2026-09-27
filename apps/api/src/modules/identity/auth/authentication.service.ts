@@ -29,6 +29,7 @@ import {
   type SessionIdentity
 } from "./authentication.repository.js";
 import { verifyGoogleIdentityToken } from "./google-identity.js";
+import { AuthEmailDeliveryService } from "./auth-email-delivery.service.js";
 import { TenantOnboardingService } from "./tenant-onboarding.service.js";
 
 const DUMMY_CREDENTIAL: PasswordCredential = {
@@ -68,7 +69,8 @@ export class AuthenticationService {
     private readonly repository: AuthenticationRepository,
     private readonly onboarding?: TenantOnboardingService,
     private readonly database?: DatabaseService,
-    private readonly commercialPolicy?: CommercialPolicyService
+    private readonly commercialPolicy?: CommercialPolicyService,
+    private readonly authEmail?: AuthEmailDeliveryService
   ) {}
 
   async authConfig() {
@@ -109,7 +111,7 @@ export class AuthenticationService {
     password: string;
     displayName: string;
     organizationName: string;
-  }): Promise<LoginResult> {
+  }): Promise<{ pendingVerification: true; email: string }> {
     const email = this.email(input.email);
     const displayName = this.required(input.displayName, "displayName");
     const organizationName = this.required(
@@ -117,28 +119,99 @@ export class AuthenticationService {
       "organizationName"
     );
 
-    let credential: PasswordCredential;
-    try {
-      credential = await hashPassword(input.password);
-    } catch (error) {
-      if (error instanceof InvalidPasswordPolicyError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
+    const credential = await this.passwordCredential(input.password);
+    const verificationToken = generateOpaqueToken();
+    const expiresAt = new Date(
+      Date.now() + this.verificationTtlHours() * 60 * 60 * 1000
+    );
 
-    await this.requireOnboarding().register({
+    await this.requireOnboarding().beginPasswordRegistration({
       email,
       displayName,
       organizationName,
-      credential
+      credential,
+      tokenHash: hashOpaqueToken(verificationToken),
+      expiresAt
     });
 
-    const identity = await this.repository.findAccountByEmail(email);
+    await this.requireAuthEmail().sendVerification(
+      email,
+      verificationToken
+    );
+
+    return { pendingVerification: true, email };
+  }
+
+  async verifyEmail(token: string): Promise<LoginResult> {
+    const tokenHash = safeTokenHash(token);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Liên kết xác minh không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const onboarding = await this.requireOnboarding()
+      .verifyPasswordRegistration(tokenHash);
+    if (!onboarding) {
+      throw new BadRequestException(
+        "Liên kết xác minh không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const identity = await this.repository.findAccountByEmail(
+      onboarding.email
+    );
     if (!identity) {
-      throw new Error("Registered account could not be loaded.");
+      throw new Error("Verified account could not be loaded.");
     }
     return this.issueSession(identity);
+  }
+
+  async requestPasswordReset(emailInput: string): Promise<void> {
+    const email = this.email(emailInput);
+    const identity = await this.repository.findCredentialByEmail(email);
+    if (!identity || identity.userStatus !== "ACTIVE") {
+      return;
+    }
+
+    const token = generateOpaqueToken();
+    const expiresAt = new Date(
+      Date.now() + this.passwordResetTtlMinutes() * 60 * 1000
+    );
+    await this.repository.replacePasswordResetToken({
+      userId: identity.userId,
+      tokenHash: hashOpaqueToken(token),
+      expiresAt
+    });
+
+    try {
+      await this.requireAuthEmail().sendPasswordReset(identity.email, token);
+    } catch (error) {
+      console.error(
+        "[auth-email] password reset delivery failed",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const tokenHash = safeTokenHash(token);
+    if (!tokenHash) {
+      throw new BadRequestException(
+        "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn."
+      );
+    }
+
+    const credential = await this.passwordCredential(newPassword);
+    const identity = await this.repository.resetPasswordWithToken(
+      tokenHash,
+      credential
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn."
+      );
+    }
   }
 
   async google(input: {
@@ -362,6 +435,17 @@ export class AuthenticationService {
     return this.sessionTtlDays() * 24 * 60 * 60;
   }
 
+  private async passwordCredential(password: string): Promise<PasswordCredential> {
+    try {
+      return await hashPassword(password);
+    } catch (error) {
+      if (error instanceof InvalidPasswordPolicyError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
   private async issueSession(
     identity: AccountIdentity
   ): Promise<LoginResult> {
@@ -417,11 +501,38 @@ export class AuthenticationService {
     return normalized;
   }
 
+  private requireAuthEmail(): AuthEmailDeliveryService {
+    if (!this.authEmail) {
+      throw new Error("Auth email delivery service is not configured.");
+    }
+    return this.authEmail;
+  }
+
   private requireOnboarding(): TenantOnboardingService {
     if (!this.onboarding) {
       throw new Error("Tenant onboarding service is not configured.");
     }
     return this.onboarding;
+  }
+
+  private verificationTtlHours(): number {
+    const value = Number(process.env.AUTH_EMAIL_VERIFICATION_TTL_HOURS ?? "24");
+    if (!Number.isInteger(value) || value < 1 || value > 168) {
+      throw new Error(
+        "AUTH_EMAIL_VERIFICATION_TTL_HOURS must be between 1 and 168."
+      );
+    }
+    return value;
+  }
+
+  private passwordResetTtlMinutes(): number {
+    const value = Number(process.env.AUTH_PASSWORD_RESET_TTL_MINUTES ?? "30");
+    if (!Number.isInteger(value) || value < 5 || value > 1440) {
+      throw new Error(
+        "AUTH_PASSWORD_RESET_TTL_MINUTES must be between 5 and 1440."
+      );
+    }
+    return value;
   }
 
   private sessionTtlDays(): number {
