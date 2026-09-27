@@ -25,6 +25,7 @@ import { generateOpaqueToken } from "./session-token.js";
 import {
   AuthenticationService,
   InvalidCredentialsError,
+  type AuthenticationResult,
   type LoginResult
 } from "./authentication.service.js";
 
@@ -78,8 +79,19 @@ export class AuthenticationController {
     try {
       const result = await this.authentication.login({
         email,
-        password: this.requiredString(body.password, "password")
+        password: this.requiredString(body.password, "password"),
+        sessionContext: this.sessionContext(request)
       });
+      if ("mfaRequired" in result) {
+        await this.security.recordEvent({
+          eventType: "PASSWORD_LOGIN_PRIMARY",
+          outcome: "SUCCESS",
+          email,
+          ip,
+          metadata: { mfaRequired: true }
+        });
+        return result;
+      }
       await this.security.recordEvent({
         eventType: "PASSWORD_LOGIN",
         outcome: "SUCCESS",
@@ -157,7 +169,8 @@ export class AuthenticationController {
 
     try {
       const result = await this.authentication.verifyEmail(
-        this.requiredString(body.token, "token")
+        this.requiredString(body.token, "token"),
+        this.sessionContext(request)
       );
       await this.security.recordEvent({
         eventType: "EMAIL_VERIFIED",
@@ -283,8 +296,18 @@ export class AuthenticationController {
         organizationName:
           typeof body.organizationName === "string"
             ? body.organizationName
-            : undefined
+            : undefined,
+        sessionContext: this.sessionContext(request)
       });
+      if ("mfaRequired" in result) {
+        await this.security.recordEvent({
+          eventType: "GOOGLE_AUTH_PRIMARY",
+          outcome: "SUCCESS",
+          ip,
+          metadata: { mode, mfaRequired: true }
+        });
+        return result;
+      }
       await this.security.recordEvent({
         eventType: "GOOGLE_AUTH",
         outcome: "SUCCESS",
@@ -312,6 +335,116 @@ export class AuthenticationController {
       }
       throw error;
     }
+  }
+
+  @Post("mfa/verify")
+  async verifyMfa(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertMfaVerifyAllowed(ip);
+
+    try {
+      const result = await this.authentication.verifyMfaChallenge({
+        challengeToken: this.requiredString(
+          body.challengeToken,
+          "challengeToken"
+        ),
+        code: this.requiredString(body.code, "code"),
+        sessionContext: this.sessionContext(request)
+      });
+      await this.security.recordEvent({
+        eventType: "MFA_LOGIN",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "MFA_LOGIN",
+        outcome: "FAILURE",
+        ip
+      });
+      throw error;
+    }
+  }
+
+  @Get("mfa")
+  async mfaStatus(@Req() request: Request) {
+    const session = await this.requireSession(request);
+    return this.authentication.mfaStatus(session.userId);
+  }
+
+  @Post("mfa/setup")
+  async setupMfa(
+    @Req() request: Request,
+    @Body() _body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaSetupAllowed(session.userId);
+    return this.authentication.beginMfaSetup(
+      session.userId,
+      session.email
+    );
+  }
+
+  @Post("mfa/confirm")
+  async confirmMfa(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaSetupAllowed(session.userId);
+
+    const result = await this.authentication.confirmMfaSetup(
+      session.userId,
+      this.requiredString(body.code, "code")
+    );
+    await this.security.recordEvent({
+      eventType: "MFA_ENABLED",
+      outcome: "SUCCESS",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId
+    });
+    return result;
+  }
+
+  @Post("mfa/disable")
+  async disableMfa(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaSetupAllowed(session.userId);
+
+    await this.authentication.disableMfa(
+      session.userId,
+      session.sessionId,
+      this.requiredString(body.code, "code")
+    );
+    await this.security.recordEvent({
+      eventType: "MFA_DISABLED",
+      outcome: "SUCCESS",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId
+    });
+    return { disabled: true };
   }
 
   @Get("me")
@@ -527,6 +660,15 @@ export class AuthenticationController {
     ]);
   }
 
+  private finishPrimaryAuthentication(
+    response: Response,
+    result: AuthenticationResult
+  ) {
+    return "mfaRequired" in result
+      ? result
+      : this.finishAuthentication(response, result);
+  }
+
   private finishAuthentication(response: Response, result: LoginResult) {
     const names = authCookieNames();
     const maxAgeSeconds = this.authentication.sessionTtlSeconds();
@@ -552,6 +694,12 @@ export class AuthenticationController {
       memberships: result.memberships,
       features: result.features,
       expiresAt: result.expiresAt.toISOString()
+    };
+  }
+
+  private sessionContext(request: Request) {
+    return {
+      userAgent: request.get("user-agent") ?? null
     };
   }
 
