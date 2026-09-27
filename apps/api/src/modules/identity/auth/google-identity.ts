@@ -83,6 +83,7 @@ export async function verifyGoogleIdentityToken(
     iss?: string;
     sub?: string;
     aud?: string | string[];
+    azp?: string;
     exp?: number;
     iat?: number;
     email?: string;
@@ -131,8 +132,11 @@ export async function verifyGoogleIdentityToken(
   );
 
   const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  const authorizedPartyValid =
+    audience.length <= 1 || claims.azp === clientId;
   const verified =
     validSignature &&
+    authorizedPartyValid &&
     (claims.iss === "https://accounts.google.com" ||
       claims.iss === "accounts.google.com") &&
     audience.includes(clientId) &&
