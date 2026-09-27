@@ -288,6 +288,37 @@ export class AuthenticationService {
     await this.repository.revokeSessionByTokenHash(tokenHash);
   }
 
+  async listSessions(
+    userId: string,
+    currentSessionId: string
+  ): Promise<Array<{
+    id: string;
+    current: boolean;
+    createdAt: string;
+    lastSeenAt: string;
+    expiresAt: string;
+  }>> {
+    const sessions = await this.repository.listActiveSessions(userId);
+    return sessions.map((session) => ({
+      id: session.id,
+      current: session.id === currentSessionId,
+      createdAt: session.createdAt.toISOString(),
+      lastSeenAt: session.lastSeenAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString()
+    }));
+  }
+
+  revokeSession(userId: string, sessionId: string): Promise<boolean> {
+    return this.repository.revokeSessionForUser(userId, sessionId);
+  }
+
+  revokeOtherSessions(
+    userId: string,
+    currentSessionId: string
+  ): Promise<number> {
+    return this.repository.revokeOtherSessions(userId, currentSessionId);
+  }
+
   async changePassword(
     userId: string,
     currentSessionId: string,
