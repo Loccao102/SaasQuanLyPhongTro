@@ -78,7 +78,7 @@ Offline-capable Staff flows additionally require:
 - Labels remain visible; placeholders are not labels.
 - Validate as early as useful without interrupting fast entry.
 - Financial amounts display formatted VND but submit exact integer/fixed-decimal values.
-- Dates must be unambiguous.
+- Dates must be unambiguous. All user-facing date fields and date-only values use Vietnamese `dd/mm/yyyy`; API/database values remain ISO (`yyyy-mm-dd`). Date-time inputs use `dd/mm/yyyy HH:mm` while preserving ISO/local payload contracts.
 - Preserve unsaved form state when recoverable.
 - Use explicit domain action names for submit buttons.
 
