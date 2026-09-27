@@ -20,6 +20,7 @@ function serviceWithCounts(counts: number[]) {
   } as unknown as DatabaseService;
 
   const emailDelivery = {
+    isSecurityAlertAvailable: () => false,
     sendSecurityAlert: async () => undefined
   } as unknown as AuthEmailDeliveryService;
 
@@ -83,4 +84,50 @@ test("password change limiter blocks after configured threshold", async () => {
       process.env.AUTH_PASSWORD_CHANGE_MAX_PER_WINDOW = previousLimit;
     }
   }
+});
+
+
+test("MFA disable security event creates a persistent high-severity alert", async () => {
+  const queries: Array<{ text: string; values: readonly unknown[] }> = [];
+  const db = {
+    async query(text: string, values: readonly unknown[] = []) {
+      queries.push({ text, values });
+      if (text.includes("INSERT INTO auth_security_events")) {
+        return {
+          rows: [{ id: "31000000-0000-4000-8000-000000000001" }],
+          rowCount: 1
+        };
+      }
+      if (text.includes("INSERT INTO auth_security_alerts")) {
+        return {
+          rows: [{ id: "32000000-0000-4000-8000-000000000001" }],
+          rowCount: 1
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+  } as unknown as DatabaseService;
+
+  const emailDelivery = {
+    isSecurityAlertAvailable: () => false,
+    sendSecurityAlert: async () => undefined
+  } as unknown as AuthEmailDeliveryService;
+
+  const service = new AuthSecurityService(db, emailDelivery);
+  await service.recordEvent({
+    eventType: "MFA_DISABLED",
+    outcome: "SUCCESS",
+    userId: "00000000-0000-4000-8000-000000000123",
+    organizationId: "00000000-0000-4000-8000-000000000456",
+    email: "owner@example.com",
+    ip: "203.0.113.11"
+  });
+
+  const alertInsert = queries.find((item) =>
+    item.text.includes("INSERT INTO auth_security_alerts")
+  );
+  assert.ok(alertInsert);
+  assert.equal(alertInsert.values[3], "MFA_DISABLED");
+  assert.equal(alertInsert.values[4], "HIGH");
+  assert.equal(alertInsert.values[7], "SKIPPED");
 });
