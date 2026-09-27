@@ -45,12 +45,151 @@ export class TenantOnboardingService {
     return result.rows[0]?.value !== false;
   }
 
+  async beginPasswordRegistration(input: {
+    email: string;
+    displayName: string;
+    organizationName: string;
+    credential: PasswordCredential;
+    tokenHash: Buffer;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      const registrationEnabled = await this.settingBoolean(
+        client,
+        "registration_enabled",
+        true
+      );
+      const passwordRegistrationEnabled = await this.settingBoolean(
+        client,
+        "password_registration_enabled",
+        true
+      );
+      if (!registrationEnabled || !passwordRegistrationEnabled) {
+        throw new ConflictException(
+          "Đăng ký bằng email/mật khẩu đang tắt."
+        );
+      }
+
+      const email = input.email.trim().toLowerCase();
+      const existing = await client.query(
+        "SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1",
+        [email]
+      );
+      if ((existing.rowCount ?? 0) > 0) {
+        throw new ConflictException("Không thể sử dụng email này để đăng ký.");
+      }
+
+      this.validateProfile(input.displayName, input.organizationName);
+
+      await client.query(
+        "DELETE FROM auth_pending_registrations WHERE expires_at <= now() OR lower(email) = lower($1)",
+        [email]
+      );
+      await client.query(
+        `INSERT INTO auth_pending_registrations (
+           email,
+           display_name,
+           organization_name,
+           password_hash,
+           password_salt,
+           scrypt_n,
+           scrypt_r,
+           scrypt_p,
+           token_hash,
+           expires_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          email,
+          input.displayName.trim(),
+          input.organizationName.trim(),
+          input.credential.hash,
+          input.credential.salt,
+          input.credential.n,
+          input.credential.r,
+          input.credential.p,
+          input.tokenHash,
+          input.expiresAt
+        ]
+      );
+    });
+  }
+
+  async verifyPasswordRegistration(
+    tokenHash: Buffer
+  ): Promise<TenantOnboardingResult | null> {
+    const pending = await this.db.query<
+      QueryResultRow & {
+        id: string;
+        email: string;
+        display_name: string;
+        organization_name: string;
+        password_hash: Buffer;
+        password_salt: Buffer;
+        scrypt_n: number;
+        scrypt_r: number;
+        scrypt_p: number;
+      }
+    >(
+      `UPDATE auth_pending_registrations
+       SET consumed_at = now(), updated_at = now()
+       WHERE token_hash = $1
+         AND consumed_at IS NULL
+         AND expires_at > now()
+       RETURNING
+         id::text,
+         email,
+         display_name,
+         organization_name,
+         password_hash,
+         password_salt,
+         scrypt_n,
+         scrypt_r,
+         scrypt_p`,
+      [tokenHash]
+    );
+    const row = pending.rows[0];
+    if (!row) return null;
+
+    try {
+      const result = await this.register({
+        email: row.email,
+        displayName: row.display_name,
+        organizationName: row.organization_name,
+        credential: {
+          hash: row.password_hash,
+          salt: row.password_salt,
+          n: row.scrypt_n,
+          r: row.scrypt_r,
+          p: row.scrypt_p
+        },
+        emailVerified: true
+      });
+
+      await this.db.query(
+        "DELETE FROM auth_pending_registrations WHERE id = $1::uuid",
+        [row.id]
+      );
+      return result;
+    } catch (error) {
+      await this.db.query(
+        `UPDATE auth_pending_registrations
+         SET consumed_at = NULL, updated_at = now()
+         WHERE id = $1::uuid
+           AND expires_at > now()`,
+        [row.id]
+      );
+      throw error;
+    }
+  }
+
   async register(input: {
     email: string;
     displayName: string;
     organizationName: string;
     credential?: PasswordCredential;
     google?: { subject: string; providerEmail: string };
+    emailVerified?: boolean;
   }): Promise<TenantOnboardingResult> {
     return this.db.withTransaction(async (client) => {
       const registrationEnabled = await this.settingBoolean(
@@ -86,19 +225,7 @@ export class TenantOnboardingService {
 
       const organizationName = input.organizationName.trim();
       const displayName = input.displayName.trim();
-      if (!organizationName) {
-        throw new BadRequestException("Tên tenant/cơ sở quản lý là bắt buộc.");
-      }
-      if (organizationName.length > 160) {
-        throw new BadRequestException(
-          "Tên tenant/cơ sở quản lý không được vượt quá 160 ký tự."
-        );
-      }
-      if (!displayName || displayName.length > 120) {
-        throw new BadRequestException(
-          "Họ tên phải có từ 1 đến 120 ký tự."
-        );
-      }
+      this.validateProfile(displayName, organizationName);
 
       const slugBase = this.slug(organizationName);
       const slug = slugBase + "-" + randomBytes(4).toString("hex");
@@ -115,11 +242,21 @@ export class TenantOnboardingService {
         QueryResultRow & { id: string; auth_version: number }
       >(
         `INSERT INTO users (
-           organization_id, account_type, email, display_name, status
+           organization_id,
+           account_type,
+           email,
+           display_name,
+           status,
+           email_verified_at
          )
-         VALUES ($1, 'TENANT', $2, $3, 'ACTIVE')
+         VALUES ($1, 'TENANT', $2, $3, 'ACTIVE', $4)
          RETURNING id::text, auth_version`,
-        [organizationId, email, displayName]
+        [
+          organizationId,
+          email,
+          displayName,
+          input.emailVerified || input.google ? new Date() : null
+        ]
       );
       const userId = user.rows[0]!.id;
 
@@ -202,6 +339,22 @@ export class TenantOnboardingService {
         authVersion: user.rows[0]!.auth_version
       };
     });
+  }
+
+  private validateProfile(displayName: string, organizationName: string): void {
+    if (!organizationName) {
+      throw new BadRequestException("Tên tenant/cơ sở quản lý là bắt buộc.");
+    }
+    if (organizationName.length > 160) {
+      throw new BadRequestException(
+        "Tên tenant/cơ sở quản lý không được vượt quá 160 ký tự."
+      );
+    }
+    if (!displayName || displayName.length > 120) {
+      throw new BadRequestException(
+        "Họ tên phải có từ 1 đến 120 ký tự."
+      );
+    }
   }
 
   private async settingBoolean(
