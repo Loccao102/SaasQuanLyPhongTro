@@ -97,6 +97,32 @@ export default function CmsLoginPage() {
     }
   }
 
+  async function passwordlessPasskeyLogin() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const request = await cmsAuthApi.passkeyLoginOptions();
+      const response = await authenticateWithPasskey(request.options);
+      const session = await cmsAuthApi.verifyPasskeyLogin({
+        requestId: request.requestId,
+        response
+      });
+      if (session.user.accountType !== "PLATFORM") {
+        throw new Error("Passkey không thuộc tài khoản PLATFORM.");
+      }
+      router.replace("/");
+      router.refresh();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể đăng nhập Control Plane bằng passkey."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function beginRequiredEnrollment() {
     if (!mfaEnrollment) return;
     setSubmitting(true);
@@ -444,10 +470,34 @@ export default function CmsLoginPage() {
             </small>
           </form>
         ) : (
-          <form
-            onSubmit={(event) => void login(event)}
-            style={{ display: "grid", gap: 14 }}
-          >
+          <div style={{ display: "grid", gap: 14 }}>
+            {passkeySupported ? (
+              <>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void passwordlessPasskeyLogin()}
+                  style={{ padding: "11px 14px" }}
+                >
+                  {submitting
+                    ? "Đang mở passkey…"
+                    : "Đăng nhập bằng passkey"}
+                </button>
+                <div
+                  style={{
+                    textAlign: "center",
+                    color: "#64748b",
+                    fontSize: 13
+                  }}
+                >
+                  hoặc dùng email và mật khẩu
+                </div>
+              </>
+            ) : null}
+            <form
+              onSubmit={(event) => void login(event)}
+              style={{ display: "grid", gap: 14 }}
+            >
             <label style={{ display: "grid", gap: 6 }}>
               <span>Email</span>
               <input
@@ -478,7 +528,8 @@ export default function CmsLoginPage() {
             <button type="submit" disabled={submitting} style={{ padding: "11px 14px" }}>
               {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
             </button>
-          </form>
+            </form>
+          </div>
         )}
       </section>
     </main>
