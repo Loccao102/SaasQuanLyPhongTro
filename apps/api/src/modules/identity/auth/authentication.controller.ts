@@ -11,6 +11,10 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON
+} from "@simplewebauthn/server";
 import {
   assertTrustedBrowserOrigin,
   authCookieNames,
@@ -471,6 +475,60 @@ export class AuthenticationController {
     }
   }
 
+  @Post("mfa/passkey/options")
+  async passkeyMfaOptions(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertMfaVerifyAllowed(ip);
+    return this.authentication.beginPasskeyMfa(
+      this.requiredString(body.challengeToken, "challengeToken")
+    );
+  }
+
+  @Post("mfa/passkey/verify")
+  async verifyPasskeyMfa(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const ip = this.requestIp(request);
+    await this.security.assertMfaVerifyAllowed(ip);
+
+    try {
+      const result = await this.authentication.verifyPasskeyMfa({
+        challengeToken: this.requiredString(
+          body.challengeToken,
+          "challengeToken"
+        ),
+        response: this.requiredObject(
+          body.response,
+          "response"
+        ) as AuthenticationResponseJSON,
+        sessionContext: this.sessionContext(request)
+      });
+      await this.security.recordEvent({
+        eventType: "PASSKEY_MFA_LOGIN",
+        outcome: "SUCCESS",
+        email: result.user.email,
+        ip,
+        userId: result.user.id,
+        organizationId: result.user.organizationId
+      });
+      return this.finishAuthentication(response, result);
+    } catch (error) {
+      await this.security.recordEvent({
+        eventType: "PASSKEY_MFA_LOGIN",
+        outcome: "FAILURE",
+        ip
+      });
+      throw error;
+    }
+  }
+
   @Post("mfa/verify")
   async verifyMfa(
     @Req() request: Request,
@@ -507,6 +565,92 @@ export class AuthenticationController {
       });
       throw error;
     }
+  }
+
+  @Get("passkeys")
+  async passkeys(@Req() request: Request) {
+    const session = await this.requireSession(request);
+    return {
+      passkeys: await this.authentication.listPasskeys(session.userId)
+    };
+  }
+
+  @Post("passkeys/registration/options")
+  async passkeyRegistrationOptions(@Req() request: Request) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaSetupAllowed(session.userId);
+
+    return this.authentication.beginPasskeyRegistration({
+      userId: session.userId,
+      email: session.email,
+      displayName: session.displayName
+    });
+  }
+
+  @Post("passkeys/registration/verify")
+  async verifyPasskeyRegistration(
+    @Req() request: Request,
+    @Body() body: BodyInput
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+    await this.security.assertMfaSetupAllowed(session.userId);
+
+    const passkey = await this.authentication.confirmPasskeyRegistration({
+      userId: session.userId,
+      response: this.requiredObject(
+        body.response,
+        "response"
+      ) as RegistrationResponseJSON,
+      name:
+        typeof body.name === "string"
+          ? body.name
+          : undefined
+    });
+
+    await this.security.recordEvent({
+      eventType: "PASSKEY_REGISTERED",
+      outcome: "SUCCESS",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId,
+      metadata: {
+        passkeyId: passkey.id,
+        deviceType: passkey.deviceType,
+        backedUp: passkey.backedUp
+      }
+    });
+
+    return passkey;
+  }
+
+  @Post("passkeys/:passkeyId/revoke")
+  async revokePasskey(
+    @Req() request: Request,
+    @Param("passkeyId", new ParseUUIDPipe({ version: "4" })) passkeyId: string
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+
+    const revoked = await this.authentication.revokePasskey(
+      session.userId,
+      passkeyId
+    );
+    await this.security.recordEvent({
+      eventType: "PASSKEY_REVOKED",
+      outcome: revoked ? "SUCCESS" : "FAILURE",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId,
+      metadata: { passkeyId }
+    });
+    return { revoked };
   }
 
   @Get("mfa")
@@ -847,6 +991,20 @@ export class AuthenticationController {
 
   private requestIp(request: Request): string {
     return request.ip || request.socket.remoteAddress || "unknown";
+  }
+
+  private requiredObject(
+    value: unknown,
+    field: string
+  ): Record<string, unknown> {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      Array.isArray(value)
+    ) {
+      throw new BadRequestException(field + " must be an object.");
+    }
+    return value as Record<string, unknown>;
   }
 
   private requiredString(value: unknown, field: string): string {
