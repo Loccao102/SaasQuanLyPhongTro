@@ -83,7 +83,12 @@ test("login creates opaque session, resolves memberships and supports revocation
       InvalidCredentialsError
     );
 
-    const login = await service.login({ email, password });
+    const loginResult = await service.login({ email, password });
+    assert.equal("mfaRequired" in loginResult, false);
+    if ("mfaRequired" in loginResult) {
+      throw new Error("Fixture user unexpectedly requires MFA.");
+    }
+    const login = loginResult;
     assert.equal(login.user.id, userId);
     assert.deepEqual(login.memberships, [
       {
@@ -121,7 +126,12 @@ test("login creates opaque session, resolves memberships and supports revocation
     await service.logout(login.sessionToken);
     assert.equal(await service.authenticateSession(login.sessionToken), null);
 
-    const secondLogin = await service.login({ email, password });
+    const secondLoginResult = await service.login({ email, password });
+    assert.equal("mfaRequired" in secondLoginResult, false);
+    if ("mfaRequired" in secondLoginResult) {
+      throw new Error("Fixture user unexpectedly requires MFA.");
+    }
+    const secondLogin = secondLoginResult;
     await fixture.query(
       "UPDATE users SET auth_version = auth_version + 1 WHERE id = $1",
       [userId]
