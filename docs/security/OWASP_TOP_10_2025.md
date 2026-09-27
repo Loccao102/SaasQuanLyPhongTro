@@ -110,12 +110,18 @@ Implemented controls:
 - verification tokens are stored only as SHA-256 hashes and create the tenant only after successful verification;
 - forgot-password responses are generic to avoid account enumeration;
 - password reset tokens are one-time, expire, and revoke every existing session by advancing `auth_version`;
-- auth email delivery uses server-side Resend credentials and is hidden from production UI when not configured.
+- auth email delivery uses server-side Resend credentials and is hidden from production UI when not configured;
+- enrolled accounts complete password/Google primary authentication with a short-lived one-time MFA challenge before a browser session is issued;
+- TOTP secrets are encrypted with AES-256-GCM, recovery codes are stored only as hashes and are single-use;
+- tenant and platform password login are separated by authoritative account type;
+- active-session UX includes a bounded User-Agent-derived device label and supports revoking other sessions;
+- the CMS Control Plane uses real PLATFORM browser sessions instead of a production dev-principal fallback.
 
 Residual work before public launch:
 
-- richer device labeling for session UX;
-- MFA policy for privileged OWNER/PLATFORM identities.
+- decide and enforce mandatory MFA enrollment policy for privileged OWNER/PLATFORM roles;
+- add WebAuthn/passkeys if phishing-resistant MFA is required;
+- connect production authentication alerts to the chosen incident channel.
 
 ## A08 — Software or Data Integrity Failures
 
