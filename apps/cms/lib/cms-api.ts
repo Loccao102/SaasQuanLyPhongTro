@@ -647,9 +647,46 @@ export type IntegrationStatus = {
 const apiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 
+function csrfCookieName(): string {
+  return (
+    process.env.NEXT_PUBLIC_AUTH_CSRF_COOKIE_NAME?.trim() ||
+    (process.env.NODE_ENV === "production"
+      ? "__Host-propops_csrf"
+      : "propops_csrf")
+  );
+}
+
+function readBrowserCookie(name: string): string | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  for (const part of document.cookie.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator <= 0) continue;
+    if (part.slice(0, separator).trim() === name) {
+      return part.slice(separator + 1).trim();
+    }
+  }
+  return undefined;
+}
+
+function isUnsafeMethod(method: string): boolean {
+  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("content-type", "application/json");
+  const method = init?.method ?? "GET";
+
+  if (init?.body !== undefined) {
+    headers.set("content-type", "application/json");
+  }
+
+  if (isUnsafeMethod(method)) {
+    const csrf = readBrowserCookie(csrfCookieName());
+    if (csrf) {
+      headers.set("x-csrf-token", csrf);
+    }
+  }
 
   const response = await fetch(apiBase + "/cms" + path, {
     ...init,
