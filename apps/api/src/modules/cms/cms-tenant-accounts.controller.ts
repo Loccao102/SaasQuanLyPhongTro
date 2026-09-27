@@ -45,6 +45,22 @@ export class CmsTenantAccountsController {
     });
   }
 
+  @Post(":userId/role")
+  setRole(
+    @Req() request: CmsRequest,
+    @Param("organizationId") organizationId: string,
+    @Param("userId") userId: string,
+    @Body() body: BodyInput
+  ) {
+    return this.accounts.setRole(
+      this.principal(request),
+      organizationId,
+      userId,
+      this.string(body.role, "role"),
+      this.string(body.reason, "reason")
+    );
+  }
+
   @Post(":userId/status")
   setStatus(
     @Req() request: CmsRequest,
