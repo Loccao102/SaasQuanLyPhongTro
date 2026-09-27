@@ -40,7 +40,8 @@ export function applyHttpSecurityHeaders(
 
   if (
     request.path.startsWith("/api/auth") ||
-    request.path.startsWith("/api/cms")
+    request.path.startsWith("/api/cms") ||
+    request.path.startsWith("/api/public/")
   ) {
     response.setHeader("Cache-Control", "no-store, max-age=0");
     response.setHeader("Pragma", "no-cache");
