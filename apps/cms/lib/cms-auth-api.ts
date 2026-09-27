@@ -38,6 +38,16 @@ export type CmsAuthenticationResult =
   | CmsMfaRequired
   | CmsMfaEnrollmentRequired;
 
+export type CmsSecurityAlertItem = {
+  id: string;
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  metadata: Record<string, unknown>;
+  deliveryStatus: string;
+  createdAt: string;
+};
+
 export type CmsPasskeyItem = {
   id: string;
   name: string;
@@ -182,6 +192,11 @@ export const cmsAuthApi = {
       "/auth/logout",
       { method: "POST", body: JSON.stringify({}) },
       true
+    ),
+
+  securityAlerts: () =>
+    request<{ alerts: CmsSecurityAlertItem[] }>(
+      "/auth/security/alerts"
     ),
 
   stepUpStatus: () =>
