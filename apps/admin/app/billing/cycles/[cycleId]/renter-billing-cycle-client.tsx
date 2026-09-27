@@ -453,7 +453,11 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                               <span style={{ fontSize: "12px", display: "block", marginBottom: "4px" }}>Loại điều chỉnh</span>
                               <select
                                 value={adjustmentType}
-                                onChange={(e) => setAdjustmentType(e.target.value as any)}
+                                onChange={(e) =>
+                                  setAdjustmentType(
+                                    e.target.value as typeof adjustmentType
+                                  )
+                                }
                                 style={{ width: "100%", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--border-color, #d1d5db)", background: "var(--bg-surface, #fff)" }}
                               >
                                 <option value="DISCOUNT">Giảm giá khuyến mãi (-)</option>
