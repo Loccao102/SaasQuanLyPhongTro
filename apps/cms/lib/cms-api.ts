@@ -445,6 +445,19 @@ export type CmsAuthSecurityEvent = {
   metadata: unknown;
 };
 
+export type CmsAuthSecurityAlert = {
+  id: string;
+  at: string;
+  alertType: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  userId: string | null;
+  organizationId: string | null;
+  summary: string;
+  metadata: unknown;
+  deliveryStatus: string;
+  deliveredAt: string | null;
+};
+
 export type CmsEntitlementOverride = {
   id: string;
   organizationId: string;
@@ -835,6 +848,8 @@ export const cmsApi = {
   audit: () => request<CmsAuditEvent[]>("/audit"),
   authSecurityEvents: () =>
     request<CmsAuthSecurityEvent[]>("/security/auth-events"),
+  authSecurityAlerts: () =>
+    request<CmsAuthSecurityAlert[]>("/security/auth-alerts"),
   jobs: () => request<CmsJobsStatus>("/jobs"),
   billingReconciliation: () =>
     request<CmsBillingReconciliation>("/billing/reconciliation"),
