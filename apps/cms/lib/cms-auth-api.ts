@@ -96,7 +96,7 @@ async function request<T>(
 
 export const cmsAuthApi = {
   login: (input: { email: string; password: string }) =>
-    request<CmsAuthenticationResult>("/auth/login", {
+    request<CmsAuthenticationResult>("/auth/platform/login", {
       method: "POST",
       body: JSON.stringify(input)
     }),
