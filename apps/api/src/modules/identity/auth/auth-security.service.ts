@@ -13,7 +13,9 @@ type RateLimitAction =
   | "GOOGLE_AUTH_IP"
   | "REGISTER_IP"
   | "GOOGLE_CHALLENGE_IP"
-  | "PASSWORD_CHANGE_USER";
+  | "PASSWORD_CHANGE_USER"
+  | "PUBLIC_INVOICE_IP"
+  | "PUBLIC_MAINTENANCE_IP";
 
 type SecurityEventOutcome = "SUCCESS" | "FAILURE" | "BLOCKED";
 
@@ -47,6 +49,26 @@ export class AuthSecurityService {
       email.trim().toLowerCase(),
       this.positiveInteger("AUTH_LOGIN_RATE_MAX_PER_EMAIL", 30),
       windowSeconds
+    );
+  }
+
+  async assertPublicInvoiceAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "PUBLIC_INVOICE_IP",
+      "ip",
+      ip,
+      this.positiveInteger("PUBLIC_INVOICE_RATE_MAX_PER_IP", 300),
+      this.positiveInteger("PUBLIC_INVOICE_RATE_WINDOW_SECONDS", 900)
+    );
+  }
+
+  async assertPublicMaintenanceAllowed(ip: string): Promise<void> {
+    await this.consume(
+      "PUBLIC_MAINTENANCE_IP",
+      "ip",
+      ip,
+      this.positiveInteger("PUBLIC_MAINTENANCE_RATE_MAX_PER_IP", 30),
+      this.positiveInteger("PUBLIC_MAINTENANCE_RATE_WINDOW_SECONDS", 3600)
     );
   }
 
