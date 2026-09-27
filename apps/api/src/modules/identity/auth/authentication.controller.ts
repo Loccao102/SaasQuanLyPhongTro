@@ -507,7 +507,7 @@ export class AuthenticationController {
         response: this.requiredObject(
           body.response,
           "response"
-        ) as AuthenticationResponseJSON,
+        ) as unknown as AuthenticationResponseJSON,
         sessionContext: this.sessionContext(request)
       });
       await this.security.recordEvent({
@@ -604,7 +604,7 @@ export class AuthenticationController {
       response: this.requiredObject(
         body.response,
         "response"
-      ) as RegistrationResponseJSON,
+      ) as unknown as RegistrationResponseJSON,
       name:
         typeof body.name === "string"
           ? body.name
