@@ -113,6 +113,47 @@ Platform/CMS login uses `POST /api/auth/platform/login`. The server enforces
 `account_type = PLATFORM`; normal `/auth/login` enforces
 `account_type = TENANT`.
 
+## Passkeys / WebAuthn
+
+Habi supports passkeys as a phishing-resistant second factor after primary
+password or Google authentication. TOTP and single-use recovery codes remain
+available as fallback methods.
+
+This release deliberately does not enable passwordless login. A passkey
+authentication ceremony is only created after a valid primary-login MFA
+challenge exists, so possession of a passkey does not bypass the existing
+account-discovery and primary-authentication controls.
+
+Passkey registration requires an authenticated browser session, a valid CSRF
+token and WebAuthn user verification. Registration challenges are short-lived
+and one-time. Authentication challenges are linked to the exact parent MFA
+challenge; consuming the WebAuthn assertion, consuming the MFA challenge and
+updating the authenticator counter happen in one database transaction.
+
+Configure production relying-party values:
+
+```env
+AUTH_WEBAUTHN_RP_NAME=Habi
+AUTH_WEBAUTHN_RP_ID=example.com
+AUTH_WEBAUTHN_ORIGINS=https://app.example.com,https://cms.example.com
+AUTH_WEBAUTHN_CHALLENGE_TTL_MINUTES=5
+```
+
+`AUTH_WEBAUTHN_RP_ID` must be the relying-party domain that legitimately
+covers the frontend hosts where the passkey is used. `AUTH_WEBAUTHN_ORIGINS`
+must contain the exact HTTPS origins accepted by the server. Production fails
+closed when no WebAuthn origin is configured.
+
+Stored passkey material contains the credential ID, public key, signature
+counter, transports, device/back-up metadata and a user-controlled display
+name. Habi never stores a passkey private key; that remains with the
+authenticator/platform.
+
+Users can add and revoke passkeys from the tenant Security modal or the
+Control Plane Security screen. Login shows the passkey option only when the
+browser supports WebAuthn; otherwise TOTP/recovery-code login continues to
+work.
+
 ## Session security
 
 New sessions store a bounded User-Agent and a derived display label such as
