@@ -105,12 +105,15 @@ Implemented controls:
 - Google ID tokens validate signature, issuer, audience, authorized party for multi-audience tokens, expiry, verified email, stable subject and nonce;
 - Google tenant auth cannot authenticate/link platform accounts;
 - users can list active sessions, revoke an individual session or revoke all other sessions;
-- Google provider identity is keyed by stable `sub`.
+- Google provider identity is keyed by stable `sub`;
+- password self-registration remains pending until a one-time email token is verified;
+- verification tokens are stored only as SHA-256 hashes and create the tenant only after successful verification;
+- forgot-password responses are generic to avoid account enumeration;
+- password reset tokens are one-time, expire, and revoke every existing session by advancing `auth_version`;
+- auth email delivery uses server-side Resend credentials and is hidden from production UI when not configured.
 
 Residual work before public launch:
 
-- verified-email flow for password registration;
-- forgot/reset-password delivery flow;
 - richer device labeling for session UX;
 - MFA policy for privileged OWNER/PLATFORM identities.
 
