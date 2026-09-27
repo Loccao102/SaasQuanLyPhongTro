@@ -11,6 +11,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
@@ -61,6 +62,7 @@ function decimalInput(input: BodyInput, field: string): string | number {
   return value;
 }
 
+@RequireTenantFeature("metering")
 @Controller("admin/metering")
 @UseGuards(TenantPrincipalGuard)
 export class MeteringController {
