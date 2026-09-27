@@ -40,6 +40,58 @@ export class AuthEmailDeliveryService {
     });
   }
 
+  async sendSecurityAlert(input: {
+    email: string;
+    subject: string;
+    message: string;
+  }): Promise<void> {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    const from = process.env.AUTH_EMAIL_FROM?.trim();
+
+    if (!apiKey || !from) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info(
+          "[auth-security-email] " +
+            input.email +
+            " " +
+            input.subject +
+            " " +
+            input.message
+        );
+      }
+      throw new ServiceUnavailableException(
+        "Dịch vụ email cảnh báo bảo mật chưa được cấu hình."
+      );
+    }
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from,
+        to: [input.email],
+        subject: input.subject,
+        text:
+          input.message +
+          "\n\nNếu đây không phải thao tác của bạn, hãy đăng nhập Habi, kiểm tra các phiên và thay đổi credential cần thiết.",
+        html:
+          "<p>" +
+          this.escapeHtml(input.message) +
+          "</p><p>Nếu đây không phải thao tác của bạn, hãy đăng nhập Habi, kiểm tra các phiên và thay đổi credential cần thiết.</p>"
+      }),
+      signal: AbortSignal.timeout(8_000)
+    });
+
+    if (!response.ok) {
+      throw new ServiceUnavailableException(
+        "Không thể gửi email cảnh báo bảo mật lúc này."
+      );
+    }
+  }
+
   private async send(input: {
     kind: AuthEmailKind;
     email: string;
