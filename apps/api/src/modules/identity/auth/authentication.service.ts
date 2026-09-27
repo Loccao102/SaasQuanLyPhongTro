@@ -1,4 +1,11 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
+import {
+  tenantFeatureEnabled,
+  tenantFeatureKeys,
+  type TenantFeatureKey
+} from "../../commercial/domain/entitlements.js";
+import { DatabaseService } from "../../database/database.service.js";
 import {
   hashPassword,
   InvalidPasswordPolicyError,
@@ -48,6 +55,7 @@ export interface LoginResult {
     accountType: "TENANT" | "PLATFORM";
   };
   memberships: AuthMembershipSummary[];
+  features: Record<TenantFeatureKey, boolean> | null;
   sessionToken: string;
   csrfToken: string;
   sessionId: string;
@@ -58,7 +66,9 @@ export interface LoginResult {
 export class AuthenticationService {
   constructor(
     private readonly repository: AuthenticationRepository,
-    private readonly onboarding?: TenantOnboardingService
+    private readonly onboarding?: TenantOnboardingService,
+    private readonly database?: DatabaseService,
+    private readonly commercialPolicy?: CommercialPolicyService
   ) {}
 
   async authConfig() {
@@ -214,6 +224,26 @@ export class AuthenticationService {
     return this.repository.listActiveMemberships(userId);
   }
 
+  async featuresForOrganization(
+    organizationId: string | null
+  ): Promise<Record<TenantFeatureKey, boolean> | null> {
+    if (!organizationId) return null;
+    if (!this.database || !this.commercialPolicy) {
+      return null;
+    }
+
+    const policy = await this.database.withTransaction((client) =>
+      this.commercialPolicy!.loadPolicy(client, organizationId)
+    );
+
+    return Object.fromEntries(
+      tenantFeatureKeys.map((key) => [
+        key,
+        tenantFeatureEnabled(policy.entitlements, key)
+      ])
+    ) as Record<TenantFeatureKey, boolean>;
+  }
+
   verifyCsrf(
     session: SessionIdentity,
     csrfToken: string | undefined
@@ -295,6 +325,7 @@ export class AuthenticationService {
         accountType: identity.accountType
       },
       memberships: await this.repository.listActiveMemberships(identity.userId),
+      features: await this.featuresForOrganization(identity.organizationId),
       sessionToken,
       csrfToken,
       sessionId,
