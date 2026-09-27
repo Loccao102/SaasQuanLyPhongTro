@@ -18,7 +18,7 @@ Các foreign key giữa những bảng tenant-owned quan trọng nên mang cả 
 
 ## Membership, roles và scopes
 
-User là identity toàn cục. Quyền của user trong từng organization nằm ở `OrganizationMembership`.
+Tenant user là identity của đúng một organization. `users.organization_id` là tenant binding của account; `OrganizationMembership` giữ role, trạng thái và scope trong chính organization đó. Platform/CMS user là `account_type=PLATFORM` và không có tenant organization.
 
 Baseline roles:
 - `OWNER`;
@@ -144,10 +144,13 @@ Rules:
 - production session cookies are HttpOnly, Secure and host-only;
 - unsafe cookie-authenticated tenant/CMS mutations require `X-CSRF-Token`;
 - browser `Origin` must match configured CORS origins when present;
-- `X-Organization-Id` is only a tenant selector and never an authorization claim;
-- `TenantPrincipalGuard` still resolves ACTIVE membership and scopes from PostgreSQL;
+- tenant sessions persist `organization_id`; this session tenant is authoritative;
+- if `X-Organization-Id` disagrees with the authenticated session tenant, the request is rejected;
+- `TenantPrincipalGuard` resolves ACTIVE membership/scopes from PostgreSQL and enforces required commercial feature entitlements;
 - `CmsPlatformGuard` separately resolves ACTIVE platform-operator access.
 
 Development env user-ID fallbacks are forbidden in production and exist only as a temporary local migration aid.
 
-Before public launch, login abuse controls, password reset/recovery, session-management UX and MFA policy must be completed.
+Google Identity Services is supported as an external credential source, but successful Google verification is converted into the same opaque Habi session. Google ID tokens are verified server-side for signature, issuer, audience, expiry, stable subject and verified email.
+
+Before public launch, login abuse controls, email verification/password recovery, session-management UX and MFA policy must be completed.
