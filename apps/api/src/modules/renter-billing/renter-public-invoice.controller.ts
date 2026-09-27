@@ -38,7 +38,6 @@ export class RenterPublicInvoiceController {
     ).pipe(
       switchMap(() => timer(0, 3000)),
       switchMap(() => from(this.publicInvoices.status(token))),
-      switchMap(() => from(this.publicInvoices.status(token))),
       map((status) => {
         const serialized = JSON.stringify(status);
         const changed = serialized !== last;
