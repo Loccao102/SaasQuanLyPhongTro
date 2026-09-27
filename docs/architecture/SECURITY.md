@@ -151,9 +151,9 @@ Rules:
 
 Development env user-ID fallbacks are forbidden in production and exist only as a temporary local migration aid.
 
-Google Identity Services is supported as an external credential source, but successful Google verification is converted into the same opaque Habi session. Google ID tokens are verified server-side for signature, issuer, audience, expiry, stable subject and verified email.
+Google Identity Services is supported as an external credential source, but successful Google verification is converted into the same opaque Habi session. Google ID tokens are verified server-side for signature, issuer, audience, authorized party when multiple audiences are present, expiry, stable subject, verified email and a short-lived browser-bound nonce.
 
-Before public launch, login abuse controls, email verification/password recovery, session-management UX and MFA policy must be completed.
+Before public launch, email verification/password recovery and an MFA policy for privileged OWNER/PLATFORM identities must be completed. Login abuse controls and self-service session management are implemented.
 
 ## Authentication abuse protection
 
