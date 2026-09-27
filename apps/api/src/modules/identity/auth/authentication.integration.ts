@@ -53,7 +53,7 @@ test("login creates opaque session, resolves memberships and supports revocation
     await fixture.query(
       `INSERT INTO organization_memberships (
          id, organization_id, user_id, role, status
-       ) VALUES ($1, $2, $3, 'OWNER', 'ACTIVE')`,
+       ) VALUES ($1, $2, $3, 'ADMIN', 'ACTIVE')`,
       [membershipId, organizationId, userId]
     );
     await fixture.query(
@@ -99,8 +99,12 @@ test("login creates opaque session, resolves memberships and supports revocation
       accountType: "TENANT"
     });
     assert.equal("mfaRequired" in loginResult, false);
-    if ("mfaRequired" in loginResult) {
-      throw new Error("Fixture user unexpectedly requires MFA.");
+    assert.equal("mfaEnrollmentRequired" in loginResult, false);
+    if (
+      "mfaRequired" in loginResult ||
+      "mfaEnrollmentRequired" in loginResult
+    ) {
+      throw new Error("ADMIN fixture unexpectedly requires MFA.");
     }
     const login = loginResult;
     assert.equal(login.user.id, userId);
@@ -108,7 +112,7 @@ test("login creates opaque session, resolves memberships and supports revocation
       {
         organizationId,
         organizationName: "Auth Integration Org",
-        role: "OWNER"
+        role: "ADMIN"
       }
     ]);
 
@@ -140,14 +144,52 @@ test("login creates opaque session, resolves memberships and supports revocation
     await service.logout(login.sessionToken);
     assert.equal(await service.authenticateSession(login.sessionToken), null);
 
+    await fixture.query(
+      `UPDATE organization_memberships
+       SET role = 'OWNER', updated_at = now()
+       WHERE id = $1`,
+      [membershipId]
+    );
+    const ownerLogin = await service.login({
+      email,
+      password,
+      accountType: "TENANT"
+    });
+    assert.equal("mfaEnrollmentRequired" in ownerLogin, true);
+    if (!("mfaEnrollmentRequired" in ownerLogin)) {
+      throw new Error("OWNER should require MFA enrollment.");
+    }
+    assert.equal(ownerLogin.requiredByRole, "OWNER");
+
+    const activeAfterOwnerPrimary = await fixture.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM auth_sessions
+       WHERE user_id = $1::uuid
+         AND revoked_at IS NULL
+         AND expires_at > now()`,
+      [userId]
+    );
+    assert.equal(activeAfterOwnerPrimary.rows[0]?.count, "0");
+
+    await fixture.query(
+      `UPDATE organization_memberships
+       SET role = 'ADMIN', updated_at = now()
+       WHERE id = $1`,
+      [membershipId]
+    );
+
     const secondLoginResult = await service.login({
       email,
       password,
       accountType: "TENANT"
     });
     assert.equal("mfaRequired" in secondLoginResult, false);
-    if ("mfaRequired" in secondLoginResult) {
-      throw new Error("Fixture user unexpectedly requires MFA.");
+    assert.equal("mfaEnrollmentRequired" in secondLoginResult, false);
+    if (
+      "mfaRequired" in secondLoginResult ||
+      "mfaEnrollmentRequired" in secondLoginResult
+    ) {
+      throw new Error("ADMIN fixture unexpectedly requires MFA.");
     }
     const secondLogin = secondLoginResult;
     await fixture.query(
