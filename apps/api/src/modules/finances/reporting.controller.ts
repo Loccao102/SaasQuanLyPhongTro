@@ -8,12 +8,14 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
   TenantPrincipal,
   TenantRequest
 } from "../identity/tenant-principal.js";
 import { ReportingService } from "./reporting.service.js";
 
+@RequireTenantFeature("reports")
 @Controller("admin/reports")
 @UseGuards(TenantPrincipalGuard)
 export class ReportingController {
