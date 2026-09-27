@@ -19,6 +19,7 @@ import {
   serializeAuthCookie
 } from "./auth-http.js";
 import { AuthSecurityService } from "./auth-security.service.js";
+import type { SessionIdentity } from "./authentication.repository.js";
 import { generateOpaqueToken } from "./session-token.js";
 import {
   AuthenticationService,
@@ -404,7 +405,7 @@ export class AuthenticationController {
 
   private requireCsrf(
     request: Request,
-    session: Awaited<ReturnType<AuthenticationService["authenticateSession"]>> & {}
+    session: SessionIdentity
   ): void {
     if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
       throw new UnauthorizedException("CSRF token không hợp lệ.");
