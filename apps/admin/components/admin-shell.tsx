@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TotpQrCode } from "@propops/ui/totp-qr";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAdminAuth } from "./admin-auth-provider";
 import {
@@ -70,6 +71,7 @@ export function AdminShell({
   const [sessionsSuccess, setSessionsSuccess] = useState<string | null>(null);
   const [mfaOpen, setMfaOpen] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
+  const [mfaRequiredByRole, setMfaRequiredByRole] = useState<string | null>(null);
   const [mfaSetup, setMfaSetup] = useState<{
     secret: string;
     provisioningUri: string;
@@ -165,6 +167,9 @@ export function AdminShell({
     try {
       const status = await adminAuthApi.mfaStatus();
       setMfaEnabled(status.enabled);
+      setMfaRequiredByRole(
+        status.required ? status.requiredByRole : null
+      );
     } catch (err) {
       setMfaError(
         err instanceof Error ? err.message : "Không thể tải trạng thái MFA."
@@ -707,6 +712,11 @@ export function AdminShell({
                 {!mfaSetup ? (
                   <>
                     <p style={{ margin: 0 }}>
+                      {mfaRequiredByRole
+                        ? "Role " +
+                          mfaRequiredByRole +
+                          " đang bắt buộc MFA. "
+                        : ""}
                       Dùng Google Authenticator, Microsoft Authenticator, 1Password
                       hoặc ứng dụng TOTP tương thích.
                     </p>
@@ -727,14 +737,20 @@ export function AdminShell({
                         công vào ứng dụng Authenticator.
                       </span>
                     </div>
-                    <label style={{ display: "grid", gap: "6px" }}>
-                      <span style={{ fontWeight: 600 }}>Secret</span>
-                      <input readOnly value={mfaSetup.secret} />
-                    </label>
-                    <label style={{ display: "grid", gap: "6px" }}>
-                      <span style={{ fontWeight: 600 }}>Provisioning URI</span>
-                      <textarea readOnly value={mfaSetup.provisioningUri} />
-                    </label>
+                    <div style={{ display: "grid", placeItems: "center" }}>
+                      <TotpQrCode value={mfaSetup.provisioningUri} />
+                    </div>
+                    <p style={{ margin: 0, color: "var(--color-muted)" }}>
+                      Quét QR trực tiếp trong Habi; secret không được gửi tới
+                      dịch vụ QR bên thứ ba.
+                    </p>
+                    <details>
+                      <summary>Không quét được QR?</summary>
+                      <label style={{ display: "grid", gap: "6px", marginTop: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Secret</span>
+                        <input readOnly value={mfaSetup.secret} />
+                      </label>
+                    </details>
                     <label style={{ display: "grid", gap: "6px" }}>
                       <span style={{ fontWeight: 600 }}>
                         Mã 6 số để xác nhận
@@ -764,27 +780,41 @@ export function AdminShell({
                   <span>
                     MFA đang bật. Những lần đăng nhập mới sẽ cần mã TOTP hoặc
                     recovery code.
+                    {mfaRequiredByRole
+                      ? " Role " +
+                        mfaRequiredByRole +
+                        " đang thuộc policy bắt buộc MFA."
+                      : ""}
                   </span>
                 </div>
-                <label style={{ display: "grid", gap: "6px" }}>
-                  <span style={{ fontWeight: 600 }}>
-                    Mã TOTP / recovery code để tắt MFA
-                  </span>
-                  <input
-                    value={mfaCode}
-                    onChange={(event) => setMfaCode(event.target.value)}
-                    autoComplete="one-time-code"
-                    placeholder="123456 hoặc HABI-..."
-                  />
-                </label>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={mfaLoading || mfaCode.trim().length === 0}
-                  onClick={() => void disableMfa()}
-                >
-                  {mfaLoading ? "Đang xử lý…" : "Tắt MFA"}
-                </button>
+                {mfaRequiredByRole ? (
+                  <div className="admin-state">
+                    MFA không thể tắt khi role {mfaRequiredByRole} còn nằm
+                    trong policy bảo mật.
+                  </div>
+                ) : (
+                  <>
+                    <label style={{ display: "grid", gap: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>
+                        Mã TOTP / recovery code để tắt MFA
+                      </span>
+                      <input
+                        value={mfaCode}
+                        onChange={(event) => setMfaCode(event.target.value)}
+                        autoComplete="one-time-code"
+                        placeholder="123456 hoặc HABI-..."
+                      />
+                    </label>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={mfaLoading || mfaCode.trim().length === 0}
+                      onClick={() => void disableMfa()}
+                    >
+                      {mfaLoading ? "Đang xử lý…" : "Tắt MFA"}
+                    </button>
+                  </>
+                )}
               </div>
             ) : null}
           </div>
