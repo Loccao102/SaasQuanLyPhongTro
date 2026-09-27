@@ -189,6 +189,10 @@ export function LoginClient() {
             </div>
           ) : null}
 
+          <div className="login-footnote">
+            <Link href="/forgot-password">Quên mật khẩu?</Link>
+          </div>
+
           <button
             className="primary-button login-submit"
             type="submit"
