@@ -42,10 +42,11 @@ CMS routes may perform cross-organization reads only after server-side platform 
 ## Capabilities
 
 - Settings: registration, maintenance, trial/grace, automation/provider config.
-- Plans & limits: prices, room/staff limits, automation quota, feature availability.
+- Plans & limits: prices, room/account-seat limits, automation quota, feature availability.
 - Organization inspection: subscription, usage vs entitlement, health summaries.
+- Tenant accounts: inspect/create OWNER or staff accounts, suspend/reactivate, reset password and revoke sessions with audit.
 - Subscription operations: provision from current plan version and audited lifecycle transitions.
-- Entitlement overrides: organization-specific limit/feature exceptions with optional expiry.
+- Entitlement overrides: organization-specific limit/feature exceptions with optional expiry; tenant feature switches are enforced server-side by tenant feature guards.
 - Operations: durable notification job status, audited FAILED/MANUAL_REVIEW retry, provider health.
 - Logs/Audit: technical logs via observability; durable structured platform audit.
 
