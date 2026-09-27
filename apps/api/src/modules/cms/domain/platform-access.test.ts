@@ -111,6 +111,7 @@ test("permission bootstrap returns only capabilities granted to the role", () =>
     [
       "platform.cms.read",
       "platform.organizations.inspect",
+      "platform.accounts.read",
       "platform.audit.read"
     ]
   );
