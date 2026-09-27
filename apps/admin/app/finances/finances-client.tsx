@@ -86,7 +86,7 @@ export function FinancesClient() {
   const [expenses, setExpenses] = useState<OperatingExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
