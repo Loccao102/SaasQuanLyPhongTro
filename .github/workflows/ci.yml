@@ -44,6 +44,7 @@ jobs:
         run: pnpm lint
 
       - name: Typecheck
+        if: always()
         run: pnpm typecheck
 
       - name: Unit tests
