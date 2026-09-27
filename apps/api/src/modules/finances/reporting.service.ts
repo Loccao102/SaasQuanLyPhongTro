@@ -138,15 +138,15 @@ export class ReportingService {
          p.code AS property_code,
          rm.code AS room_code,
          r.meter_type,
-         r.serial_number AS meter_serial,
+         COALESCE(r.label, '') AS meter_serial,
          mr.reading_date,
-         mr.value::text,
-         u.full_name AS recorded_by_name
+         mr.reading_value::text AS value,
+         u.display_name AS recorded_by_name
        FROM meter_readings mr
-       JOIN room_meters r ON r.id = mr.meter_id AND r.organization_id = mr.organization_id
+       JOIN meters r ON r.id = mr.meter_id AND r.organization_id = mr.organization_id
        JOIN rooms rm ON rm.id = r.room_id AND rm.organization_id = r.organization_id
        JOIN properties p ON p.id = rm.property_id AND p.organization_id = rm.organization_id
-       LEFT JOIN users u ON u.id = mr.recorded_by_user_id
+       LEFT JOIN users u ON u.id = mr.created_by_user_id
        WHERE ${whereClause}
        ORDER BY p.code, rm.code, r.meter_type, mr.reading_date`,
       values
@@ -441,7 +441,7 @@ export class ReportingService {
           AND l.organization_id = rm.organization_id
           AND l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
          WHERE rm.organization_id = $1::uuid
-           AND rm.status = 'ACTIVE'
+           AND rm.is_active = true
          GROUP BY rm.property_id
        ),
        revenue AS (
@@ -499,7 +499,7 @@ export class ReportingService {
        LEFT JOIN expenses e ON e.property_id = p.id
        LEFT JOIN debt d ON d.property_id = p.id
        WHERE p.organization_id = $1::uuid
-         AND p.status = 'ACTIVE'
+         AND p.is_active = true
        ORDER BY p.code`,
       [principal.organizationId, fromDate, toDate]
     );

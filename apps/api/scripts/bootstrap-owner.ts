@@ -93,6 +93,39 @@ async function main(): Promise<void> {
       );
     }
 
+    const existingSub = await client.query(
+      "SELECT 1 FROM organization_subscriptions WHERE organization_id = $1",
+      [organizationId]
+    );
+
+    if (!existingSub.rowCount) {
+      const planRes = await client.query<{ id: string; version_id: string }>(
+        `SELECT p.id, v.id AS version_id
+         FROM saas_plans p
+         JOIN saas_plan_versions v ON p.id = v.plan_id
+         WHERE p.code = 'PRO' AND p.status = 'ACTIVE'
+         ORDER BY v.version DESC LIMIT 1`
+      );
+      if (planRes.rows[0]) {
+        const now = new Date();
+        const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        await client.query(
+          `INSERT INTO organization_subscriptions (
+             organization_id, plan_id, plan_version_id, status,
+             billing_interval, current_period_start, current_period_end, version
+           ) VALUES ($1, $2, $3, 'ACTIVE', 'MONTHLY', $4, $5, 1)`,
+          [
+            organizationId,
+            planRes.rows[0].id,
+            planRes.rows[0].version_id,
+            now,
+            nextMonth
+          ]
+        );
+        console.log(`[auth] active PRO subscription provisioned for organization=${organizationId}`);
+      }
+    }
+
     await client.query("COMMIT");
     console.log(
       `[auth] owner ready: user=${userId} organization=${organizationId}`

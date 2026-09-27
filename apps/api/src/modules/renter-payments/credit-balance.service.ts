@@ -209,7 +209,7 @@ export class CreditBalanceService {
          m.description,
          m.note,
          m.created_by_user_id::text,
-         u.full_name AS created_by_name,
+         u.display_name AS created_by_name,
          m.created_at
        FROM renter_credit_movements m
        LEFT JOIN users u ON u.id = m.created_by_user_id
@@ -256,7 +256,7 @@ export class CreditBalanceService {
          r.note,
          r.status,
          r.created_by_user_id::text,
-         u.full_name AS created_by_name,
+         u.display_name AS created_by_name,
          r.created_at,
          r.completed_at
        FROM renter_refunds r
@@ -390,7 +390,7 @@ export class CreditBalanceService {
       if (existing.rows[0]) {
         const balance = await this.getBalanceWithClient(client, principal.organizationId);
         const movements = await client.query<CreditMovementRow>(
-          `SELECT m.*, u.full_name AS created_by_name
+          `SELECT m.*, u.display_name AS created_by_name
            FROM renter_credit_movements m
            LEFT JOIN users u ON u.id = m.created_by_user_id
            WHERE m.id = $1::uuid`,
@@ -467,7 +467,7 @@ export class CreditBalanceService {
       if (existing.rows[0]) {
         const balance = await this.getBalanceWithClient(client, principal.organizationId);
         const movements = await client.query<CreditMovementRow>(
-          `SELECT m.*, u.full_name AS created_by_name
+          `SELECT m.*, u.display_name AS created_by_name
            FROM renter_credit_movements m
            LEFT JOIN users u ON u.id = m.created_by_user_id
            WHERE m.id = $1::uuid`,
@@ -521,7 +521,7 @@ export class CreditBalanceService {
     return this.db.withTransaction(async (client) => {
       // Check refund idempotency
       const existingRefund = await client.query<RefundRow>(
-        `SELECT r.*, u.full_name AS created_by_name
+        `SELECT r.*, u.display_name AS created_by_name
          FROM renter_refunds r
          LEFT JOIN users u ON u.id = r.created_by_user_id
          WHERE r.id = $1::uuid AND r.organization_id = $2::uuid`,
@@ -530,7 +530,7 @@ export class CreditBalanceService {
       if (existingRefund.rows[0]) {
         const balance = await this.getBalanceWithClient(client, principal.organizationId);
         const mvt = await client.query<CreditMovementRow>(
-          `SELECT m.*, u.full_name AS created_by_name
+          `SELECT m.*, u.display_name AS created_by_name
            FROM renter_credit_movements m
            LEFT JOIN users u ON u.id = m.created_by_user_id
            WHERE m.id = $1::uuid`,
@@ -597,7 +597,7 @@ export class CreditBalanceService {
       );
 
       const refundResult = await client.query<RefundRow>(
-        `SELECT r.*, u.full_name AS created_by_name
+        `SELECT r.*, u.display_name AS created_by_name
          FROM renter_refunds r
          LEFT JOIN users u ON u.id = r.created_by_user_id
          WHERE r.id = $1::uuid`,
@@ -634,7 +634,7 @@ export class CreditBalanceService {
     return this.db.withTransaction(async (client) => {
       // Check idempotency on movement
       const existingMvt = await client.query<CreditMovementRow>(
-        `SELECT m.*, u.full_name AS created_by_name
+        `SELECT m.*, u.display_name AS created_by_name
          FROM renter_credit_movements m
          LEFT JOIN users u ON u.id = m.created_by_user_id
          WHERE m.id = $1::uuid AND m.organization_id = $2::uuid`,

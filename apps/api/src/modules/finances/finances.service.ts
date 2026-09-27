@@ -116,7 +116,7 @@ export class FinancesService {
          e.payment_method,
          e.receipt_url,
          e.created_by_user_id::text,
-         u.full_name AS created_by_name,
+         u.display_name AS created_by_name,
          e.created_at
        FROM operating_expenses e
        LEFT JOIN properties p ON p.id = e.property_id AND p.organization_id = e.organization_id
