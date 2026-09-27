@@ -1,4 +1,5 @@
 "use client";
+import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { CloseOutlined } from "@ant-design/icons";
@@ -293,7 +294,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 </label>
                 <label>
                   <span>Ngày lắp đặt / Bàn giao</span>
-                  <input name="installedAt" type="date" />
+                  <DateInput name="installedAt"  />
                 </label>
                 <label className="asset-form__wide">
                   <span>Ghi chú / Quy định bảo quản</span>
