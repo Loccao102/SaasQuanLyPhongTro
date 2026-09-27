@@ -352,6 +352,13 @@ export class AuthenticationService {
     secret: string;
     provisioningUri: string;
   }> {
+    const existing = await this.repository.getMfaCredential(userId, false);
+    if (existing?.confirmed) {
+      throw new ConflictException(
+        "MFA đã được bật. Hãy xác thực và tắt MFA trước khi thiết lập secret mới."
+      );
+    }
+
     const secret = generateTotpSecret();
     const encrypted = encryptTotpSecret(secret);
     await this.repository.upsertMfaSetup({
