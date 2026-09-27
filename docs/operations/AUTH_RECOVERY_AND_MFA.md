@@ -154,6 +154,54 @@ Control Plane Security screen. Login shows the passkey option only when the
 browser supports WebAuthn; otherwise TOTP/recovery-code login continues to
 work.
 
+## Passkey-first / passwordless login
+
+Habi supports discoverable passkeys as an optional primary login method.
+Password and Google login remain available and are not removed by enabling this
+feature.
+
+Production rollout is explicit:
+
+```env
+AUTH_PASSKEY_PASSWORDLESS_ENABLED=true
+AUTH_PASSKEY_LOGIN_RATE_WINDOW_SECONDS=900
+AUTH_PASSKEY_LOGIN_RATE_MAX_PER_IP=120
+```
+
+The production Compose default keeps `AUTH_PASSKEY_PASSWORDLESS_ENABLED=false`.
+Admin and CMS read the server auth config, so the passkey-first button is hidden
+until rollout is enabled.
+
+The login options endpoint does not accept an email or account identifier. It
+creates a short-lived anonymous WebAuthn challenge. The browser/authenticator
+selects a discoverable credential, then the verified credential ID resolves the
+account server-side. Tenant and PLATFORM use separate challenge purposes and
+verification routes; a tenant passkey cannot be used to enter the Control Plane.
+
+Newly registered passkeys request `residentKey = required` and
+`userVerification = required`. Passkeys created before this rollout remain
+valid for MFA/step-up. If an older authenticator did not create a discoverable
+credential, the user may need to register a new passkey before passkey-first
+appears for that authenticator.
+
+Anonymous passwordless challenges are:
+
+- random and short-lived;
+- identified by a random request UUID returned with the WebAuthn options;
+- one-time and atomically consumed with the passkey counter update;
+- rate-limited by source IP;
+- cleaned after expiry.
+
+Mandatory privileged-role policy is not bypassed. If a role currently requires
+MFA enrollment and the account has not completed the required TOTP enrollment,
+passkey-first refuses to create a session and the user must complete the normal
+primary-login enrollment flow first. Once policy enrollment exists, a verified
+passkey with user verification can create the browser session directly.
+
+Successful passkey-first logins emit `PASSKEY_LOGIN` or
+`PLATFORM_PASSKEY_LOGIN` security events and participate in the same
+new-network alert rule as password, Google and MFA-completed logins.
+
 ## Recent authentication / step-up
 
 Long-lived browser sessions are not treated as indefinitely strong proof for
