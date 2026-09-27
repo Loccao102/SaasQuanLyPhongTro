@@ -35,7 +35,10 @@ import {
   InvalidLeaseTransitionError,
   LeaseTerminationNotReadyError
 } from "../domain/lease-lifecycle.js";
-import { LeaseAdminService } from "./lease-admin.service.js";
+import {
+  LeaseAdminService,
+  type AddLeaseAttachmentInput
+} from "./lease-admin.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -78,6 +81,24 @@ function requiredInteger(input: BodyInput, field: string): number {
     throw new BadRequestException(field + " must be an integer.");
   }
   return Number(value);
+}
+
+function attachmentType(
+  input: BodyInput,
+  field: string
+): AddLeaseAttachmentInput["attachmentType"] {
+  const value = requiredString(input, field);
+  const allowed: readonly AddLeaseAttachmentInput["attachmentType"][] = [
+    "CITIZEN_ID_FRONT",
+    "CITIZEN_ID_BACK",
+    "HANDOVER_MINUTES",
+    "CONTRACT_SCAN",
+    "OTHER"
+  ];
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new BadRequestException("attachmentType is invalid.");
+  }
+  return value as AddLeaseAttachmentInput["attachmentType"];
 }
 
 @RequireTenantFeature("leases")
@@ -259,7 +280,7 @@ export class LeaseAdminController {
   ) {
     return this.admin.addAttachment(this.principal(request), leaseId, {
       attachmentId: input.attachmentId ? requiredUuid(input, "attachmentId") : undefined,
-      attachmentType: requiredString(input, "attachmentType") as any,
+      attachmentType: attachmentType(input, "attachmentType"),
       fileName: requiredString(input, "fileName"),
       fileUrl: requiredString(input, "fileUrl"),
       fileSizeBytes: input.fileSizeBytes !== undefined && input.fileSizeBytes !== null ? Number(input.fileSizeBytes) : undefined,
