@@ -13,7 +13,8 @@ import {
   adminAuthApi,
   type AdminAuthSessionItem,
   type AdminTenantFeatureKey,
-  type PasskeyItem
+  type PasskeyItem,
+  type SecurityAlertItem
 } from "../lib/admin-auth-api";
 import {
   rejectAdminStepUp,
@@ -100,6 +101,7 @@ export function AdminShell({
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [stepUpPassword, setStepUpPassword] = useState("");
   const [stepUpCode, setStepUpCode] = useState("");
+  const [securityAlerts, setSecurityAlerts] = useState<SecurityAlertItem[]>([]);
   const [recentAuthStatus, setRecentAuthStatus] = useState<{
     recent: boolean;
     reauthenticatedAt: string;
@@ -237,17 +239,20 @@ export function AdminShell({
     setMfaCode("");
     try {
       setPasskeySupported(browserSupportsPasskeys());
-      const [status, passkeyResult, recentAuth] = await Promise.all([
-        adminAuthApi.mfaStatus(),
-        adminAuthApi.passkeys(),
-        adminAuthApi.stepUpStatus()
-      ]);
+      const [status, passkeyResult, recentAuth, alertResult] =
+        await Promise.all([
+          adminAuthApi.mfaStatus(),
+          adminAuthApi.passkeys(),
+          adminAuthApi.stepUpStatus(),
+          adminAuthApi.securityAlerts()
+        ]);
       setMfaEnabled(status.enabled);
       setMfaRequiredByRole(
         status.required ? status.requiredByRole : null
       );
       setPasskeys(passkeyResult.passkeys);
       setRecentAuthStatus(recentAuth);
+      setSecurityAlerts(alertResult.alerts);
     } catch (err) {
       setMfaError(
         err instanceof Error ? err.message : "Không thể tải trạng thái MFA."
@@ -1081,6 +1086,62 @@ export function AdminShell({
                 )}
               </div>
             ) : null}
+
+            <div
+              style={{
+                marginTop: 22,
+                paddingTop: 18,
+                borderTop: "1px solid var(--color-border, #e2e8f0)",
+                display: "grid",
+                gap: 10
+              }}
+            >
+              <div>
+                <strong>Cảnh báo bảo mật gần đây</strong>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "var(--color-muted)",
+                    fontSize: 13
+                  }}
+                >
+                  Các thay đổi credential hoặc pattern xác thực đáng chú ý.
+                </p>
+              </div>
+              {securityAlerts.length === 0 ? (
+                <small>Chưa có cảnh báo bảo mật nào.</small>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {securityAlerts.slice(0, 6).map((alert) => (
+                    <article
+                      key={alert.id}
+                      style={{
+                        border: "1px solid var(--color-border, #e2e8f0)",
+                        borderRadius: 9,
+                        padding: 10,
+                        display: "grid",
+                        gap: 4
+                      }}
+                    >
+                      <strong>
+                        {alert.severity === "HIGH"
+                          ? "Quan trọng"
+                          : alert.severity === "MEDIUM"
+                            ? "Cần chú ý"
+                            : "Thông tin"}
+                      </strong>
+                      <span>{alert.summary}</span>
+                      <small>
+                        {new Date(alert.createdAt).toLocaleString("vi-VN")}
+                        {alert.deliveryStatus === "SENT"
+                          ? " · đã gửi email"
+                          : ""}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div
               style={{
