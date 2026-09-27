@@ -6,6 +6,19 @@ export type AdminMembership = {
   role: string;
 };
 
+export type AdminTenantFeatureKey =
+  | "properties"
+  | "leases"
+  | "metering"
+  | "billing"
+  | "payments"
+  | "maintenance"
+  | "notifications"
+  | "reports"
+  | "team_management"
+  | "advanced_reports"
+  | "audit_log";
+
 export type AdminSession = {
   user: {
     id: string;
@@ -15,6 +28,7 @@ export type AdminSession = {
     accountType: "TENANT" | "PLATFORM";
   };
   memberships: AdminMembership[];
+  features: Record<AdminTenantFeatureKey, boolean> | null;
   expiresAt: string;
 };
 
