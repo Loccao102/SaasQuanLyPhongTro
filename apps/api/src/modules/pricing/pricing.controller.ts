@@ -93,7 +93,7 @@ function parseItems(value: unknown): CreatePricingPolicyInput["items"] {
   });
 }
 
-@RequireTenantFeature("billing")
+@RequireTenantFeature("pricing")
 @Controller("admin/pricing")
 @UseGuards(TenantPrincipalGuard)
 export class PricingController {
