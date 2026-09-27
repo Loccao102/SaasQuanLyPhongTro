@@ -87,8 +87,11 @@ const tenantFeatureOptions: Array<{
   { key: "properties", label: "Tài sản / cơ sở / phòng" },
   { key: "leases", label: "Hợp đồng & người thuê" },
   { key: "metering", label: "Điện nước / chốt số" },
-  { key: "billing", label: "Billing & biểu giá" },
+  { key: "pricing", label: "Biểu giá" },
+  { key: "billing", label: "Hóa đơn" },
   { key: "payments", label: "Thanh toán & đối soát" },
+  { key: "credit_balance", label: "Số dư / tín dụng khách thuê" },
+  { key: "finances", label: "Sổ quỹ thu - chi" },
   { key: "maintenance", label: "Bảo trì / sự cố" },
   { key: "notifications", label: "Thông báo" },
   { key: "reports", label: "Báo cáo & sổ quỹ" },
@@ -134,7 +137,8 @@ function statusTone(status: string): Tone {
       "ENABLED",
       "HEALTHY",
       "PAID",
-      "ALLOCATED"
+      "ALLOCATED",
+      "SUCCESS"
     ].includes(
       status
     )
@@ -163,6 +167,8 @@ function statusTone(status: string): Tone {
       "SUSPENDED",
       "CANCELLED",
       "FAILED",
+      "FAILURE",
+      "BLOCKED",
       "ERROR",
       "DISABLED",
       "OVERDUE"
