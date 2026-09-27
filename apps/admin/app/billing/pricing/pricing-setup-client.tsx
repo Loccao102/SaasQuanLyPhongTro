@@ -399,7 +399,9 @@ export function PricingSetupClient() {
                 <span style={{ fontWeight: 600 }}>Phương thức tính tiền nước</span>
                 <select
                   value={waterMode}
-                  onChange={(e) => setWaterMode(e.target.value as any)}
+                  onChange={(e) =>
+                    setWaterMode(e.target.value as typeof waterMode)
+                  }
                   style={{
                     display: "block",
                     width: "100%",
@@ -439,7 +441,9 @@ export function PricingSetupClient() {
                 <span style={{ fontWeight: 600 }}>Phương thức tính phí gửi xe</span>
                 <select
                   value={parkingMode}
-                  onChange={(e) => setParkingMode(e.target.value as any)}
+                  onChange={(e) =>
+                    setParkingMode(e.target.value as typeof parkingMode)
+                  }
                   style={{
                     display: "block",
                     width: "100%",
