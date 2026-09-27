@@ -1,14 +1,21 @@
 BEGIN;
 
-INSERT INTO users (id, email, display_name, status)
+INSERT INTO users (
+  id, account_type, organization_id, email, display_name, status
+)
 VALUES (
   '00000000-0000-0000-0000-000000000901',
+  'PLATFORM',
+  NULL,
   'cms-dev@local.invalid',
   'CMS Dev Operator',
   'ACTIVE'
 )
 ON CONFLICT (id) DO UPDATE
-SET status = 'ACTIVE', display_name = EXCLUDED.display_name;
+SET account_type = 'PLATFORM',
+    organization_id = NULL,
+    status = 'ACTIVE',
+    display_name = EXCLUDED.display_name;
 
 INSERT INTO platform_operators (user_id, role, status)
 VALUES (
