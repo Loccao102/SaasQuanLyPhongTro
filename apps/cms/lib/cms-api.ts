@@ -465,6 +465,18 @@ export type CmsTenantAccountsView = {
   organizationId: string;
   used: number;
   limit: number;
+  planCode: string;
+  subscriptionStatus:
+    | "TRIALING"
+    | "ACTIVE"
+    | "PAST_DUE"
+    | "GRACE_PERIOD"
+    | "SUSPENDED"
+    | "CANCELLED";
+  features: Record<
+    CmsTenantFeatureKey,
+    { enabled: boolean; source: "PLAN" | "OVERRIDE" }
+  >;
   accounts: CmsTenantAccount[];
 };
 
@@ -680,6 +692,24 @@ export const cmsApi = {
     request<CmsTenantAccount>(
       "/organizations/" + encodeURIComponent(organizationId) + "/accounts",
       { method: "POST", body: JSON.stringify(input) }
+    ),
+
+  setTenantAccountRole: (
+    organizationId: string,
+    userId: string,
+    role: CmsTenantAccount["role"],
+    reason: string
+  ) =>
+    request<{ userId: string; organizationId: string; role: CmsTenantAccount["role"] }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/accounts/" +
+        encodeURIComponent(userId) +
+        "/role",
+      {
+        method: "POST",
+        body: JSON.stringify({ role, reason })
+      }
     ),
 
   setTenantAccountStatus: (
