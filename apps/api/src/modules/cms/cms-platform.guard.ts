@@ -68,7 +68,10 @@ export class CmsPlatformGuard implements CanActivate {
     const result = await this.db.query<PlatformOperatorRow>(
       `SELECT po.user_id, po.role, po.status AS operator_status, u.status AS user_status
        FROM platform_operators po
-       JOIN users u ON u.id = po.user_id
+       JOIN users u
+         ON u.id = po.user_id
+        AND u.account_type = 'PLATFORM'
+        AND u.organization_id IS NULL
        WHERE po.user_id = $1`,
       [userId]
     );
