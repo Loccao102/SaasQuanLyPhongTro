@@ -20,7 +20,11 @@ import {
   AssetCommandService,
   type PropertyType
 } from "./asset-command.service.js";
-import { RoomEquipmentService } from "./room-equipment.service.js";
+import {
+  equipmentConditionStatuses,
+  RoomEquipmentService,
+  type EquipmentConditionStatus
+} from "./room-equipment.service.js";
 
 type AssetBody = Record<string, unknown>;
 
@@ -85,6 +89,20 @@ function requiredPropertyType(input: AssetBody): PropertyType {
 function optionalPropertyType(input: AssetBody): PropertyType | undefined {
   if (input.propertyType === undefined) return undefined;
   return requiredPropertyType(input);
+}
+
+function optionalEquipmentCondition(
+  input: AssetBody,
+  field: string
+): EquipmentConditionStatus | undefined {
+  const value = optionalString(input, field);
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  if (!(equipmentConditionStatuses as readonly string[]).includes(value)) {
+    throw new BadRequestException("conditionStatus is invalid.");
+  }
+  return value as EquipmentConditionStatus;
 }
 
 @RequireTenantFeature("properties")
@@ -212,7 +230,7 @@ export class AssetCommandController {
       brand: optionalString(input, "brand"),
       modelOrSerial: optionalString(input, "modelOrSerial"),
       quantity: optionalInteger(input, "quantity"),
-      conditionStatus: optionalString(input, "conditionStatus") as any,
+      conditionStatus: optionalEquipmentCondition(input, "conditionStatus"),
       compensationValueVnd:
         input.compensationValueVnd !== undefined
           ? Number(input.compensationValueVnd)
