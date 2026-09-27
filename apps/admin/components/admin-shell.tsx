@@ -3,21 +3,28 @@
 import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useAdminAuth } from "./admin-auth-provider";
-import { adminAuthApi } from "../lib/admin-auth-api";
+import {
+  adminAuthApi,
+  type AdminTenantFeatureKey
+} from "../lib/admin-auth-api";
 
-const navItems = [
+const navItems: Array<{
+  label: string;
+  href: string;
+  feature?: AdminTenantFeatureKey;
+}> = [
   { label: "Tổng quan", href: "/" },
-  { label: "Tài sản", href: "/assets" },
-  { label: "Hợp đồng", href: "/leases" },
-  { label: "Chốt số", href: "/metering" },
-  { label: "Hóa đơn", href: "/billing" },
-  { label: "Thu tiền", href: "/payments" },
-  { label: "Tín dụng", href: "/credit-balance" },
-  { label: "Sổ quỹ Thu - Chi", href: "/finances" },
-  { label: "Báo cáo", href: "/reports" },
-  { label: "Báo hỏng & Sửa chữa", href: "/maintenance" },
-  { label: "Thông báo", href: "/notifications" },
-  { label: "Đội ngũ", href: "/team" }
+  { label: "Tài sản", href: "/assets", feature: "properties" },
+  { label: "Hợp đồng", href: "/leases", feature: "leases" },
+  { label: "Chốt số", href: "/metering", feature: "metering" },
+  { label: "Hóa đơn", href: "/billing", feature: "billing" },
+  { label: "Thu tiền", href: "/payments", feature: "payments" },
+  { label: "Tín dụng", href: "/credit-balance", feature: "payments" },
+  { label: "Sổ quỹ Thu - Chi", href: "/finances", feature: "reports" },
+  { label: "Báo cáo", href: "/reports", feature: "reports" },
+  { label: "Báo hỏng & Sửa chữa", href: "/maintenance", feature: "maintenance" },
+  { label: "Thông báo", href: "/notifications", feature: "notifications" },
+  { label: "Đội ngũ", href: "/team", feature: "team_management" }
 ];
 
 function initials(value: string): string {
@@ -177,7 +184,13 @@ export function AdminShell({
         </div>
 
         <nav className="sidebar__nav" aria-label="Điều hướng chính">
-          {navItems.map((item) => {
+          {navItems
+            .filter(
+              (item) =>
+                !item.feature ||
+                auth.session?.features?.[item.feature] !== false
+            )
+            .map((item) => {
             const className =
               item.label === activeNav
                 ? "nav-item nav-item--active"
