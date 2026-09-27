@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -97,12 +98,14 @@ export class PublicMaintenanceController {
       images?: string[];
     }
   ) {
-    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(token.trim())) {
-      throw new BadRequestException("Mã token không hợp lệ.");
-    }
     await this.security.assertPublicMaintenanceAllowed(
       request.ip || request.socket.remoteAddress || "unknown"
     );
+    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(token.trim())) {
+      throw new NotFoundException(
+        "Đường link hoá đơn không hợp lệ hoặc đã hết hạn."
+      );
+    }
     return this.service.createFromPublicInvoice(token, body);
   }
 }
