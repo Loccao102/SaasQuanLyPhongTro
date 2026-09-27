@@ -129,7 +129,8 @@ export class AuthenticationService {
       passwordRecoveryEnabled: this.requireAuthEmail().isAvailable(),
       googleEnabled:
         Boolean(googleClientId) && (await this.requireOnboarding().googleAuthEnabled()),
-      googleClientId
+      googleClientId,
+      passkeyPasswordlessEnabled: this.passwordlessPasskeyEnabled()
     };
   }
 
@@ -765,6 +766,12 @@ export class AuthenticationService {
   async beginPasswordlessPasskey(
     accountType: "TENANT" | "PLATFORM"
   ) {
+    if (!this.passwordlessPasskeyEnabled()) {
+      throw new ConflictException(
+        "Passkey-first login chưa được bật cho môi trường này."
+      );
+    }
+
     const config = webAuthnConfig();
     const options = await generateAuthenticationOptions({
       rpID: config.rpID,
@@ -795,6 +802,12 @@ export class AuthenticationService {
     response: AuthenticationResponseJSON;
     sessionContext?: SessionContext;
   }): Promise<LoginResult> {
+    if (!this.passwordlessPasskeyEnabled()) {
+      throw new ConflictException(
+        "Passkey-first login chưa được bật cho môi trường này."
+      );
+    }
+
     const purpose =
       input.accountType === "PLATFORM"
         ? "PASSWORDLESS_PLATFORM"
@@ -1551,6 +1564,19 @@ export class AuthenticationService {
       );
     }
     return value;
+  }
+
+  private passwordlessPasskeyEnabled(): boolean {
+    const configured =
+      process.env.AUTH_PASSKEY_PASSWORDLESS_ENABLED?.trim().toLowerCase();
+    if (!configured) {
+      return process.env.NODE_ENV !== "production";
+    }
+    if (["1", "true", "yes", "on"].includes(configured)) return true;
+    if (["0", "false", "no", "off"].includes(configured)) return false;
+    throw new Error(
+      "AUTH_PASSKEY_PASSWORDLESS_ENABLED must be true or false."
+    );
   }
 
   private stepUpTtlMinutes(): number {
