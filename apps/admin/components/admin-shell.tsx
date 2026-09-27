@@ -100,6 +100,11 @@ export function AdminShell({
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [stepUpPassword, setStepUpPassword] = useState("");
   const [stepUpCode, setStepUpCode] = useState("");
+  const [recentAuthStatus, setRecentAuthStatus] = useState<{
+    recent: boolean;
+    reauthenticatedAt: string;
+    expiresAt: string;
+  } | null>(null);
 
   useEffect(() => {
     setPasskeySupported(browserSupportsPasskeys());
@@ -232,15 +237,17 @@ export function AdminShell({
     setMfaCode("");
     try {
       setPasskeySupported(browserSupportsPasskeys());
-      const [status, passkeyResult] = await Promise.all([
+      const [status, passkeyResult, recentAuth] = await Promise.all([
         adminAuthApi.mfaStatus(),
-        adminAuthApi.passkeys()
+        adminAuthApi.passkeys(),
+        adminAuthApi.stepUpStatus()
       ]);
       setMfaEnabled(status.enabled);
       setMfaRequiredByRole(
         status.required ? status.requiredByRole : null
       );
       setPasskeys(passkeyResult.passkeys);
+      setRecentAuthStatus(recentAuth);
     } catch (err) {
       setMfaError(
         err instanceof Error ? err.message : "Không thể tải trạng thái MFA."
@@ -905,6 +912,20 @@ export function AdminShell({
                 Đóng
               </button>
             </div>
+
+            {recentAuthStatus ? (
+              <div className="admin-state">
+                <span>
+                  Recent authentication:{" "}
+                  {recentAuthStatus.recent
+                    ? "còn hiệu lực đến " +
+                      new Date(recentAuthStatus.expiresAt).toLocaleTimeString(
+                        "vi-VN"
+                      )
+                    : "đã hết hạn — thay đổi security tiếp theo sẽ yêu cầu xác thực lại"}
+                </span>
+              </div>
+            ) : null}
 
             {mfaError ? (
               <div className="admin-state admin-state--error" role="alert">
