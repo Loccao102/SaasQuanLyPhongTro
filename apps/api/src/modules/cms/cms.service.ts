@@ -159,6 +159,16 @@ type AuditRow = QueryResultRow & {
   reason: string;
 };
 
+type AuthSecurityEventRow = QueryResultRow & {
+  id: string;
+  event_type: string;
+  outcome: "SUCCESS" | "FAILURE" | "BLOCKED";
+  user_id: string | null;
+  organization_id: string | null;
+  metadata: unknown;
+  occurred_at: Date;
+};
+
 type BillingWebhookRow = QueryResultRow & {
   id: string;
   provider: string;
@@ -2693,6 +2703,33 @@ export class CmsService {
       before: row.before_state,
       after: row.after_state,
       reason: row.reason
+    }));
+  }
+
+  async listAuthSecurityEvents(principal: PlatformPrincipal) {
+    this.requirePermission(principal, "platform.audit.read");
+    const result = await this.db.query<AuthSecurityEventRow>(
+      `SELECT
+         id::text,
+         event_type,
+         outcome,
+         user_id::text,
+         organization_id::text,
+         metadata,
+         occurred_at
+       FROM auth_security_events
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT 200`
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      at: row.occurred_at.toISOString(),
+      eventType: row.event_type,
+      outcome: row.outcome,
+      userId: row.user_id,
+      organizationId: row.organization_id,
+      metadata: row.metadata
     }));
   }
 
