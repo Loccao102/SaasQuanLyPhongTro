@@ -1,3 +1,7 @@
+import type {
+  PasskeyAuthenticationOptionsJSON,
+  PasskeyRegistrationOptionsJSON
+} from "@propops/ui/passkey";
 import { adminApiRequest } from "./admin-api-client";
 
 export type AdminMembership = {
@@ -67,6 +71,16 @@ export type AdminAuthSessionItem = {
   expiresAt: string;
   userAgent: string | null;
   deviceLabel: string | null;
+};
+
+export type PasskeyItem = {
+  id: string;
+  name: string;
+  deviceType: string;
+  backedUp: boolean;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
 };
 
 export type AuthConfig = {
@@ -175,6 +189,28 @@ export const adminAuthApi = {
       }
     ),
 
+  passkeyMfaOptions: (challengeToken: string) =>
+    adminApiRequest<PasskeyAuthenticationOptionsJSON>(
+      "/auth/mfa/passkey/options",
+      {
+        method: "POST",
+        body: { challengeToken },
+        organization: false,
+        csrf: false
+      }
+    ),
+
+  verifyPasskeyMfa: (input: {
+    challengeToken: string;
+    response: unknown;
+  }) =>
+    adminApiRequest<AdminSession>("/auth/mfa/passkey/verify", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
   verifyMfa: (input: { challengeToken: string; code: string }) =>
     adminApiRequest<AdminSession>("/auth/mfa/verify", {
       method: "POST",
@@ -182,6 +218,42 @@ export const adminAuthApi = {
       organization: false,
       csrf: false
     }),
+
+  passkeys: () =>
+    adminApiRequest<{ passkeys: PasskeyItem[] }>("/auth/passkeys", {
+      organization: false,
+      csrf: false
+    }),
+
+  passkeyRegistrationOptions: () =>
+    adminApiRequest<PasskeyRegistrationOptionsJSON>(
+      "/auth/passkeys/registration/options",
+      {
+        method: "POST",
+        body: {},
+        organization: false
+      }
+    ),
+
+  verifyPasskeyRegistration: (input: {
+    response: unknown;
+    name?: string;
+  }) =>
+    adminApiRequest<PasskeyItem>("/auth/passkeys/registration/verify", {
+      method: "POST",
+      body: input,
+      organization: false
+    }),
+
+  revokePasskey: (passkeyId: string) =>
+    adminApiRequest<{ revoked: boolean }>(
+      "/auth/passkeys/" + encodeURIComponent(passkeyId) + "/revoke",
+      {
+        method: "POST",
+        body: {},
+        organization: false
+      }
+    ),
 
   mfaStatus: () =>
     adminApiRequest<{
