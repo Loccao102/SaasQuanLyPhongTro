@@ -33,6 +33,7 @@ export interface SessionIdentity {
   accountType: "TENANT" | "PLATFORM";
   csrfHash: Buffer;
   expiresAt: Date;
+  lastSeenAt: Date;
 }
 
 export interface AuthMembershipSummary {
@@ -75,6 +76,7 @@ type SessionRow = QueryResultRow & {
   account_type: "TENANT" | "PLATFORM";
   csrf_hash: Buffer;
   expires_at: Date;
+  last_seen_at: Date;
 };
 
 type MembershipRow = QueryResultRow & {
@@ -309,7 +311,8 @@ export class AuthenticationRepository {
   }
 
   async findSessionByTokenHash(
-    tokenHash: Buffer
+    tokenHash: Buffer,
+    idleCutoff: Date
   ): Promise<SessionIdentity | null> {
     const result = await this.db.query<SessionRow>(
       `SELECT
@@ -320,17 +323,19 @@ export class AuthenticationRepository {
          u.organization_id::text,
          u.account_type,
          s.csrf_hash,
-         s.expires_at
+         s.expires_at,
+         s.last_seen_at
        FROM auth_sessions s
        JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = $1
          AND s.revoked_at IS NULL
          AND s.expires_at > now()
+         AND s.last_seen_at > $2
          AND u.status = 'ACTIVE'
          AND u.auth_version = s.auth_version
          AND s.organization_id IS NOT DISTINCT FROM u.organization_id
        LIMIT 1`,
-      [tokenHash]
+      [tokenHash, idleCutoff]
     );
 
     const row = result.rows[0];
@@ -344,8 +349,20 @@ export class AuthenticationRepository {
       organizationId: row.organization_id,
       accountType: row.account_type,
       csrfHash: row.csrf_hash,
-      expiresAt: row.expires_at
+      expiresAt: row.expires_at,
+      lastSeenAt: row.last_seen_at
     };
+  }
+
+  async touchSession(sessionId: string, touchBefore: Date): Promise<void> {
+    await this.db.query(
+      `UPDATE auth_sessions
+       SET last_seen_at = now()
+       WHERE id = $1::uuid
+         AND revoked_at IS NULL
+         AND last_seen_at < $2`,
+      [sessionId, touchBefore]
+    );
   }
 
   async revokeSessionByTokenHash(tokenHash: Buffer): Promise<void> {
