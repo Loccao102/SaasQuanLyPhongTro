@@ -35,6 +35,14 @@ export type AdminSession = {
   expiresAt: string;
 };
 
+export type AdminAuthSessionItem = {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+};
+
 export type AuthConfig = {
   registrationEnabled: boolean;
   googleEnabled: boolean;
@@ -93,6 +101,26 @@ export const adminAuthApi = {
     adminApiRequest<AdminSession>("/auth/me", {
       organization: false,
       csrf: false
+    }),
+
+  sessions: () =>
+    adminApiRequest<{ sessions: AdminAuthSessionItem[] }>("/auth/sessions", {
+      organization: false
+    }),
+
+  revokeSession: (sessionId: string) =>
+    adminApiRequest<{ revoked: boolean; currentSessionRevoked: boolean }>(
+      "/auth/sessions/" + encodeURIComponent(sessionId) + "/revoke",
+      {
+        method: "POST",
+        organization: false
+      }
+    ),
+
+  revokeOtherSessions: () =>
+    adminApiRequest<{ revokedSessions: number }>("/auth/sessions/revoke-others", {
+      method: "POST",
+      organization: false
     }),
 
   logout: () =>
