@@ -10,12 +10,14 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type { TenantRequest } from "../../identity/tenant-principal.js";
 import { NotificationCampaignService } from "./notification-campaign.service.js";
 import { NotificationAdminService } from "./notification-admin.service.js";
 
 type BodyInput = Record<string, unknown>;
 
+@RequireTenantFeature("notifications")
 @Controller("admin/notifications")
 @UseGuards(TenantPrincipalGuard)
 export class NotificationAdminController {
