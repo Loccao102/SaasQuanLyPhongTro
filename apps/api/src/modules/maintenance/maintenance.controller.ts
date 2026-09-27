@@ -13,6 +13,7 @@ import {
   UseGuards
 } from "@nestjs/common";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
+import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type { TenantPrincipal, TenantRequest } from "../identity/tenant-principal.js";
 import { MaintenanceService } from "./maintenance.service.js";
 import type {
@@ -21,6 +22,7 @@ import type {
   UpdateMaintenanceTicketInput
 } from "./maintenance.types.js";
 
+@RequireTenantFeature("maintenance")
 @Controller("admin/maintenance")
 @UseGuards(TenantPrincipalGuard)
 export class MaintenanceController {
