@@ -2,8 +2,11 @@ export const tenantFeatureKeys = [
   "properties",
   "leases",
   "metering",
+  "pricing",
   "billing",
   "payments",
+  "credit_balance",
+  "finances",
   "maintenance",
   "notifications",
   "reports",
@@ -40,8 +43,11 @@ export interface PlanEntitlements {
   properties: boolean;
   leases: boolean;
   metering: boolean;
+  pricing: boolean;
   billing: boolean;
   payments: boolean;
+  creditBalance: boolean;
+  finances: boolean;
   maintenance: boolean;
   notifications: boolean;
   reports: boolean;
@@ -157,11 +163,20 @@ function setFeature(
     case "metering":
       values.metering = enabled;
       return;
+    case "pricing":
+      values.pricing = enabled;
+      return;
     case "billing":
       values.billing = enabled;
       return;
     case "payments":
       values.payments = enabled;
+      return;
+    case "credit_balance":
+      values.creditBalance = enabled;
+      return;
+    case "finances":
+      values.finances = enabled;
       return;
     case "maintenance":
       values.maintenance = enabled;
@@ -195,10 +210,16 @@ export function tenantFeatureEnabled(
       return entitlements.leases;
     case "metering":
       return entitlements.metering;
+    case "pricing":
+      return entitlements.pricing;
     case "billing":
       return entitlements.billing;
     case "payments":
       return entitlements.payments;
+    case "credit_balance":
+      return entitlements.creditBalance;
+    case "finances":
+      return entitlements.finances;
     case "maintenance":
       return entitlements.maintenance;
     case "notifications":
