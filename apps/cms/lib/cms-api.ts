@@ -445,6 +445,24 @@ export type CmsEntitlementOverride = {
   createdBy: string;
 };
 
+export type CmsTenantAccount = {
+  id: string;
+  email: string;
+  displayName: string;
+  userStatus: "ACTIVE" | "SUSPENDED";
+  role: "OWNER" | "ADMIN" | "MANAGER" | "STAFF" | "ACCOUNTANT" | "VIEWER";
+  membershipStatus: "INVITED" | "ACTIVE" | "SUSPENDED";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CmsTenantAccountsView = {
+  organizationId: string;
+  used: number;
+  limit: number;
+  accounts: CmsTenantAccount[];
+};
+
 export type CmsNotificationJob = {
   id: string;
   organizationId: string;
@@ -638,6 +656,79 @@ export const cmsApi = {
   },
   entitlementOverrides: () =>
     request<CmsEntitlementOverride[]>("/entitlement-overrides"),
+
+  tenantAccounts: (organizationId: string) =>
+    request<CmsTenantAccountsView>(
+      "/organizations/" + encodeURIComponent(organizationId) + "/accounts"
+    ),
+
+  createTenantAccount: (
+    organizationId: string,
+    input: {
+      email: string;
+      displayName: string;
+      role: CmsTenantAccount["role"];
+      temporaryPassword: string;
+      reason: string;
+    }
+  ) =>
+    request<CmsTenantAccount>(
+      "/organizations/" + encodeURIComponent(organizationId) + "/accounts",
+      { method: "POST", body: JSON.stringify(input) }
+    ),
+
+  setTenantAccountStatus: (
+    organizationId: string,
+    userId: string,
+    status: "ACTIVE" | "SUSPENDED",
+    reason: string
+  ) =>
+    request<{ userId: string; organizationId: string; status: string }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/accounts/" +
+        encodeURIComponent(userId) +
+        "/status",
+      {
+        method: "POST",
+        body: JSON.stringify({ status, reason })
+      }
+    ),
+
+  resetTenantAccountPassword: (
+    organizationId: string,
+    userId: string,
+    temporaryPassword: string,
+    reason: string
+  ) =>
+    request<{ userId: string; passwordReset: true; sessionsRevoked: true }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/accounts/" +
+        encodeURIComponent(userId) +
+        "/reset-password",
+      {
+        method: "POST",
+        body: JSON.stringify({ temporaryPassword, reason })
+      }
+    ),
+
+  revokeTenantAccountSessions: (
+    organizationId: string,
+    userId: string,
+    reason: string
+  ) =>
+    request<{ userId: string; revokedSessions: number }>(
+      "/organizations/" +
+        encodeURIComponent(organizationId) +
+        "/accounts/" +
+        encodeURIComponent(userId) +
+        "/revoke-sessions",
+      {
+        method: "POST",
+        body: JSON.stringify({ reason })
+      }
+    ),
   audit: () => request<CmsAuditEvent[]>("/audit"),
   jobs: () => request<CmsJobsStatus>("/jobs"),
   billingReconciliation: () =>
