@@ -192,6 +192,45 @@ Existing sessions receive a migration-time `reauthenticated_at` value, giving
 them one normal step-up window after rollout rather than forcing an immediate
 mass interruption.
 
+## Security alerts
+
+Authentication events remain the raw audit source. Habi derives a separate
+persistent alert stream for signals that should be easier for users and
+operators to notice.
+
+Current alert rules include:
+
+- MFA disabled — HIGH;
+- passkey registered or revoked — MEDIUM;
+- password changed — MEDIUM;
+- successful login from a network hash not previously seen for an account
+  that already has login history — MEDIUM;
+- three or more failed STEP_UP attempts within 15 minutes — HIGH, deduplicated
+  for 60 minutes.
+
+Network detection uses the existing HMAC-protected IP hash. Raw IP addresses
+are not stored in the alert record and no location is inferred from them.
+
+Alerts are written to PostgreSQL before any notification attempt. When Resend
+and `AUTH_EMAIL_FROM` are configured, MEDIUM/HIGH alerts with a known account
+email are delivered asynchronously. Authentication never waits for or fails
+because of alert email delivery. Delivery status is recorded as
+`SENT`, `FAILED` or `SKIPPED`.
+
+Tenant users can see their own recent alerts in the Admin security modal.
+PLATFORM users can see their own alerts on the Control Plane security screen,
+while operators with `platform.audit.read` can see the platform-wide alert
+feed alongside the raw auth event feed.
+
+Alert retention is bounded independently from raw event retention:
+
+```env
+AUTH_SECURITY_ALERT_RETENTION_DAYS=180
+```
+
+The existing hourly opportunistic security-data cleanup removes alerts older
+than this window.
+
 ## Session security
 
 New sessions store a bounded User-Agent and a derived display label such as
