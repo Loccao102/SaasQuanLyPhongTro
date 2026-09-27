@@ -691,14 +691,13 @@ export function StaffMeterEntryClient() {
         <section className="staff-toolbar">
           <label>
             <span>Ngày chốt</span>
-            <input
-              type="date"
+            <DateInput
               value={readingDate}
               onChange={(event) => {
                 setReadingDate(event.target.value);
                 setActiveRoomId("");
               }}
-            />
+             />
           </label>
           <div className="staff-sync-summary">
             <strong>{pendingCount}</strong>
