@@ -102,15 +102,16 @@ Implemented controls:
 - password-change attempts are rate-limited;
 - opaque server-side sessions support expiry/revocation/auth-version invalidation;
 - password change invalidates previous sessions through `auth_version`;
-- Google ID tokens validate signature, issuer, audience, expiry, verified email, stable subject and nonce;
+- Google ID tokens validate signature, issuer, audience, authorized party for multi-audience tokens, expiry, verified email, stable subject and nonce;
 - Google tenant auth cannot authenticate/link platform accounts;
+- users can list active sessions, revoke an individual session or revoke all other sessions;
 - Google provider identity is keyed by stable `sub`.
 
 Residual work before public launch:
 
 - verified-email flow for password registration;
 - forgot/reset-password delivery flow;
-- end-user session/device management;
+- richer device labeling for session UX;
 - MFA policy for privileged OWNER/PLATFORM identities.
 
 ## A08 — Software or Data Integrity Failures
