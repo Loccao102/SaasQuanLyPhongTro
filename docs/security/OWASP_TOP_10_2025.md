@@ -124,6 +124,8 @@ Implemented controls:
 - WebAuthn/passkeys can be registered from an authenticated CSRF-protected session and used as a phishing-resistant second factor after primary login;
 - passkey registration/authentication challenges are short-lived and one-time, and passkey authentication atomically consumes both the WebAuthn challenge and its parent MFA challenge;
 - WebAuthn verification requires user verification and validates the configured relying-party ID and exact allowed origins.
+- browser sessions track recent-auth separately from ordinary activity; stale sessions must complete password/TOTP/recovery/passkey step-up before protected security or Control Plane writes;
+- Control Plane step-up uses HTTP 428 and transparent client retry with the original idempotency key, avoiding duplicate billing/settings mutations.
 
 Residual work before public launch:
 
