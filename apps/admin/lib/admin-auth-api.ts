@@ -165,6 +165,28 @@ export const adminAuthApi = {
     }),
 
 
+  passkeyLoginOptions: () =>
+    adminApiRequest<{
+      requestId: string;
+      options: PasskeyAuthenticationOptionsJSON;
+    }>("/auth/passkey/login/options", {
+      method: "POST",
+      body: {},
+      organization: false,
+      csrf: false
+    }),
+
+  verifyPasskeyLogin: (input: {
+    requestId: string;
+    response: unknown;
+  }) =>
+    adminApiRequest<AdminSession>("/auth/passkey/login/verify", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
   login: (input: { email: string; password: string }) =>
     adminApiRequest<AdminAuthenticationResult>("/auth/login", {
       method: "POST",
