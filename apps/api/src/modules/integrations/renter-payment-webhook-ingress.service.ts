@@ -5,7 +5,10 @@ import type {
   BillingWebhookHeaders,
   BillingWebhookIngressAdapter
 } from "./billing-webhook-ingress.service.js";
-import { BillingWebhookIngressRejectedError } from "./billing-webhook-ingress.service.js";
+import {
+  assertWebhookBodySize,
+  BillingWebhookIngressRejectedError
+} from "./billing-webhook-ingress.service.js";
 
 @Injectable()
 export class RenterPaymentWebhookIngressService {
@@ -16,11 +19,7 @@ export class RenterPaymentWebhookIngressService {
     rawBody: Buffer,
     headers: BillingWebhookHeaders
   ) {
-    if (!Buffer.isBuffer(rawBody) || rawBody.length === 0) {
-      throw new BillingWebhookIngressRejectedError(
-        "Webhook raw body is required."
-      );
-    }
+    assertWebhookBodySize(rawBody);
     const inspection = await adapter.inspect({ rawBody, headers });
     const providerEventId = inspection.providerEventId.trim();
     if (!providerEventId) {
