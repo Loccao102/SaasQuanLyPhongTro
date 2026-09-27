@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
@@ -242,6 +244,77 @@ export class AuthenticationController {
     };
   }
 
+  @Get("sessions")
+  async sessions(@Req() request: Request) {
+    const session = await this.requireSession(request);
+    return {
+      sessions: await this.authentication.listSessions(
+        session.userId,
+        session.sessionId
+      )
+    };
+  }
+
+  @Post("sessions/:sessionId/revoke")
+  async revokeSession(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param("sessionId", new ParseUUIDPipe({ version: "4" })) sessionId: string
+  ) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+
+    const revoked = await this.authentication.revokeSession(
+      session.userId,
+      sessionId
+    );
+    const currentSessionRevoked = revoked && sessionId === session.sessionId;
+
+    await this.security.recordEvent({
+      eventType: "SESSION_REVOKED",
+      outcome: revoked ? "SUCCESS" : "FAILURE",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId,
+      metadata: {
+        targetSessionId: sessionId,
+        currentSessionRevoked
+      }
+    });
+
+    if (currentSessionRevoked) {
+      this.clearAuthCookies(response);
+    }
+
+    return { revoked, currentSessionRevoked };
+  }
+
+  @Post("sessions/revoke-others")
+  async revokeOtherSessions(@Req() request: Request) {
+    assertTrustedBrowserOrigin(request);
+    const session = await this.requireSession(request);
+    this.requireCsrf(request, session);
+
+    const revokedSessions = await this.authentication.revokeOtherSessions(
+      session.userId,
+      session.sessionId
+    );
+
+    await this.security.recordEvent({
+      eventType: "OTHER_SESSIONS_REVOKED",
+      outcome: "SUCCESS",
+      email: session.email,
+      ip: this.requestIp(request),
+      userId: session.userId,
+      organizationId: session.organizationId,
+      metadata: { revokedSessions }
+    });
+
+    return { revokedSessions };
+  }
+
   @Post("logout")
   async logout(
     @Req() request: Request,
@@ -260,17 +333,7 @@ export class AuthenticationController {
 
     await this.authentication.logout(sessionToken);
 
-    const names = authCookieNames();
-    response.setHeader("Set-Cookie", [
-      serializeAuthCookie(names.session, "", {
-        httpOnly: true,
-        maxAgeSeconds: 0
-      }),
-      serializeAuthCookie(names.csrf, "", {
-        httpOnly: false,
-        maxAgeSeconds: 0
-      })
-    ]);
+    this.clearAuthCookies(response);
 
     return { loggedOut: true };
   }
@@ -295,7 +358,7 @@ export class AuthenticationController {
     }
 
     const ip = this.requestIp(request);
-    await this.security.assertPasswordLoginAllowed(session.email, ip);
+    await this.security.assertPasswordChangeAllowed(session.userId);
 
     try {
       await this.authentication.changePassword(
@@ -325,6 +388,45 @@ export class AuthenticationController {
     }
 
     return { success: true, message: "Đổi mật khẩu thành công." };
+  }
+
+  private async requireSession(request: Request) {
+    const session = await this.authentication.authenticateSession(
+      this.sessionCookie(request)
+    );
+    if (!session) {
+      throw new UnauthorizedException(
+        "Phiên đăng nhập đã hết hạn hoặc không hợp lệ."
+      );
+    }
+    return session;
+  }
+
+  private requireCsrf(
+    request: Request,
+    session: Awaited<ReturnType<AuthenticationService["authenticateSession"]>> & {}
+  ): void {
+    if (!this.authentication.verifyCsrf(session, readCsrfHeader(request))) {
+      throw new UnauthorizedException("CSRF token không hợp lệ.");
+    }
+  }
+
+  private clearAuthCookies(response: Response): void {
+    const names = authCookieNames();
+    response.setHeader("Set-Cookie", [
+      serializeAuthCookie(names.session, "", {
+        httpOnly: true,
+        maxAgeSeconds: 0
+      }),
+      serializeAuthCookie(names.csrf, "", {
+        httpOnly: false,
+        maxAgeSeconds: 0
+      }),
+      serializeAuthCookie(names.googleNonce, "", {
+        httpOnly: true,
+        maxAgeSeconds: 0
+      })
+    ]);
   }
 
   private finishAuthentication(response: Response, result: LoginResult) {
