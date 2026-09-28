@@ -1,8 +1,15 @@
+export function formatMeterValue(value: string | number): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  return numeric.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?[1-9])0+$/, "$1");
+}
+
 export function normalizeMeterInput(raw: string): string | null {
   const normalized = raw.trim().replace(",", ".");
   const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(normalized);
   if (!match) return null;
-  return match[1] + "." + (match[2] ?? "").padEnd(3, "0");
+  const fraction = match[2]?.replace(/0+$/, "") ?? "";
+  return fraction ? match[1] + "." + fraction : match[1];
 }
 
 export function validateAgainstPrevious(
@@ -30,9 +37,9 @@ export function anomalyWarning(
   if (usage > baseline * 2.5) {
     return (
       "Mức dùng " +
-      usage.toFixed(3) +
+      formatMeterValue(usage) +
       " cao hơn đáng kể so với baseline " +
-      baseline.toFixed(3) +
+      formatMeterValue(baseline) +
       ". Kiểm tra lại trước khi lưu."
     );
   }
