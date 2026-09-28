@@ -15,7 +15,13 @@ import {
 } from "@propops/ui/passkey";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAdminAuth } from "../../components/admin-auth-provider";
-import { GoogleIdentityButton } from "../../components/google-identity-button";
+import { AuthShell } from "../../components/auth-shell";
+import {
+  ArrowRightOutlined,
+  LockOutlined,
+  LoginOutlined,
+  MailOutlined
+} from "@ant-design/icons";
 import {
   adminAuthApi,
   type AdminAuthenticationResult,
@@ -129,52 +135,6 @@ export function LoginClient() {
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Không thể đăng nhập."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const googleLogin = useCallback(
-    async (credential: string) => {
-      setSubmitting(true);
-      setError(null);
-      try {
-        const result = await auth.google({
-          credential,
-          mode: "LOGIN"
-        });
-        handleAuthenticationResult(result);
-      } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Không thể đăng nhập bằng Google."
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [auth, handleAuthenticationResult]
-  );
-
-  async function passwordlessPasskeyLogin() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const request = await adminAuthApi.passkeyLoginOptions();
-      const response = await authenticateWithPasskey(request.options);
-      const session = await adminAuthApi.verifyPasskeyLogin({
-        requestId: request.requestId,
-        response
-      });
-      await auth.refresh();
-      finish(session.memberships.length);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Không thể đăng nhập bằng passkey."
       );
     } finally {
       setSubmitting(false);
@@ -306,23 +266,11 @@ export function LoginClient() {
   }
 
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-brand">
-          <span className="brand__mark">H</span>
-          <div>
-            <strong>Habi</strong>
-            <span>Nhà gọn. Việc trôi.</span>
-          </div>
-        </div>
-
-        <div className="login-heading">
-          <span className="eyebrow">HABI WORKSPACE</span>
-          <h1>Đăng nhập</h1>
-          <p>
-            Tiếp tục quản lý cơ sở, hợp đồng, hóa đơn và dòng tiền của tenant.
-          </p>
-        </div>
+    <AuthShell
+      eyebrow="HABI WORKSPACE"
+      title="Chào mừng trở lại"
+      description="Đăng nhập để tiếp tục quản lý cơ sở, hợp đồng, hóa đơn và dòng tiền."
+    >
 
         {auth.status === "loading" ? (
           <div className="login-inline-state">
@@ -534,98 +482,70 @@ export function LoginClient() {
             </small>
           </form>
         ) : (
-          <>
-            {passkeySupported ? (
-              <>
-                <button
-                  className="primary-button login-submit"
-                  type="button"
-                  disabled={
-                    submitting ||
-                    auth.status === "loading" ||
-                    auth.status === "authenticated"
-                  }
-                  onClick={() => void passwordlessPasskeyLogin()}
-                >
-                  {submitting
-                    ? "Đang mở passkey…"
-                    : "Đăng nhập bằng passkey"}
-                </button>
-                <div className="login-inline-state" aria-hidden="true">
-                  hoặc dùng Google / email
-                </div>
-              </>
-            ) : null}
-            {config?.googleEnabled && config.googleClientId ? (
-              <>
-                <GoogleIdentityButton
-                  clientId={config.googleClientId}
-                  mode="LOGIN"
-                  disabled={submitting}
-                  onCredential={googleLogin}
-                />
-                <div className="login-inline-state" aria-hidden="true">
-                  hoặc đăng nhập bằng email
-                </div>
-              </>
-            ) : null}
-
-            <form className="login-form" onSubmit={(event) => void submit(event)}>
-              <label>
-                <span>Email</span>
+          <form className="login-form auth-form" onSubmit={(event) => void submit(event)}>
+            <label>
+              <span>Email</span>
+              <div className="auth-field">
+                <MailOutlined aria-hidden="true" />
                 <input
                   name="email"
                   type="email"
                   autoComplete="username"
                   inputMode="email"
+                  placeholder="ban@example.com"
                   required
                   disabled={submitting}
                 />
-              </label>
+              </div>
+            </label>
 
-              <label>
-                <span>Mật khẩu</span>
+            <label>
+              <span>Mật khẩu</span>
+              <div className="auth-field">
+                <LockOutlined aria-hidden="true" />
                 <input
                   name="password"
                   type="password"
                   autoComplete="current-password"
+                  placeholder="Nhập mật khẩu"
                   required
                   disabled={submitting}
                 />
-              </label>
+              </div>
+            </label>
 
-              {error ? (
-                <div className="login-error" role="alert">
-                  {error}
-                </div>
-              ) : null}
-
+            <div className="auth-form__meta">
               {config?.passwordRecoveryEnabled ? (
-                <div className="login-footnote">
-                  <Link href="/forgot-password">Quên mật khẩu?</Link>
-                </div>
-              ) : null}
+                <Link href="/forgot-password">Quên mật khẩu?</Link>
+              ) : <span />}
+            </div>
 
-              <button
-                className="primary-button login-submit"
-                type="submit"
-                disabled={
-                  submitting ||
-                  auth.status === "loading" ||
-                  auth.status === "authenticated"
-                }
-              >
-                {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
-              </button>
-            </form>
-          </>
+            {error ? (
+              <div className="login-error" role="alert">
+                {error}
+              </div>
+            ) : null}
+
+            <button
+              className="primary-button login-submit auth-primary-action"
+              type="submit"
+              disabled={
+                submitting ||
+                auth.status === "loading" ||
+                auth.status === "authenticated"
+              }
+            >
+              <LoginOutlined aria-hidden="true" />
+              {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
+            </button>
+          </form>
         )}
 
         {config?.registrationEnabled ? (
           <p className="login-footnote">
             Chưa có Habi?{" "}
-            <Link href="/register">
-              Tạo tenant và dùng thử ngay
+            <Link className="auth-inline-link" href="/register">
+              Tạo tenant và dùng thử ngay <ArrowRightOutlined aria-hidden="true" />
             </Link>
           </p>
         ) : (
@@ -633,7 +553,6 @@ export function LoginClient() {
             Đăng ký mới đang tạm đóng. Tài khoản hiện có vẫn đăng nhập bình thường.
           </p>
         )}
-      </section>
-    </main>
+    </AuthShell>
   );
 }
