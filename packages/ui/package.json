@@ -7,7 +7,8 @@
     "./styles.css": "./src/styles.css",
     "./date-input": "./src/date-input.tsx",
     "./totp-qr": "./src/totp-qr.tsx",
-    "./passkey": "./src/passkey.ts"
+    "./passkey": "./src/passkey.ts",
+    "./habi-brand": "./src/habi-brand.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
