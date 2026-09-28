@@ -230,6 +230,117 @@ export class MeteringService {
     });
   }
 
+  async updateMeter(
+    principal: TenantPrincipal,
+    meterId: string,
+    input: {
+      label?: string | null;
+      isActive?: boolean;
+    }
+  ) {
+    return this.db.withTransaction(async (client) => {
+      const meter = await this.requireMeterWithClient(
+        client,
+        principal,
+        meterId,
+        "meter.write"
+      );
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const nextLabel =
+        input.label === undefined ? meter.label : input.label?.trim() || null;
+      const nextActive =
+        input.isActive === undefined ? meter.is_active : input.isActive;
+
+      if (nextActive && !meter.is_active) {
+        const conflict = await client.query(
+          `SELECT id
+           FROM meters
+           WHERE organization_id = $1::uuid
+             AND room_id = $2::uuid
+             AND meter_type = $3
+             AND is_active = true
+             AND id <> $4::uuid
+           LIMIT 1`,
+          [
+            principal.organizationId,
+            meter.room_id,
+            meter.meter_type,
+            meterId
+          ]
+        );
+        if ((conflict.rowCount ?? 0) > 0) {
+          throw new ConflictException(
+            "Room already has an active " +
+              meter.meter_type.toLowerCase() +
+              " meter."
+          );
+        }
+      }
+
+      const updated = await client.query<MeterRow>(
+        `UPDATE meters m
+         SET label = $3,
+             is_active = $4,
+             updated_at = now()
+         FROM rooms r
+         WHERE m.organization_id = $1::uuid
+           AND m.id = $2::uuid
+           AND r.organization_id = m.organization_id
+           AND r.id = m.room_id
+         RETURNING
+           m.id::text,
+           m.room_id::text,
+           r.property_id::text,
+           m.meter_type,
+           m.unit,
+           m.label,
+           m.is_active,
+           '{}'::text[] AS operational_group_ids`,
+        [
+          principal.organizationId,
+          meterId,
+          nextLabel,
+          nextActive
+        ]
+      );
+      const row = updated.rows[0];
+      if (!row) throw new NotFoundException("Meter was not found.");
+
+      await this.audit(
+        client,
+        principal,
+        "METER_UPDATED",
+        "METER",
+        meterId,
+        {
+          roomId: row.room_id,
+          meterType: row.meter_type,
+          label: row.label,
+          isActive: row.is_active
+        }
+      );
+      await this.syncOpenTerminationMeterReadiness(
+        client,
+        principal,
+        row.room_id,
+        "METER_UPDATED"
+      );
+
+      return {
+        id: row.id,
+        roomId: row.room_id,
+        meterType: row.meter_type,
+        unit: row.unit,
+        label: row.label,
+        isActive: row.is_active
+      };
+    });
+  }
+
   async listReadings(principal: TenantPrincipal, meterId: string) {
     const meter = await this.requireMeter(principal, meterId, "meter.read");
     const readings = await this.db.query<ReadingRow>(
@@ -808,7 +919,7 @@ export class MeteringService {
     client: PoolClient,
     principal: TenantPrincipal,
     roomId: string,
-    trigger: "METER_CREATED" | "METER_READING_RECORDED"
+    trigger: "METER_CREATED" | "METER_UPDATED" | "METER_READING_RECORDED"
   ): Promise<void> {
     await client.query(
       `SELECT id
