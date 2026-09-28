@@ -291,3 +291,25 @@ body { background: #eef0f3; }
     width: 100%;
   }
 }
+
+.staff-login-brand {
+  position: relative;
+}
+.staff-login-brand__logo .habi-brand__copy strong {
+  font-size: 16px;
+}
+.staff-login-brand__logo .habi-brand__copy span {
+  font-size: 10px;
+}
+.staff-login-product {
+  margin-left: auto;
+  padding: 5px 8px;
+  border: 1px solid #dbe5ee;
+  border-radius: 999px;
+  background: #f7fafc;
+  color: #456078;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
