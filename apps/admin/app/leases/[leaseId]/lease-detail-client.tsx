@@ -3,6 +3,7 @@
 import { DateInput, DateTimeInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowLeftOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -728,7 +729,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   if (error) {
     return (
       <AdminShell title="Chi tiết hợp đồng" activeNav="Hợp đồng">
-        <a className="back-link" href="/leases">← Danh sách hợp đồng</a>
+        <a className="back-link" href="/leases"><ArrowLeftOutlined aria-hidden="true" /> Danh sách hợp đồng</a>
         <div className="admin-state admin-state--error">
           <strong>Không thể tải hợp đồng.</strong>
           <span>{error}</span>
@@ -760,7 +761,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         description="Lease giữ lịch sử độc lập; thay người thuê hoặc trả phòng không sửa/xóa hợp đồng cũ."
         action={
           <div className="button-row">
-            <a className="secondary-link-button" href="/leases">← Danh sách</a>
+            <a className="secondary-link-button" href="/leases"><ArrowLeftOutlined aria-hidden="true" /> Danh sách</a>
             <a
               className="secondary-link-button"
               href={"/leases/" + lease.id + "/print"}
@@ -968,7 +969,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                     href={"/leases/" + lease.renewedFromLeaseId}
                     style={{ color: "var(--color-primary)", textDecoration: "underline" }}
                   >
-                    Xem hợp đồng gốc →
+                    Xem hợp đồng gốc <ArrowRightOutlined aria-hidden="true" />
                   </a>
                 </dd>
               </div>
