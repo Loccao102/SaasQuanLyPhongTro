@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { StatusBadge } from "@propops/ui";
 import {
   cmsOrganizationsApi,
@@ -145,7 +146,7 @@ export function OrganizationDirectoryClient({
     <main className="directory-shell">
       <header className="directory-header">
         <div>
-          <a className="directory-back" href="/">← Control Plane</a>
+          <a className="directory-back" href="/"><ArrowLeftOutlined aria-hidden="true" /> Control Plane</a>
           <span className="cms-eyebrow">CMS · ORGANIZATION DIRECTORY</span>
           <h1>Organizations</h1>
           <p>
