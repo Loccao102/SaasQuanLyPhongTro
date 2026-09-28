@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import {
   cmsBillingDetailApi,
@@ -66,7 +67,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: string }) {
       <header className="directory-header">
         <div>
           <a className="directory-back" href="/">
-            ← SaaS Billing / Control Plane
+            <ArrowLeftOutlined aria-hidden="true" /> SaaS Billing / Control Plane
           </a>
           <span className="cms-eyebrow">CMS · SAAS INVOICE DETAIL</span>
           <h1>{detail?.invoice.paymentReference ?? "Invoice"}</h1>
