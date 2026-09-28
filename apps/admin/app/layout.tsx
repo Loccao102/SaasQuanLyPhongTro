@@ -4,8 +4,8 @@ import "./styles.css";
 import { AdminAuthProvider } from "../components/admin-auth-provider";
 
 export const metadata: Metadata = {
-  title: "Habi Admin",
-  description: "Vận hành tài sản, hợp đồng, hóa đơn và dòng tiền."
+  title: "Habi Workspace",
+  description: "Không gian vận hành nhà trọ: tài sản, hợp đồng, hóa đơn và dòng tiền."
 };
 
 export default function RootLayout({
