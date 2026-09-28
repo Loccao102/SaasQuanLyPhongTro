@@ -36,6 +36,7 @@ import {
 } from "../lib/meter-reading-store";
 import {
   anomalyWarning,
+  formatMeterValue,
   normalizeMeterInput,
   validateAgainstPrevious
 } from "../lib/meter-entry-domain";
@@ -88,7 +89,8 @@ function effectiveMeterValue(
 ) {
   if (!meter) return "";
   const local = meterLocal(localReadings, meter);
-  return local?.readingValue ?? meter.currentReading?.readingValue ?? "";
+  const value = local?.readingValue ?? meter.currentReading?.readingValue ?? "";
+  return value ? formatMeterValue(value) : "";
 }
 
 function meterDone(
@@ -105,12 +107,26 @@ function roomDone(
   localReadings: LocalMeterReading[],
   room: StaffRoomChecklist
 ) {
-  return (
-    room.electricity !== null &&
-    room.water !== null &&
-    meterDone(localReadings, room.electricity) &&
-    meterDone(localReadings, room.water)
+  return room.requiredMeterTypes.every((type) =>
+    meterDone(
+      localReadings,
+      type === "ELECTRICITY" ? room.electricity : room.water
+    )
   );
+}
+
+function meterRequired(room: StaffRoomChecklist, type: "ELECTRICITY" | "WATER") {
+  return room.requiredMeterTypes.includes(type);
+}
+
+function waterBillingLabel(room: StaffRoomChecklist) {
+  if (room.waterBillingMode === "WATER_PER_PERSON") {
+    return "Nước tính theo số người ở · không cần chốt công tơ nước.";
+  }
+  if (room.waterBillingMode === "WATER_PER_ROOM") {
+    return "Nước tính khoán theo phòng · không cần chốt công tơ nước.";
+  }
+  return null;
 }
 
 function roomHasConflict(
@@ -160,7 +176,7 @@ function MeterInput({
         <small>
           {meter.previousReading
             ? "Cũ: " +
-              meter.previousReading.readingValue +
+              formatMeterValue(meter.previousReading.readingValue) +
               " " +
               unitLabel(meter)
             : "Chưa có chỉ số cũ"}
@@ -359,7 +375,13 @@ export function StaffMeterEntryClient() {
       effectiveMeterValue(localReadings, activeRoom.electricity)
     );
     setWaterValue(effectiveMeterValue(localReadings, activeRoom.water));
-    queueMicrotask(() => electricityRef.current?.focus());
+    queueMicrotask(() => {
+      if (meterRequired(activeRoom, "ELECTRICITY")) {
+        electricityRef.current?.focus();
+      } else if (meterRequired(activeRoom, "WATER")) {
+        waterRef.current?.focus();
+      }
+    });
   }, [activeRoom, localReadings]);
 
   const syncQueue = useCallback(async () => {
@@ -493,21 +515,34 @@ export function StaffMeterEntryClient() {
       setError("Bạn không có quyền ghi chỉ số tại cơ sở này.");
       return;
     }
-    if (!activeRoom.electricity || !activeRoom.water) {
-      setError("Phòng chưa đủ đồng hồ điện/nước. Cần Admin cấu hình trước.");
+    if (activeRoom.missingMeter) {
+      const missing = activeRoom.requiredMeterTypes
+        .filter(
+          (type) =>
+            (type === "ELECTRICITY" && !activeRoom.electricity) ||
+            (type === "WATER" && !activeRoom.water)
+        )
+        .map((type) => (type === "ELECTRICITY" ? "điện" : "nước"))
+        .join(" và ");
+      setError(
+        "Phòng còn thiếu đồng hồ " +
+          missing +
+          " theo biểu giá đang áp dụng. Cần Admin cấu hình trước."
+      );
       return;
     }
 
-    const inputs = [
-      {
-        meter: activeRoom.electricity,
-        raw: electricityValue
-      },
-      {
-        meter: activeRoom.water,
-        raw: waterValue
-      }
-    ];
+    const inputs = activeRoom.requiredMeterTypes.flatMap((type) => {
+      const meter =
+        type === "ELECTRICITY" ? activeRoom.electricity : activeRoom.water;
+      if (!meter) return [];
+      return [
+        {
+          meter,
+          raw: type === "ELECTRICITY" ? electricityValue : waterValue
+        }
+      ];
+    });
 
     const prepared: Array<{ meter: MeterChecklist; value: string }> = [];
     for (const item of inputs) {
@@ -516,7 +551,7 @@ export function StaffMeterEntryClient() {
       }
       const value = normalizeMeterInput(item.raw);
       if (!value) {
-        setError("Nhập đủ chỉ số điện và nước, tối đa 3 chữ số thập phân.");
+        setError("Nhập đủ các chỉ số bắt buộc, tối đa 3 chữ số thập phân.");
         return;
       }
       const validation = validateAgainstPrevious(
@@ -834,37 +869,66 @@ export function StaffMeterEntryClient() {
                     <div className="staff-state staff-state--warning">
                       <strong>Chưa thể nhập phòng này.</strong>
                       <span>
-                        Admin cần cấu hình đủ đồng hồ điện và nước đang hoạt động.
+                        Cần cấu hình các đồng hồ bắt buộc theo biểu giá đang áp dụng.
                       </span>
                     </div>
                   ) : (
                     <>
-                      <MeterInput
-                        meter={activeRoom.electricity!}
-                        value={electricityValue}
-                        onChange={setElectricityValue}
-                        inputRef={electricityRef}
-                        onEnter={() => waterRef.current?.focus()}
-                        local={meterLocal(
-                          localReadings,
-                          activeRoom.electricity
-                        )}
-                      />
-                      <MeterInput
-                        meter={activeRoom.water!}
-                        value={waterValue}
-                        onChange={setWaterValue}
-                        inputRef={waterRef}
-                        onEnter={() => void saveRoom()}
-                        local={meterLocal(localReadings, activeRoom.water)}
-                      />
-                      <button
-                        className="primary-action"
-                        type="submit"
-                        disabled={!selectedProperty.writeAllowed}
-                      >
-                        Lưu trên máy & phòng tiếp theo <RightOutlined aria-hidden="true" />
-                      </button>
+                      {waterBillingLabel(activeRoom) ? (
+                        <div className="staff-state">
+                          <span>{waterBillingLabel(activeRoom)}</span>
+                        </div>
+                      ) : null}
+
+                      {meterRequired(activeRoom, "ELECTRICITY") &&
+                      activeRoom.electricity ? (
+                        <MeterInput
+                          meter={activeRoom.electricity}
+                          value={electricityValue}
+                          onChange={setElectricityValue}
+                          inputRef={electricityRef}
+                          onEnter={() => {
+                            if (
+                              meterRequired(activeRoom, "WATER") &&
+                              activeRoom.water
+                            ) {
+                              waterRef.current?.focus();
+                            } else {
+                              void saveRoom();
+                            }
+                          }}
+                          local={meterLocal(
+                            localReadings,
+                            activeRoom.electricity
+                          )}
+                        />
+                      ) : null}
+
+                      {meterRequired(activeRoom, "WATER") &&
+                      activeRoom.water ? (
+                        <MeterInput
+                          meter={activeRoom.water}
+                          value={waterValue}
+                          onChange={setWaterValue}
+                          inputRef={waterRef}
+                          onEnter={() => void saveRoom()}
+                          local={meterLocal(localReadings, activeRoom.water)}
+                        />
+                      ) : null}
+
+                      {activeRoom.requiredMeterTypes.length > 0 ? (
+                        <button
+                          className="primary-action"
+                          type="submit"
+                          disabled={!selectedProperty.writeAllowed}
+                        >
+                          Lưu trên máy & phòng tiếp theo <RightOutlined aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <div className="staff-state staff-state--success">
+                          <span>Phòng này không có chỉ số công tơ cần chốt theo biểu giá hiện tại.</span>
+                        </div>
+                      )}
                     </>
                   )}
                 </form>
@@ -923,8 +987,10 @@ export function StaffMeterEntryClient() {
                 {reading.meterType === "ELECTRICITY" ? "điện" : "nước"}
               </strong>
               <p>
-                Local: {reading.readingValue} · Server:{" "}
-                {reading.serverReading?.readingValue ?? "không rõ"}
+                Local: {formatMeterValue(reading.readingValue)} · Server:{" "}
+                {reading.serverReading
+                  ? formatMeterValue(reading.serverReading.readingValue)
+                  : "không rõ"}
               </p>
               <p>
                 Không overwrite tự động. Nếu số local mới là số đúng, giữ conflict
