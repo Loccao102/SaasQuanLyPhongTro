@@ -27,6 +27,12 @@ export type StaffRoomChecklist = {
   floor: { id: string; code: string | null; name: string | null } | null;
   electricity: MeterChecklist | null;
   water: MeterChecklist | null;
+  requiredMeterTypes: MeterType[];
+  waterBillingMode:
+    | "WATER_PER_M3"
+    | "WATER_PER_PERSON"
+    | "WATER_PER_ROOM"
+    | null;
   complete: boolean;
   missingMeter: boolean;
 };
