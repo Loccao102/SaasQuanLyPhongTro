@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { TotpQrCode } from "@propops/ui/totp-qr";
 import {
   browserSupportsPasskeys,
@@ -217,7 +218,7 @@ export default function CmsSecurityPage() {
         <p style={{ color: "#64748b" }}>
           TOTP MFA, recovery codes và các phiên đăng nhập đang hoạt động.
         </p>
-        <Link href="/">← Quay lại Control Plane</Link>
+        <Link href="/"><ArrowLeftOutlined aria-hidden="true" /> Quay lại Control Plane</Link>
       </header>
 
       {error ? (
