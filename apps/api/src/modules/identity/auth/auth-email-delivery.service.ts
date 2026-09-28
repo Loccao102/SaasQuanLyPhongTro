@@ -151,8 +151,30 @@ export class AuthEmailDeliveryService {
     });
 
     if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      if (process.env.NODE_ENV !== "production") {
+        console.error(
+          "[auth-email] Resend rejected " +
+            input.kind +
+            " to " +
+            input.email +
+            " with status " +
+            String(response.status) +
+            (detail ? ": " + detail : "")
+        );
+      }
       throw new ServiceUnavailableException(
         "Không thể gửi email xác thực lúc này. Vui lòng thử lại."
+      );
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info(
+        "[auth-email] sent " +
+          input.kind +
+          " to " +
+          input.email +
+          " via Resend"
       );
     }
   }
