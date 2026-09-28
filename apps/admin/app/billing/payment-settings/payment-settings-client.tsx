@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -88,7 +89,7 @@ export function PaymentSettingsClient() {
       eyebrow="RENTER PAYMENTS · ORGANIZATION PROFILE"
       activeNav="Hóa đơn"
     >
-      <a className="back-link" href="/billing">← Hóa đơn</a>
+      <a className="back-link" href="/billing"><ArrowLeftOutlined aria-hidden="true" /> Hóa đơn</a>
 
       {error ? (
         <div className="admin-state admin-state--error">
