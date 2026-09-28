@@ -3,7 +3,7 @@
 import { DateInput, DateTimeInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeftOutlined, ArrowRightOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -791,7 +791,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
                   lease.depositRequiredVnd
                 }
               >
-                + Tạo HĐ mới cho phòng này
+                <PlusOutlined aria-hidden="true" /> Tạo HĐ mới cho phòng này
               </a>
             ) : null}
             {data.permissions.terminate &&
@@ -1409,7 +1409,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
               )}
               <div className="button-row asset-form__wide">
                 <button className="primary-button" type="submit" disabled={saving}>
-                  + Thêm vào hợp đồng
+                  <PlusOutlined aria-hidden="true" /> Thêm vào hợp đồng
                 </button>
               </div>
             </form>
@@ -1808,7 +1808,7 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
             className="secondary-button"
             onClick={() => setVehicleModalOpen(true)}
           >
-            + Đăng ký xe mới
+            <PlusOutlined aria-hidden="true" /> Đăng ký xe mới
           </button>
         </div>
 
