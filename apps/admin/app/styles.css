@@ -1375,3 +1375,45 @@ textarea.form-input {
 
 .sidebar-brand { padding:0 8px 22px; }
 .sidebar-brand .habi-brand__copy strong { font-size:15px; }
+
+
+/* Icon-based controls */
+.primary-button > .anticon,
+.secondary-button > .anticon,
+.secondary-link-button > .anticon,
+.danger-button > .anticon,
+.danger-link-button > .anticon {
+  flex: 0 0 auto;
+  margin-right: 7px;
+}
+.icon-button--notification {
+  position: relative;
+  font-size: 16px;
+}
+.notification-count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+.nav-item__icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  color: currentColor;
+  font-size: 15px;
+}
+.brand__mark--logo {
+  background: transparent;
+}
