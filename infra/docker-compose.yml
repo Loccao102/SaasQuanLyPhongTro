@@ -127,6 +127,7 @@ services:
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+      ADMIN_API_PROXY_TARGET: http://api:4000/api
       NEXT_PUBLIC_PUBLIC_INVOICE_BASE_URL: http://localhost:3002
     command:
       [
@@ -152,6 +153,7 @@ services:
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+      STAFF_API_PROXY_TARGET: http://api:4000/api
     command:
       [
         "pnpm",
