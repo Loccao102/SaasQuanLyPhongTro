@@ -610,8 +610,9 @@ export function AdminShell({
             <h1>{title}</h1>
           </div>
           <div className="topbar__actions">
-            <button className="icon-button" aria-label="Thông báo">
-              3
+            <button className="icon-button icon-button--notification" aria-label="3 thông báo">
+              <BellOutlined aria-hidden="true" />
+              <span className="notification-count">3</span>
             </button>
             <button
               className="avatar-button"
