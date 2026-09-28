@@ -3,7 +3,7 @@
 import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeftOutlined, WarningOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, PlusOutlined, WarningOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -627,7 +627,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                 lease.depositRequiredVnd
               }
             >
-              + Tạo hợp đồng mới cho phòng này
+              <PlusOutlined aria-hidden="true" /> Tạo hợp đồng mới cho phòng này
             </a>
           </div>
         </div>
