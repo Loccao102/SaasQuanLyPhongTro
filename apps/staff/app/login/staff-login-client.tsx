@@ -8,6 +8,7 @@ import {
   type FormEvent
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { HabiBrand } from "@propops/ui/habi-brand";
 import { useStaffAuth } from "../../components/staff-auth-provider";
 import { StaffGoogleIdentityButton } from "../../components/google-identity-button";
 import {
@@ -119,11 +120,8 @@ export function StaffLoginClient() {
     <main className="staff-login-page">
       <section className="staff-login-card">
         <div className="staff-login-brand">
-          <span className="staff-login-mark">H</span>
-          <div>
-            <strong>Habi Staff</strong>
-            <span>Chốt số nhanh, kể cả khi mất mạng.</span>
-          </div>
+          <HabiBrand className="habi-brand staff-login-brand__logo" />
+          <span className="staff-login-product">Staff</span>
         </div>
 
         <div className="staff-login-heading">
