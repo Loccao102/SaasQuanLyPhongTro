@@ -22,7 +22,8 @@ import { TenantPrincipalGuard } from "./tenant-principal.guard.js";
     MembershipApplicationService,
     TeamManagementService,
     TenantPrincipalGuard,
-    AuthenticationModule
+    AuthenticationModule,
+    CommercialModule
   ]
 })
 export class IdentityModule {}
