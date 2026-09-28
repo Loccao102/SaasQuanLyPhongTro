@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { TotpQrCode } from "@propops/ui/totp-qr";
+import { HabiBrand } from "@propops/ui/habi-brand";
 import {
   authenticateWithPasskey,
   browserSupportsPasskeys
@@ -279,20 +280,7 @@ export default function CmsLoginPage() {
         }}
       >
         <div style={{ marginBottom: 24 }}>
-          <span
-            style={{
-              display: "inline-grid",
-              placeItems: "center",
-              width: 42,
-              height: 42,
-              borderRadius: 12,
-              background: "#25355C",
-              color: "#fff",
-              fontWeight: 800
-            }}
-          >
-            H
-          </span>
+          <HabiBrand className="habi-brand" />
           <p
             style={{
               margin: "14px 0 4px",
