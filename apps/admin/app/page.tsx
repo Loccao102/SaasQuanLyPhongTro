@@ -1,3 +1,4 @@
+import { ExclamationCircleOutlined, RightOutlined } from "@ant-design/icons";
 import { MetricCard, ProgressBar, SectionHeader, StatusBadge } from "@propops/ui";
 import Link from "next/link";
 import { AdminShell } from "../components/admin-shell";
@@ -45,7 +46,7 @@ export default function AdminDashboardPage() {
           <div className="attention-list">
             {attention.map((item) => (
               <Link href={item.href} className="attention-item" key={item.label}>
-                <StatusBadge tone={item.tone}>!</StatusBadge><span>{item.label}</span><span aria-hidden="true">→</span>
+                <StatusBadge tone={item.tone}><ExclamationCircleOutlined aria-hidden="true" /></StatusBadge><span>{item.label}</span><span aria-hidden="true"><RightOutlined /></span>
               </Link>
             ))}
           </div>
@@ -60,7 +61,7 @@ export default function AdminDashboardPage() {
           </div>
           {areas.map((area) => (
             <a className="area-table__row" href="#" role="row" key={area.name}>
-              <strong role="cell">{area.name}</strong><span role="cell">{area.rooms}</span><span role="cell">{area.occupied}</span><span role="cell">{area.progress}%</span><span role="cell">{area.debt}</span><span role="cell" aria-hidden="true">→</span>
+              <strong role="cell">{area.name}</strong><span role="cell">{area.rooms}</span><span role="cell">{area.occupied}</span><span role="cell">{area.progress}%</span><span role="cell">{area.debt}</span><span role="cell" aria-hidden="true"><RightOutlined /></span>
             </a>
           ))}
         </div>
