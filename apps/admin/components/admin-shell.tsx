@@ -2,6 +2,23 @@
 
 import Link from "next/link";
 import { TotpQrCode } from "@propops/ui/totp-qr";
+import { HabiBrand, HabiMark } from "@propops/ui/habi-brand";
+import {
+  AccountBookOutlined,
+  ApartmentOutlined,
+  BarChartOutlined,
+  BellOutlined,
+  CloseOutlined,
+  DashboardOutlined,
+  DollarOutlined,
+  FileDoneOutlined,
+  FileTextOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  ThunderboltOutlined,
+  ToolOutlined,
+  WalletOutlined
+} from "@ant-design/icons";
 import {
   authenticateWithPasskey,
   browserSupportsPasskeys,
@@ -25,20 +42,21 @@ import {
 const navItems: Array<{
   label: string;
   href: string;
+  icon: ReactNode;
   feature?: AdminTenantFeatureKey;
 }> = [
-  { label: "Tổng quan", href: "/" },
-  { label: "Tài sản", href: "/assets", feature: "properties" },
-  { label: "Hợp đồng", href: "/leases", feature: "leases" },
-  { label: "Chốt số", href: "/metering", feature: "metering" },
-  { label: "Hóa đơn", href: "/billing", feature: "billing" },
-  { label: "Thu tiền", href: "/payments", feature: "payments" },
-  { label: "Tín dụng", href: "/credit-balance", feature: "credit_balance" },
-  { label: "Sổ quỹ Thu - Chi", href: "/finances", feature: "finances" },
-  { label: "Báo cáo", href: "/reports", feature: "reports" },
-  { label: "Báo hỏng & Sửa chữa", href: "/maintenance", feature: "maintenance" },
-  { label: "Thông báo", href: "/notifications", feature: "notifications" },
-  { label: "Đội ngũ", href: "/team", feature: "team_management" }
+  { label: "Tổng quan", href: "/", icon: <DashboardOutlined /> },
+  { label: "Tài sản", href: "/assets", icon: <ApartmentOutlined />, feature: "properties" },
+  { label: "Hợp đồng", href: "/leases", icon: <FileTextOutlined />, feature: "leases" },
+  { label: "Chốt số", href: "/metering", icon: <ThunderboltOutlined />, feature: "metering" },
+  { label: "Hóa đơn", href: "/billing", icon: <FileDoneOutlined />, feature: "billing" },
+  { label: "Thu tiền", href: "/payments", icon: <DollarOutlined />, feature: "payments" },
+  { label: "Tín dụng", href: "/credit-balance", icon: <WalletOutlined />, feature: "credit_balance" },
+  { label: "Sổ quỹ Thu - Chi", href: "/finances", icon: <AccountBookOutlined />, feature: "finances" },
+  { label: "Báo cáo", href: "/reports", icon: <BarChartOutlined />, feature: "reports" },
+  { label: "Báo hỏng & Sửa chữa", href: "/maintenance", icon: <ToolOutlined />, feature: "maintenance" },
+  { label: "Thông báo", href: "/notifications", icon: <BellOutlined />, feature: "notifications" },
+  { label: "Đội ngũ", href: "/team", icon: <TeamOutlined />, feature: "team_management" }
 ];
 
 function initials(value: string): string {
@@ -419,7 +437,7 @@ export function AdminShell({
     return (
       <main className="session-state-page" aria-live="polite">
         <div className="session-state-card">
-          <span className="brand__mark">H</span>
+          <HabiMark size={34} className="brand__mark brand__mark--logo" />
           <strong>Đang xác thực phiên làm việc…</strong>
           <span>Habi đang tải tài khoản và phạm vi vận hành.</span>
         </div>
@@ -431,7 +449,7 @@ export function AdminShell({
     return (
       <main className="session-state-page">
         <div className="session-state-card session-state-card--error">
-          <span className="brand__mark">H</span>
+          <HabiMark size={34} className="brand__mark brand__mark--logo" />
           <strong>Không thể tải phiên làm việc.</strong>
           <span>{auth.error}</span>
           <button
@@ -463,7 +481,7 @@ export function AdminShell({
     return (
       <main className="session-state-page">
         <div className="session-state-card">
-          <span className="brand__mark">H</span>
+          <HabiMark size={34} className="brand__mark brand__mark--logo" />
           <strong>Tài khoản chưa có workspace hoạt động.</strong>
           <span>
             Hãy nhờ chủ hệ thống cấp membership trước khi truy cập dữ liệu vận hành.
@@ -486,13 +504,7 @@ export function AdminShell({
   return (
     <div className="admin-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand__mark">H</span>
-          <div>
-            <strong>Habi</strong>
-            <span>Nhà gọn. Việc trôi.</span>
-          </div>
-        </div>
+        <HabiBrand compact className="brand habi-brand sidebar-brand" />
 
         <nav className="sidebar__nav" aria-label="Điều hướng chính">
           {navItems
@@ -508,7 +520,7 @@ export function AdminShell({
                 : "nav-item";
             const content = (
               <>
-                <span className="nav-item__dot" aria-hidden="true" />
+                <span className="nav-item__icon" aria-hidden="true">{item.icon}</span>
                 {item.label}
               </>
             );
@@ -534,7 +546,7 @@ export function AdminShell({
 
         <div className="sidebar__footer">
           <a className="nav-item" href="#">
-            <span className="nav-item__dot" aria-hidden="true" />
+            <span className="nav-item__icon" aria-hidden="true"><SettingOutlined /></span>
             Cài đặt
           </a>
 
@@ -662,7 +674,7 @@ export function AdminShell({
                 aria-label="Đóng"
                 style={{ cursor: "pointer", background: "none", border: "none", fontSize: "18px", color: "var(--color-muted)" }}
               >
-                ✕
+                <CloseOutlined aria-hidden="true" />
               </button>
             </div>
 
