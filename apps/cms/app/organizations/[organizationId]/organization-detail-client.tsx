@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import {
   cmsOrganizationsApi,
@@ -69,7 +70,7 @@ export function OrganizationDetailClient({
       <header className="directory-header">
         <div>
           <a className="directory-back" href="/organizations">
-            ← Organizations
+            <ArrowLeftOutlined aria-hidden="true" /> Organizations
           </a>
           <span className="cms-eyebrow">CMS · ORGANIZATION DETAIL</span>
           <h1>{organization?.name ?? "Organization"}</h1>
@@ -192,7 +193,7 @@ export function OrganizationDetailClient({
                 <div>
                   <dt>Current period</dt>
                   <dd>
-                    {date(organization.currentPeriodStart)} →{" "}
+                    {date(organization.currentPeriodStart)} –{" "}
                     {date(organization.currentPeriodEnd)}
                   </dd>
                 </div>
@@ -304,7 +305,7 @@ export function OrganizationDetailClient({
                 <div>
                   <dt>Period</dt>
                   <dd>
-                    {date(organization.latestInvoice.periodStart)} →{" "}
+                    {date(organization.latestInvoice.periodStart)} –{" "}
                     {date(organization.latestInvoice.periodEnd)}
                   </dd>
                 </div>
