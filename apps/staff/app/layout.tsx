@@ -18,7 +18,7 @@ export default function RootLayout({
   children
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="vi">
+    <html lang="vi" suppressHydrationWarning>
       <body>
         <ServiceWorkerRegistration />
         <StaffAuthProvider>{children}</StaffAuthProvider>
