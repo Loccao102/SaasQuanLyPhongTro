@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PrinterOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, PrinterOutlined } from "@ant-design/icons";
 import {
   adminLeasesApi,
   type LeaseDepositSummary,
@@ -71,7 +71,7 @@ export function LeasePrintClient({ leaseId }: { leaseId: string }) {
       <div className="contract-print-page">
         <div className="contract-toolbar">
           <a className="secondary-link-button" href={`/leases/${leaseId}`}>
-            ← Quay lại hợp đồng
+            <ArrowLeftOutlined aria-hidden="true" /> Quay lại hợp đồng
           </a>
         </div>
         <div className="admin-state admin-state--error">
@@ -91,7 +91,7 @@ export function LeasePrintClient({ leaseId }: { leaseId: string }) {
     <div className="contract-print-page">
       <div className="contract-toolbar">
         <a className="secondary-link-button" href={`/leases/${lease.id}`}>
-          ← Quay lại hợp đồng {lease.code}
+          <ArrowLeftOutlined aria-hidden="true" /> Quay lại hợp đồng {lease.code}
         </a>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
