@@ -8,6 +8,7 @@ import {
   useState,
   type FormEvent
 } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import {
   MoneyDisplay,
   PageHeader,
@@ -74,8 +75,8 @@ function readOptionalMoney(form: FormData, field: string): number | null {
 
 function policyRange(effectiveFrom: string, effectiveTo: string | null) {
   return effectiveTo
-    ? formatDateVi(effectiveFrom) + " → " + formatDateVi(effectiveTo)
-    : formatDateVi(effectiveFrom) + " → không thời hạn";
+    ? formatDateVi(effectiveFrom) + " – " + formatDateVi(effectiveTo)
+    : formatDateVi(effectiveFrom) + " – không thời hạn";
 }
 
 function PolicyItems({ items }: { items: PricingItem[] }) {
@@ -308,7 +309,7 @@ export function PricingSetupClient() {
         description="Policy mới chỉ áp dụng cho kỳ nằm trọn trong khoảng hiệu lực. Hóa đơn đã phát hành giữ nguyên snapshot lịch sử."
         action={
           <a className="secondary-link-button" href="/billing">
-            ← Kỳ hóa đơn
+            <ArrowLeftOutlined aria-hidden="true" /> Kỳ hóa đơn
           </a>
         }
       />
