@@ -2,7 +2,7 @@
 import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { CloseOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, CloseOutlined } from "@ant-design/icons";
 import { MetricCard, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -164,10 +164,10 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     >
       {data ? (
         <a className="back-link" href={"/assets/properties/" + data.property.id}>
-          ← {data.property.name}
+          <ArrowLeftOutlined aria-hidden="true" /> {data.property.name}
         </a>
       ) : (
-        <a className="back-link" href="/assets">← Danh sách tài sản</a>
+        <a className="back-link" href="/assets"><ArrowLeftOutlined aria-hidden="true" /> Danh sách tài sản</a>
       )}
 
       {error ? (
