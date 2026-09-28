@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useState,
   type FormEvent
@@ -9,7 +8,15 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAdminAuth } from "../../components/admin-auth-provider";
-import { GoogleIdentityButton } from "../../components/google-identity-button";
+import { AuthShell } from "../../components/auth-shell";
+import {
+  BankOutlined,
+  LockOutlined,
+  LoginOutlined,
+  MailOutlined,
+  RocketOutlined,
+  UserOutlined
+} from "@ant-design/icons";
 import {
   adminAuthApi,
   type AuthConfig
@@ -43,18 +50,6 @@ export function RegisterClient() {
     }
   }, [auth.selectedMembership, auth.status, router]);
 
-  const finish = useCallback(
-    (memberships: number) => {
-      if (memberships === 0) {
-        setError("Tenant đã được tạo nhưng OWNER membership chưa sẵn sàng.");
-        return;
-      }
-      router.replace("/");
-      router.refresh();
-    },
-    [router]
-  );
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -64,7 +59,7 @@ export function RegisterClient() {
     try {
       if (config?.passwordRegistrationEnabled === false) {
         throw new Error(
-          "Đăng ký bằng email/mật khẩu đang tắt. Hãy dùng Google hoặc liên hệ quản trị viên."
+          "Đăng ký bằng email/mật khẩu đang tạm tắt. Hãy liên hệ quản trị viên."
         );
       }
 
@@ -86,88 +81,27 @@ export function RegisterClient() {
     }
   }
 
-  const googleRegister = useCallback(
-    async (credential: string) => {
-      const tenantName = organizationName.trim();
-      if (!tenantName) {
-        setError("Nhập tên nhà trọ/doanh nghiệp trước khi đăng ký bằng Google.");
-        return;
-      }
-
-      setSubmitting(true);
-      setError(null);
-      try {
-        const result = await auth.google({
-          credential,
-          mode: "REGISTER",
-          organizationName: tenantName
-        });
-        if ("mfaRequired" in result) {
-          setError(
-            "Google này đã liên kết với tài khoản Habi đang bật MFA. Hãy quay lại trang đăng nhập."
-          );
-          return;
-        }
-        if ("mfaEnrollmentRequired" in result) {
-          router.replace("/login?enroll=required");
-          return;
-        }
-        finish(result.memberships.length);
-      } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Không thể đăng ký bằng Google."
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [auth, finish, organizationName]
-  );
-
   if (config && !config.registrationEnabled) {
     return (
-      <main className="login-page">
-        <section className="login-card">
-          <div className="login-brand">
-            <span className="brand__mark">H</span>
-            <div>
-              <strong>Habi</strong>
-              <span>Nhà gọn. Việc trôi.</span>
-            </div>
-          </div>
-          <div className="login-heading">
-            <span className="eyebrow">ĐĂNG KÝ</span>
-            <h1>Đăng ký mới đang tạm đóng</h1>
-            <p>CMS đã tắt self-service registration. Tài khoản hiện có vẫn sử dụng bình thường.</p>
-          </div>
-          <Link className="secondary-button login-submit" href="/login">
-            Quay lại đăng nhập
-          </Link>
-        </section>
-      </main>
+      <AuthShell
+        eyebrow="DÙNG THỬ HABI"
+        title="Đăng ký đang tạm đóng"
+        description="Self-service registration đang được tắt từ Control Plane. Tài khoản hiện có vẫn sử dụng bình thường."
+      >
+        <Link className="secondary-button login-submit auth-primary-action" href="/login">
+          <LoginOutlined aria-hidden="true" />
+          Quay lại đăng nhập
+        </Link>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="login-brand">
-          <span className="brand__mark">H</span>
-          <div>
-            <strong>Habi</strong>
-            <span>Nhà gọn. Việc trôi.</span>
-          </div>
-        </div>
-
-        <div className="login-heading">
-          <span className="eyebrow">DÙNG THỬ HABI</span>
-          <h1>Tạo tenant của bạn</h1>
-          <p>
-            Tài khoản đầu tiên sẽ là OWNER và tenant được cấp STARTER trial theo cấu hình CMS.
-          </p>
-        </div>
+    <AuthShell
+      eyebrow="DÙNG THỬ HABI"
+      title="Tạo workspace của bạn"
+      description="Tạo tài khoản OWNER đầu tiên. Habi sẽ khởi tạo tenant và gói dùng thử theo cấu hình hiện tại."
+    >
 
         {pendingEmail ? (
           <div className="login-inline-state" role="status">
@@ -179,71 +113,72 @@ export function RegisterClient() {
         <form className="login-form" onSubmit={(event) => void submit(event)}>
           <label>
             <span>Tên nhà trọ / doanh nghiệp</span>
-            <input
-              name="organizationName"
-              autoComplete="organization"
-              required
-              value={organizationName}
-              onChange={(event) => setOrganizationName(event.target.value)}
-              disabled={submitting}
-            />
-          </label>
-
-          {config?.googleEnabled && config.googleClientId ? (
-            <>
-              <GoogleIdentityButton
-                clientId={config.googleClientId}
-                mode="REGISTER"
+            <div className="auth-field">
+              <BankOutlined aria-hidden="true" />
+              <input
+                name="organizationName"
+                autoComplete="organization"
+                placeholder="Ví dụ: Nhà trọ An Bình"
+                required
+                value={organizationName}
+                onChange={(event) => setOrganizationName(event.target.value)}
                 disabled={submitting}
-                onCredential={googleRegister}
               />
-              <div className="login-inline-state" aria-hidden="true">
-                hoặc tạo tài khoản bằng email
-              </div>
-            </>
-          ) : null}
+            </div>
+          </label>
 
           {config?.passwordRegistrationEnabled !== false ? (
             <>
               <label>
                 <span>Họ tên OWNER</span>
-                <input
-                  name="displayName"
-                  autoComplete="name"
-                  required
-                  disabled={submitting}
-                />
+                <div className="auth-field">
+                  <UserOutlined aria-hidden="true" />
+                  <input
+                    name="displayName"
+                    autoComplete="name"
+                    placeholder="Nguyễn Văn A"
+                    required
+                    disabled={submitting}
+                  />
+                </div>
               </label>
 
               <label>
                 <span>Email</span>
-                <input
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  required
-                  disabled={submitting}
-                />
+                <div className="auth-field">
+                  <MailOutlined aria-hidden="true" />
+                  <input
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="ban@example.com"
+                    required
+                    disabled={submitting}
+                  />
+                </div>
               </label>
 
               <label>
                 <span>Mật khẩu</span>
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={12}
-                  required
-                  disabled={submitting}
-                />
+                <div className="auth-field">
+                  <LockOutlined aria-hidden="true" />
+                  <input
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Tối thiểu 12 ký tự"
+                    minLength={12}
+                    required
+                    disabled={submitting}
+                  />
+                </div>
                 <small>Tối thiểu 12 ký tự.</small>
               </label>
             </>
           ) : (
             <div className="login-inline-state">
-              CMS đang tắt đăng ký bằng mật khẩu. Hãy dùng Google để xác minh
-              email hoặc liên hệ quản trị viên.
+              Đăng ký bằng email/mật khẩu đang tạm tắt. Hãy liên hệ quản trị viên.
             </div>
           )}
 
@@ -259,15 +194,18 @@ export function RegisterClient() {
               type="submit"
               disabled={submitting || auth.status === "loading"}
             >
-              {submitting ? "Đang tạo tenant…" : "Tạo tenant & bắt đầu dùng thử"}
+              <RocketOutlined aria-hidden="true" />
+              {submitting ? "Đang tạo workspace…" : "Tạo workspace & bắt đầu dùng thử"}
             </button>
           ) : null}
         </form>
 
         <p className="login-footnote">
-          Đã có tài khoản? <Link href="/login">Đăng nhập</Link>
+          Đã có tài khoản?{" "}
+          <Link className="auth-inline-link" href="/login">
+            <LoginOutlined aria-hidden="true" /> Đăng nhập
+          </Link>
         </p>
-      </section>
-    </main>
+    </AuthShell>
   );
 }
