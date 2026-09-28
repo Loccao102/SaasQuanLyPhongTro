@@ -386,14 +386,14 @@ export function PropertyDetailClient({
                     setShowAddFloorModal(true);
                   }}
                 >
-                  + Thêm tầng đầu tiên
+                  <PlusOutlined aria-hidden="true" /> Thêm tầng đầu tiên
                 </button>
                 <button
                   className="secondary-button"
                   type="button"
                   onClick={() => openAddRoom()}
                 >
-                  + Thêm phòng
+                  <PlusOutlined aria-hidden="true" /> Thêm phòng
                 </button>
               </div>
             </div>
@@ -460,7 +460,7 @@ export function PropertyDetailClient({
                           onClick={() => openAddRoom(floor.id)}
                           style={{ fontSize: "12px", padding: "6px 12px" }}
                         >
-                          + Thêm phòng vào {floor.name}
+                          <PlusOutlined aria-hidden="true" /> Thêm phòng vào {floor.name}
                         </button>
                         {floor.id ? (
                           <button
@@ -529,7 +529,7 @@ export function PropertyDetailClient({
                             onClick={() => openAddRoom(floor.id)}
                             style={{ fontSize: "13px" }}
                           >
-                            + Thêm phòng vào {floor.name}
+                            <PlusOutlined aria-hidden="true" /> Thêm phòng vào {floor.name}
                           </button>
                         </div>
                       ) : floorRooms.length === 0 ? (
