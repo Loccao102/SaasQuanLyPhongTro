@@ -8,7 +8,8 @@ import {
   EditOutlined,
   PlusOutlined,
   CloseOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  ArrowLeftOutlined
 } from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
@@ -206,7 +207,7 @@ export function PropertyDetailClient({
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
         <a className="back-link" href="/assets" style={{ fontSize: "13px" }}>
-          ← Quay lại danh sách cơ sở
+          <ArrowLeftOutlined aria-hidden="true" /> Quay lại danh sách cơ sở
         </a>
       </div>
 
