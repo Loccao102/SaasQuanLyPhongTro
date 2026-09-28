@@ -258,6 +258,9 @@ importers:
 
   apps/cms:
     dependencies:
+      '@ant-design/icons':
+        specifier: ^6.3.4
+        version: 6.3.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@propops/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -283,6 +286,9 @@ importers:
 
   apps/public-invoice:
     dependencies:
+      '@ant-design/icons':
+        specifier: ^6.3.4
+        version: 6.3.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@propops/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -308,6 +314,9 @@ importers:
 
   apps/staff:
     dependencies:
+      '@ant-design/icons':
+        specifier: ^6.3.4
+        version: 6.3.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@propops/ui':
         specifier: workspace:*
         version: link:../../packages/ui
