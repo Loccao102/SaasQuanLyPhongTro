@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { ArrowLeftOutlined, PlusOutlined } from "@ant-design/icons";
 import { useParams } from "next/navigation";
 import { StatusBadge } from "@propops/ui";
 import {
@@ -229,7 +230,7 @@ export default function TenantAccountsPage() {
         </div>
         <div className="cms-topbar__actions">
           <Link className="secondary-button" href="/">
-            ← CMS
+            <ArrowLeftOutlined aria-hidden="true" /> CMS
           </Link>
           <button
             className="primary-button"
@@ -237,7 +238,7 @@ export default function TenantAccountsPage() {
             disabled={!data || data.used >= data.limit}
             onClick={() => setShowCreate((value) => !value)}
           >
-            {showCreate ? "Đóng" : "+ Tạo tài khoản"}
+            {showCreate ? "Đóng" : <><PlusOutlined aria-hidden="true" /> Tạo tài khoản</>}
           </button>
         </div>
       </header>
