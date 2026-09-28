@@ -10,6 +10,13 @@ import {
   useState,
   type FormEvent
 } from "react";
+import {
+  CheckOutlined,
+  MinusOutlined,
+  QuestionOutlined,
+  RightOutlined,
+  WarningOutlined
+} from "@ant-design/icons";
 import { ProgressBar, StatusBadge } from "@propops/ui";
 import {
   StaffMeteringApiError,
@@ -856,7 +863,7 @@ export function StaffMeterEntryClient() {
                         type="submit"
                         disabled={!selectedProperty.writeAllowed}
                       >
-                        Lưu trên máy & phòng tiếp theo →
+                        Lưu trên máy & phòng tiếp theo <RightOutlined aria-hidden="true" />
                       </button>
                     </>
                   )}
@@ -877,12 +884,12 @@ export function StaffMeterEntryClient() {
                       <span>{room.code}</span>
                       <small>
                         {roomHasConflict(localReadings, room)
-                          ? "!"
+                          ? <WarningOutlined aria-label="Có xung đột" />
                           : room.missingMeter
-                            ? "?"
+                            ? <QuestionOutlined aria-label="Thiếu đồng hồ" />
                             : roomDone(localReadings, room)
-                              ? "✓"
-                              : "•"}
+                              ? <CheckOutlined aria-label="Đã hoàn tất" />
+                              : <MinusOutlined aria-label="Chưa hoàn tất" />}
                       </small>
                     </button>
                   ))}
