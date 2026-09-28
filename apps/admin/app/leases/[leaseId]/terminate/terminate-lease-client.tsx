@@ -3,7 +3,7 @@
 import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { WarningOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, WarningOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -247,7 +247,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
         description="Chấm dứt là domain transition có ảnh hưởng trạng thái phòng, công nợ và tiền cọc; hợp đồng cũ không bị xóa."
         action={
           <a className="secondary-link-button" href={"/leases/" + lease.id}>
-            ← Quay lại hợp đồng
+            <ArrowLeftOutlined aria-hidden="true" /> Quay lại hợp đồng
           </a>
         }
       />
@@ -499,7 +499,7 @@ export function TerminateLeaseClient({ leaseId }: { leaseId: string }) {
                               {inv.status === "DRAFT" ? " (Bản nháp)" : ""}
                             </strong>
                             <span>
-                              Kỳ: {formatDateVi(inv.periodStart)} → {formatDateVi(inv.periodEnd)} · Hạn: {formatDateVi(inv.dueDate)}
+                              Kỳ: {formatDateVi(inv.periodStart)} – {formatDateVi(inv.periodEnd)} · Hạn: {formatDateVi(inv.dueDate)}
                               {" · Còn nợ: "}
                               <MoneyDisplay amountVnd={inv.remainingVnd} />
                             </span>
