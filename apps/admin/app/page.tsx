@@ -1,3 +1,5 @@
+"use client";
+
 import { ExclamationCircleOutlined, RightOutlined } from "@ant-design/icons";
 import { MetricCard, ProgressBar, SectionHeader, StatusBadge } from "@propops/ui";
 import Link from "next/link";
