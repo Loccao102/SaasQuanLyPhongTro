@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { StatusBadge } from "@propops/ui";
 import {
   cmsGlobalSearchApi,
@@ -171,7 +172,7 @@ export function GlobalSearchClient({
       <header className="directory-header">
         <div>
           <a className="directory-back" href="/">
-            ← Control Plane
+            <ArrowLeftOutlined aria-hidden="true" /> Control Plane
           </a>
           <span className="cms-eyebrow">CMS · GLOBAL SEARCH</span>
           <h1>Find operational objects</h1>
