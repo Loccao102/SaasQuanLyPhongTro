@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RightOutlined } from "@ant-design/icons";
 import { MetricCard, MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -210,7 +211,7 @@ export function LeasesClient() {
                       <span role="cell">
                         <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
                       </span>
-                      <span role="cell" aria-hidden="true">→</span>
+                      <span role="cell" aria-hidden="true"><RightOutlined /></span>
                     </a>
                   );
                 })}
