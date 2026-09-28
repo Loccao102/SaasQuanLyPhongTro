@@ -38,6 +38,14 @@ type ChecklistRow = QueryResultRow & {
   water_current_date: Date | string | null;
   water_current_value: string | null;
   water_baseline_usage: string | null;
+  pricing_policy_id: string | null;
+  electricity_meter_required: boolean | null;
+  water_meter_required: boolean | null;
+  water_billing_mode:
+    | "WATER_PER_M3"
+    | "WATER_PER_PERSON"
+    | "WATER_PER_ROOM"
+    | null;
 };
 
 type MeterChecklist = {
@@ -157,7 +165,11 @@ export class StaffMeteringService {
          wp.reading_value::text AS water_previous_value,
          wc.reading_date AS water_current_date,
          wc.reading_value::text AS water_current_value,
-         wb.baseline_usage AS water_baseline_usage
+         wb.baseline_usage AS water_baseline_usage,
+         pricing.id::text AS pricing_policy_id,
+         pricing.electricity_meter_required,
+         pricing.water_meter_required,
+         pricing.water_billing_mode
        FROM room_scope rs
        LEFT JOIN meters em
          ON em.organization_id = $1::uuid
@@ -207,6 +219,40 @@ export class StaffMeteringService {
          LIMIT 1
        ) wc ON true
        LEFT JOIN baseline wb ON wb.meter_id = wm.id
+       LEFT JOIN LATERAL (
+         SELECT
+           pp.id,
+           COALESCE(
+             bool_or(i.item_type = 'ELECTRICITY_PER_KWH'),
+             false
+           ) AS electricity_meter_required,
+           COALESCE(
+             bool_or(i.item_type = 'WATER_PER_M3'),
+             false
+           ) AS water_meter_required,
+           max(
+             CASE
+               WHEN i.item_type IN (
+                 'WATER_PER_M3',
+                 'WATER_PER_PERSON',
+                 'WATER_PER_ROOM'
+               )
+               THEN i.item_type
+               ELSE NULL
+             END
+           ) AS water_billing_mode
+         FROM pricing_policies pp
+         LEFT JOIN pricing_policy_items i
+           ON i.organization_id = pp.organization_id
+          AND i.policy_id = pp.id
+         WHERE pp.organization_id = $1::uuid
+           AND pp.property_id = rs.property_id::uuid
+           AND pp.effective_from <= $2::date
+           AND (pp.effective_to IS NULL OR pp.effective_to >= $2::date)
+         GROUP BY pp.id, pp.effective_from
+         ORDER BY pp.effective_from DESC, pp.id
+         LIMIT 1
+       ) pricing ON true
        ORDER BY
          rs.property_name,
          rs.property_code,
@@ -232,6 +278,12 @@ export class StaffMeteringService {
           floor: { id: string; code: string | null; name: string | null } | null;
           electricity: MeterChecklist | null;
           water: MeterChecklist | null;
+          requiredMeterTypes: MeterType[];
+          waterBillingMode:
+            | "WATER_PER_M3"
+            | "WATER_PER_PERSON"
+            | "WATER_PER_ROOM"
+            | null;
           complete: boolean;
           missingMeter: boolean;
         }>;
@@ -264,11 +316,24 @@ export class StaffMeteringService {
 
       const electricity = this.meterFromRow(row, "ELECTRICITY");
       const water = this.meterFromRow(row, "WATER");
-      const missingMeter = electricity === null || water === null;
+      const hasPricingPolicy = row.pricing_policy_id !== null;
+      const electricityRequired = hasPricingPolicy
+        ? row.electricity_meter_required === true
+        : electricity !== null;
+      const waterRequired = hasPricingPolicy
+        ? row.water_meter_required === true
+        : water !== null;
+      const requiredMeterTypes: MeterType[] = [];
+      if (electricityRequired) requiredMeterTypes.push("ELECTRICITY");
+      if (waterRequired) requiredMeterTypes.push("WATER");
+
+      const missingMeter =
+        (electricityRequired && electricity === null) ||
+        (waterRequired && water === null);
       const complete =
         !missingMeter &&
-        electricity.currentReading !== null &&
-        water.currentReading !== null;
+        (!electricityRequired || electricity?.currentReading !== null) &&
+        (!waterRequired || water?.currentReading !== null);
 
       property.rooms.push({
         id: row.room_id,
@@ -283,6 +348,8 @@ export class StaffMeteringService {
           : null,
         electricity,
         water,
+        requiredMeterTypes,
+        waterBillingMode: row.water_billing_mode,
         complete,
         missingMeter
       });
