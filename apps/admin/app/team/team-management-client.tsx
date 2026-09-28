@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { PlusOutlined, TeamOutlined } from "@ant-design/icons";
 import { StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -137,8 +138,8 @@ export function TeamManagementClient() {
           <p>Role xác định được làm gì; scope xác định được làm ở toàn tổ chức, nhóm vận hành hay cơ sở nào.</p>
         </div>
         <div className="button-row">
-          <button className="secondary-button" type="button" onClick={() => setShowGroup((value) => !value)}>+ Nhóm vận hành</button>
-          <button className="primary-button" type="button" onClick={() => setShowInvite((value) => !value)}>+ Mời thành viên</button>
+          <button className="secondary-button" type="button" onClick={() => setShowGroup((value) => !value)}><TeamOutlined aria-hidden="true" /> Nhóm vận hành</button>
+          <button className="primary-button" type="button" onClick={() => setShowInvite((value) => !value)}><PlusOutlined aria-hidden="true" /> Mời thành viên</button>
         </div>
       </section>
 
