@@ -2,6 +2,7 @@
 import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { PlusOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -229,7 +230,7 @@ export function RenterBillingClient() {
           </label>
           <div className="button-row">
             <button className="primary-button" type="submit" disabled={saving}>
-              + Tạo kỳ
+              <PlusOutlined aria-hidden="true" /> Tạo kỳ
             </button>
           </div>
         </form>
