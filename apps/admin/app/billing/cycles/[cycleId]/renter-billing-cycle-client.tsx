@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ExportOutlined, CopyOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, ExportOutlined, CopyOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -250,7 +250,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
       eyebrow="RENTER BILLING · CYCLE DETAIL"
       activeNav="Hóa đơn"
     >
-      <a className="back-link" href="/billing">← Các kỳ hóa đơn</a>
+      <a className="back-link" href="/billing"><ArrowLeftOutlined aria-hidden="true" /> Các kỳ hóa đơn</a>
 
       {error ? (
         <div className="admin-state admin-state--error">
@@ -263,7 +263,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           <strong>Chiến dịch gửi hóa đơn đã được tạo.</strong>
           <span>{notificationMessage}</span>
           <a className="text-link" href="/notifications">
-            Mở trung tâm thông báo →
+            Mở trung tâm thông báo <ArrowRightOutlined aria-hidden="true" />
           </a>
         </div>
       ) : null}
@@ -301,7 +301,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
               <span className="eyebrow">{data.cycle.property.code}</span>
               <h2>{data.cycle.code}</h2>
               <p>
-                {formatDateVi(data.cycle.periodStart)} → {formatDateVi(data.cycle.periodEnd)} · hạn{" "}
+                {formatDateVi(data.cycle.periodStart)} – {formatDateVi(data.cycle.periodEnd)} · hạn{" "}
                 {formatDateVi(data.cycle.dueDate)}
               </p>
             </div>
