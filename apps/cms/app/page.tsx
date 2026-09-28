@@ -1708,7 +1708,7 @@ export default function CmsPage() {
                                           org.latestInvoice.periodStart
                                         ).toLocaleDateString("vi-VN")
                                       : "—"}
-                                    {" → "}
+                                    {" – "}
                                     {org.latestInvoice.periodEnd
                                       ? new Date(
                                           org.latestInvoice.periodEnd
@@ -2755,7 +2755,7 @@ export default function CmsPage() {
                                 {new Date(
                                   invoice.periodStart
                                 ).toLocaleDateString("vi-VN")}
-                                {" → "}
+                                {" – "}
                                 {new Date(
                                   invoice.periodEnd
                                 ).toLocaleDateString("vi-VN")}
@@ -3625,7 +3625,7 @@ export default function CmsPage() {
                           <StatusBadge>{item.target}</StatusBadge>
                         </div>
                         <p>
-                          {pretty(item.before)} → {pretty(item.after)}
+                          Trước: {pretty(item.before)} · Sau: {pretty(item.after)}
                         </p>
                         <small>
                           {new Date(item.at).toLocaleString("vi-VN")} ·{" "}
@@ -3807,7 +3807,7 @@ export default function CmsPage() {
                 <h2>Transition subscription</h2>
                 <p className="modal-warning">
                   {modal.organization.name} · {modal.organization.subscriptionStatus}
-                  {" → "}target state. Current optimistic version:{" "}
+                  {" sang "}target state. Current optimistic version:{" "}
                   {modal.organization.subscriptionVersion ?? "—"}.
                 </p>
                 <label>
@@ -3901,7 +3901,7 @@ export default function CmsPage() {
                             "vi-VN"
                           )
                         : "—"}
-                      {" → "}
+                      {" – "}
                       {invoice.periodEnd
                         ? new Date(invoice.periodEnd).toLocaleDateString(
                             "vi-VN"
@@ -4098,7 +4098,7 @@ export default function CmsPage() {
                 </h2>
                 <p className="modal-warning">
                   {modal.provider.provider} · {modal.provider.status}
-                  {" → "}
+                  {" sang "}
                   {modal.targetStatus}. Khi PAUSED, worker vẫn heartbeat nhưng API
                   sẽ không claim job mới cho provider này.
                 </p>
