@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RightOutlined } from "@ant-design/icons";
+import { PlusOutlined, RightOutlined } from "@ant-design/icons";
 import { MetricCard, MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -106,7 +106,7 @@ export function LeasesClient() {
         description="Theo dõi hợp đồng hiện tại, lịch sử người thuê và các workflow kích hoạt / trả phòng theo đúng property scope."
         action={
           <a className="primary-button" href="/leases/new">
-            + Tạo hợp đồng
+            <PlusOutlined aria-hidden="true" /> Tạo hợp đồng
           </a>
         }
       />
