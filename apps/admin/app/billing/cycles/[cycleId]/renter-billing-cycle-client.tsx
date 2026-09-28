@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftOutlined, ArrowRightOutlined, ExportOutlined, CopyOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, CopyOutlined, ExportOutlined, PlusOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -509,7 +509,7 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                             setAdjustmentAmount("");
                           }}
                         >
-                          + Thêm giảm giá / phụ thu
+                          <PlusOutlined aria-hidden="true" /> Thêm giảm giá / phụ thu
                         </button>
                       )}
                     </div>
