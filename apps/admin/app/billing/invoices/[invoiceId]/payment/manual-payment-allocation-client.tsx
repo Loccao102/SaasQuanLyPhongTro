@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent
 } from "react";
-import { ExportOutlined, CopyOutlined, LinkOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ExportOutlined, CopyOutlined, LinkOutlined } from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../../components/admin-shell";
 import { renterBillingApi } from "../../../../../lib/renter-billing-api";
@@ -180,7 +180,7 @@ export function ManualPaymentAllocationClient({
         description="Ghi nhận khoản tiền thực tế đã nhận và phân bổ vào một hóa đơn đã phát hành. Thao tác tạo dấu vết giao dịch và allocation, không sửa snapshot dòng tiền của hóa đơn."
         action={
           <a className="secondary-link-button" href="/billing">
-            ← Hóa đơn
+            <ArrowLeftOutlined aria-hidden="true" /> Hóa đơn
           </a>
         }
       />
