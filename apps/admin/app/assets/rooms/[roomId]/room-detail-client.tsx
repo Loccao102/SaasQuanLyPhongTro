@@ -2,7 +2,13 @@
 import { DateInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeftOutlined, CloseOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  CloseOutlined,
+  ExperimentOutlined,
+  PlusOutlined,
+  ThunderboltOutlined
+} from "@ant-design/icons";
 import { MetricCard, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -11,6 +17,24 @@ import {
   type RoomEquipment,
   type EquipmentConditionStatus
 } from "../../../../lib/admin-assets-api";
+import {
+  adminMeteringApi,
+  type AdminMeter,
+  type AdminMeterType
+} from "../../../../lib/admin-metering-api";
+
+function todayIso(): string {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function meterName(type: AdminMeterType): string {
+  return type === "ELECTRICITY" ? "Điện" : "Nước";
+}
 
 function money(value: number): string {
   return new Intl.NumberFormat("vi-VN", {
@@ -31,23 +55,27 @@ const conditionLabels: Record<EquipmentConditionStatus, { label: string; tone: "
 export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [data, setData] = useState<AdminRoomDetail | null>(null);
   const [equipmentList, setEquipmentList] = useState<RoomEquipment[]>([]);
+  const [meters, setMeters] = useState<AdminMeter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAddEquipment, setShowAddEquipment] = useState(false);
   const [addingEquipment, setAddingEquipment] = useState(false);
+  const [meterBusy, setMeterBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [roomData, equipData] = await Promise.all([
+      const [roomData, equipData, meterData] = await Promise.all([
         adminAssetsApi.room(roomId),
-        adminAssetsApi.roomEquipment(roomId)
+        adminAssetsApi.roomEquipment(roomId),
+        adminMeteringApi.roomMeters(roomId)
       ]);
       setData(roomData);
       setEquipmentList(equipData);
+      setMeters(meterData.meters);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -96,6 +124,93 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
         mutation instanceof Error ? mutation.message : "Không thể ngưng phòng."
       );
       setSaving(false);
+    }
+  }
+
+  async function handleCreateMeter(
+    event: FormEvent<HTMLFormElement>,
+    meterType: AdminMeterType
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const label = String(form.get("label") ?? "").trim();
+    const initialReading = String(form.get("initialReading") ?? "").trim();
+    const readingDate = String(form.get("readingDate") ?? "").trim();
+
+    setMeterBusy(true);
+    setMutationError(null);
+    try {
+      const meter = await adminMeteringApi.createMeter({
+        id: crypto.randomUUID(),
+        roomId,
+        meterType,
+        label: label || undefined
+      });
+
+      if (initialReading) {
+        await adminMeteringApi.addReading(meter.id, {
+          id: crypto.randomUUID(),
+          readingDate: readingDate || todayIso(),
+          readingValue: initialReading,
+          source: "ADMIN"
+        });
+      }
+
+      await load();
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Không thể cấu hình đồng hồ."
+      );
+    } finally {
+      setMeterBusy(false);
+    }
+  }
+
+  async function handleUpdateMeter(
+    event: FormEvent<HTMLFormElement>,
+    meter: AdminMeter
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setMeterBusy(true);
+    setMutationError(null);
+    try {
+      await adminMeteringApi.updateMeter(meter.id, {
+        label: String(form.get("label") ?? "").trim() || null
+      });
+      await load();
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Không thể cập nhật đồng hồ."
+      );
+    } finally {
+      setMeterBusy(false);
+    }
+  }
+
+  async function setMeterActive(meter: AdminMeter, isActive: boolean) {
+    if (
+      !isActive &&
+      !window.confirm(
+        "Ngưng đồng hồ " +
+          meterName(meter.meterType).toLowerCase() +
+          " này? Lịch sử chỉ số vẫn được giữ lại."
+      )
+    ) {
+      return;
+    }
+
+    setMeterBusy(true);
+    setMutationError(null);
+    try {
+      await adminMeteringApi.updateMeter(meter.id, { isActive });
+      await load();
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Không thể đổi trạng thái đồng hồ."
+      );
+    } finally {
+      setMeterBusy(false);
     }
   }
 
@@ -231,6 +346,161 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
           <section className="panel">
             <div className="asset-section-heading">
               <div>
+                <span className="eyebrow">METERING · CẤU HÌNH PHÒNG</span>
+                <h2>Đồng hồ điện & nước</h2>
+                <p className="inline-note">
+                  Mỗi phòng có tối đa một đồng hồ điện và một đồng hồ nước đang hoạt động.
+                  Khi thay đồng hồ, ngưng đồng hồ cũ rồi tạo đồng hồ mới để giữ nguyên lịch sử chỉ số.
+                </p>
+              </div>
+            </div>
+
+            <div className="meter-config-grid">
+              {(["ELECTRICITY", "WATER"] as const).map((meterType) => {
+                const activeMeter = meters.find(
+                  (meter) => meter.meterType === meterType && meter.isActive
+                );
+                const history = meters.filter(
+                  (meter) => meter.meterType === meterType && !meter.isActive
+                );
+
+                return (
+                  <article className="meter-config-card" key={meterType}>
+                    <div className="meter-config-card__heading">
+                      <span className="meter-config-card__icon" aria-hidden="true">
+                        {meterType === "ELECTRICITY" ? (
+                          <ThunderboltOutlined />
+                        ) : (
+                          <ExperimentOutlined />
+                        )}
+                      </span>
+                      <div>
+                        <strong>Đồng hồ {meterName(meterType).toLowerCase()}</strong>
+                        <small>
+                          {meterType === "ELECTRICITY" ? "Đơn vị kWh" : "Đơn vị m³"}
+                        </small>
+                      </div>
+                      <StatusBadge tone={activeMeter ? "success" : "warning"}>
+                        {activeMeter ? "ĐANG HOẠT ĐỘNG" : "CHƯA CẤU HÌNH"}
+                      </StatusBadge>
+                    </div>
+
+                    {activeMeter ? (
+                      <form
+                        className="meter-config-form"
+                        onSubmit={(event) =>
+                          void handleUpdateMeter(event, activeMeter)
+                        }
+                      >
+                        <label>
+                          <span>Tên / mã đồng hồ</span>
+                          <input
+                            name="label"
+                            defaultValue={activeMeter.label ?? ""}
+                            placeholder={
+                              meterType === "ELECTRICITY"
+                                ? "VD: Điện P101"
+                                : "VD: Nước P101"
+                            }
+                            disabled={meterBusy}
+                          />
+                        </label>
+                        <div className="button-row">
+                          <button
+                            className="secondary-button"
+                            type="submit"
+                            disabled={meterBusy}
+                          >
+                            Lưu tên đồng hồ
+                          </button>
+                          <button
+                            className="danger-button"
+                            type="button"
+                            disabled={meterBusy}
+                            onClick={() => void setMeterActive(activeMeter, false)}
+                          >
+                            Ngưng đồng hồ
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <form
+                        className="meter-config-form"
+                        onSubmit={(event) =>
+                          void handleCreateMeter(event, meterType)
+                        }
+                      >
+                        <label>
+                          <span>Tên / mã đồng hồ</span>
+                          <input
+                            name="label"
+                            placeholder={
+                              meterType === "ELECTRICITY"
+                                ? "VD: Điện P101"
+                                : "VD: Nước P101"
+                            }
+                            disabled={meterBusy}
+                          />
+                        </label>
+                        <label>
+                          <span>Chỉ số ban đầu (không bắt buộc)</span>
+                          <input
+                            name="initialReading"
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            placeholder="0"
+                            disabled={meterBusy}
+                          />
+                        </label>
+                        <label>
+                          <span>Ngày ghi chỉ số ban đầu</span>
+                          <DateInput
+                            name="readingDate"
+                            defaultValue={todayIso()}
+                            disabled={meterBusy}
+                          />
+                        </label>
+                        <button
+                          className="primary-button"
+                          type="submit"
+                          disabled={meterBusy}
+                        >
+                          <PlusOutlined aria-hidden="true" />
+                          Tạo đồng hồ {meterName(meterType).toLowerCase()}
+                        </button>
+                      </form>
+                    )}
+
+                    {history.length > 0 ? (
+                      <details className="meter-history">
+                        <summary>Lịch sử đồng hồ đã ngưng ({history.length})</summary>
+                        <div>
+                          {history.map((meter) => (
+                            <div className="meter-history__item" key={meter.id}>
+                              <span>{meter.label || "Không đặt tên"}</span>
+                              <button
+                                className="secondary-button secondary-button--compact"
+                                type="button"
+                                disabled={meterBusy || Boolean(activeMeter)}
+                                onClick={() => void setMeterActive(meter, true)}
+                              >
+                                Kích hoạt lại
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="asset-section-heading">
+              <div>
                 <span className="eyebrow">INVENTORY · BÀN GIAO THIẾT BỊ</span>
                 <h2>Danh mục trang thiết bị & Đồ đạc ({equipmentList.length})</h2>
               </div>
@@ -239,7 +509,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                 type="button"
                 onClick={() => setShowAddEquipment((prev) => !prev)}
               >
-                {showAddEquipment ? "Đóng form" : "+ Thêm thiết bị"}
+                {showAddEquipment ? "Đóng form" : <><PlusOutlined aria-hidden="true" /> Thêm thiết bị</>}
               </button>
             </div>
 
@@ -317,7 +587,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
 
             {equipmentList.length === 0 ? (
               <div className="admin-state" style={{ padding: "1.5rem" }}>
-                Phòng này chưa có danh mục thiết bị bàn giao. Hãy bấm <strong>"+ Thêm thiết bị"</strong> để ghi nhận đồ đạc (máy lạnh, tủ lạnh, giường, nệm...).
+                Phòng này chưa có danh mục thiết bị bàn giao. Hãy bấm <strong>Thêm thiết bị</strong> để ghi nhận đồ đạc (máy lạnh, tủ lạnh, giường, nệm...).
               </div>
             ) : (
               <div style={{ display: "grid", gap: "0.75rem" }}>

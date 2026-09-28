@@ -1417,3 +1417,111 @@ textarea.form-input {
 .brand__mark--logo {
   background: transparent;
 }
+
+
+/* Room meter configuration */
+.meter-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+.meter-config-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+.meter-config-card__heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+}
+.meter-config-card__heading > div {
+  display: grid;
+  gap: 3px;
+}
+.meter-config-card__heading strong {
+  font-size: 14px;
+}
+.meter-config-card__heading small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.meter-config-card__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 18px;
+}
+.meter-config-form {
+  display: grid;
+  gap: 12px;
+}
+.meter-config-form label {
+  display: grid;
+  gap: 6px;
+}
+.meter-config-form label > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.meter-config-form input {
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--color-text);
+}
+.meter-config-form input:focus {
+  border-color: var(--color-primary);
+  outline: 3px solid rgb(36 87 230 / 10%);
+}
+.meter-history {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+.meter-history summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.meter-history > div {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.meter-history__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--color-surface-soft);
+  font-size: 11px;
+}
+@media (max-width: 820px) {
+  .meter-config-grid {
+    grid-template-columns: 1fr;
+  }
+  .meter-config-card__heading {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+  .meter-config-card__heading > :last-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

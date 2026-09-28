@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarOutlined } from "@ant-design/icons";
 import {
   useEffect,
   useId,
@@ -159,7 +160,7 @@ function pickerButton(
         }
       }}
     >
-      <span aria-hidden="true">📅</span>
+      <CalendarOutlined aria-hidden="true" />
     </button>
   );
 }

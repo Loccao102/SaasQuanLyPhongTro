@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -50,6 +51,15 @@ function requiredUuid(input: BodyInput, field: string): string {
     )
   ) {
     throw new BadRequestException(field + " must be a UUID v4.");
+  }
+  return value;
+}
+
+function optionalBoolean(input: BodyInput, field: string): boolean | undefined {
+  const value = input[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw new BadRequestException(field + " must be a boolean.");
   }
   return value;
 }
@@ -114,6 +124,18 @@ export class MeteringController {
       roomId: requiredUuid(input, "roomId"),
       meterType: requiredString(input, "meterType") as MeterType,
       label: optionalString(input, "label")
+    });
+  }
+
+  @Patch("meters/:meterId")
+  updateMeter(
+    @Req() request: TenantRequest,
+    @Param("meterId", new ParseUUIDPipe({ version: "4" })) meterId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.metering.updateMeter(this.principal(request), meterId, {
+      label: input.label === undefined ? undefined : optionalString(input, "label"),
+      isActive: optionalBoolean(input, "isActive")
     });
   }
 
