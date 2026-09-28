@@ -262,7 +262,7 @@ export function RenterBillingClient() {
                     <span className="eyebrow">{cycle.property.code}</span>
                     <h3>{cycle.code}</h3>
                     <p>
-                      {formatDateVi(cycle.periodStart)} → {formatDateVi(cycle.periodEnd)} · hạn {formatDateVi(cycle.dueDate)}
+                      {formatDateVi(cycle.periodStart)} – {formatDateVi(cycle.periodEnd)} · hạn {formatDateVi(cycle.dueDate)}
                     </p>
                   </div>
                   <StatusBadge tone={statusTone(cycle.status)}>
