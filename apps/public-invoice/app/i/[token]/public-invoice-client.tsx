@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  CheckCircleOutlined,
+  CloseOutlined,
+  ToolOutlined
+} from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 
 type CollectionStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
@@ -214,7 +219,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
             </span>
             <h1>{data.invoiceNumber}</h1>
             <p className="invoice-period">
-              {formatDateVi(data.periodStart)} → {formatDateVi(data.periodEnd)}
+              {formatDateVi(data.periodStart)} – {formatDateVi(data.periodEnd)}
             </p>
           </div>
           <StatusBadge tone={tone(data.collectionStatus)}>
@@ -323,7 +328,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
               cursor: "pointer"
             }}
           >
-            🛠 Báo hỏng / Yêu cầu sửa chữa
+            <ToolOutlined aria-hidden="true" /> Báo hỏng / Yêu cầu sửa chữa
           </button>
         </section>
 
@@ -374,7 +379,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
                     color: "#64748b"
                   }}
                 >
-                  ✕
+                  <CloseOutlined aria-hidden="true" />
                 </button>
               </div>
 
@@ -389,7 +394,7 @@ export function PublicInvoiceClient({ token }: { token: string }) {
                     fontWeight: 500
                   }}
                 >
-                  ✓ {reportSuccess}
+                  <CheckCircleOutlined aria-hidden="true" /> {reportSuccess}
                 </div>
               ) : (
                 <form onSubmit={(e) => void handleReportSubmit(e)}>
