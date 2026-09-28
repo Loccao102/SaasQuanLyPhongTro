@@ -16,7 +16,56 @@ const devSeedPath = resolve(apiRoot, "db", "seeds", "cms_dev_operator.sql");
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
 
+function positiveInteger(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? String(fallback));
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(name + " must be a positive integer.");
+  }
+  return value;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, milliseconds);
+  });
+}
+
+async function waitForDatabase(): Promise<void> {
+  const retries = positiveInteger("DB_SETUP_CONNECT_RETRIES", 30);
+  const delayMs = positiveInteger("DB_SETUP_CONNECT_DELAY_MS", 1000);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      await pool.query("SELECT 1");
+      if (attempt > 1) {
+        console.log("[db] database connection is ready");
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) break;
+      console.warn(
+        "[db] database not ready (" +
+          String(attempt) +
+          "/" +
+          String(retries) +
+          "), retrying in " +
+          String(delayMs) +
+          "ms"
+      );
+      await delay(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Database did not become ready.");
+}
+
 async function main(): Promise<void> {
+  await waitForDatabase();
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version text PRIMARY KEY,
