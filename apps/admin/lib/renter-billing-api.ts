@@ -23,6 +23,12 @@ export type RenterBillingListResponse = {
 
 export type RenterBillingDetailResponse = {
   organization: { id: string; name: string };
+  paymentProfile?: {
+    bankId: string;
+    accountNo: string;
+    accountName: string;
+    vietQrTemplate: string;
+  } | null;
   cycle: RenterBillingCycle;
   invoices: Array<{
     id: string;

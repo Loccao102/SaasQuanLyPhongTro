@@ -367,3 +367,32 @@ body {
     display: grid;
   }
 }
+
+@media print {
+  body {
+    background: white !important;
+  }
+  .no-print,
+  .qr-actions,
+  .pay-button,
+  .copy-chip,
+  .report-repair-section,
+  .invoice-footer {
+    display: none !important;
+  }
+  .invoice-page {
+    padding: 0 !important;
+  }
+  .invoice-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+}
+

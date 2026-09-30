@@ -205,7 +205,7 @@ export class RenterBillingService {
   async detail(principal: TenantPrincipal, cycleId: string) {
     const cycle = await this.loadCycle(principal, cycleId, "billing.read");
 
-    const [invoiceResult, lineResult] = await Promise.all([
+    const [invoiceResult, lineResult, paymentProfileRes] = await Promise.all([
       this.db.query<InvoiceRow>(
         `SELECT
            id::text,
@@ -255,6 +255,18 @@ export class RenterBillingService {
            )
          ORDER BY invoice_id, sort_order, id`,
         [principal.organizationId, cycleId]
+      ),
+      this.db.query<{
+        bank_id: string;
+        account_no: string;
+        account_name: string;
+        vietqr_template: string;
+      }>(
+        `SELECT bank_id, account_no, account_name, vietqr_template
+         FROM organization_payment_profiles
+         WHERE organization_id = $1::uuid
+         LIMIT 1`,
+        [principal.organizationId]
       )
     ]);
 
@@ -274,11 +286,22 @@ export class RenterBillingService {
       lines.set(row.invoice_id, bucket);
     }
 
+    const profileRow = paymentProfileRes.rows[0];
+    const paymentProfile = profileRow
+      ? {
+          bankId: profileRow.bank_id,
+          accountNo: profileRow.account_no,
+          accountName: profileRow.account_name,
+          vietQrTemplate: profileRow.vietqr_template
+        }
+      : null;
+
     return {
       organization: {
         id: principal.organizationId,
         name: principal.organizationName
       },
+      paymentProfile,
       cycle,
       invoices: invoiceResult.rows.map((row) => ({
         id: row.id,

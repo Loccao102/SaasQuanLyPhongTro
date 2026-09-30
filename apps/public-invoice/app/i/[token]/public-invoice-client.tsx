@@ -7,6 +7,7 @@ import {
   CopyOutlined,
   DownloadOutlined,
   MobileOutlined,
+  PrinterOutlined,
   ToolOutlined
 } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
@@ -261,9 +262,32 @@ export function PublicInvoiceClient({ token }: { token: string }) {
               {formatDateVi(data.periodStart)} – {formatDateVi(data.periodEnd)}
             </p>
           </div>
-          <StatusBadge tone={tone(data.collectionStatus)}>
-            {label(data.collectionStatus)}
-          </StatusBadge>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+            <StatusBadge tone={tone(data.collectionStatus)}>
+              {label(data.collectionStatus)}
+            </StatusBadge>
+            <button
+              type="button"
+              className="no-print"
+              onClick={() => window.print()}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#475569",
+                background: "#f1f5f9",
+                border: "1px solid #cbd5e1",
+                borderRadius: "8px",
+                cursor: "pointer"
+              }}
+              title="In phiếu hoặc lưu dạng PDF"
+            >
+              <PrinterOutlined /> In phiếu / PDF
+            </button>
+          </div>
         </header>
 
         <section className="amount-block" aria-label="Số tiền cần thanh toán">

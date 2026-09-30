@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftOutlined, ArrowRightOutlined, CopyOutlined, ExportOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, CopyOutlined, ExportOutlined, PlusOutlined, PrinterOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
 import {
@@ -311,6 +311,16 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
               >
                 {data.cycle.status}
               </StatusBadge>
+              {data.invoices.length > 0 ? (
+                <a
+                  className="secondary-link-button"
+                  href={`/billing/cycles/${data.cycle.id}/print`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <PrinterOutlined style={{ marginRight: 6 }} /> In phiếu thu cả kỳ
+                </a>
+              ) : null}
               {data.cycle.status === "FINALIZED" ? (
                 <button
                   className="primary-button"
@@ -528,6 +538,14 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
 
                   {invoice.status === "ISSUED" ? (
                     <div className="button-row">
+                      <a
+                        className="secondary-link-button"
+                        href={`/billing/cycles/${data.cycle.id}/print?invoiceId=${invoice.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <PrinterOutlined style={{ marginRight: 6 }} /> In phiếu thu
+                      </a>
                       <a
                         className="secondary-link-button"
                         href={
