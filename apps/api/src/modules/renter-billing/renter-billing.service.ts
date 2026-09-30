@@ -880,6 +880,99 @@ export class RenterBillingService {
       return null;
     }
 
+    if (item.itemType === "ELECTRICITY_PER_PERSON") {
+      const occupantRes = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND joined_on <= $3::date
+           AND (left_on IS NULL OR left_on >= $4::date)`,
+        [organizationId, lease.id, cycle.periodEnd, cycle.periodStart]
+      );
+      const occupantCount = Math.max(1, Number(occupantRes.rows[0]?.count ?? 1));
+      const quantity = normalizeQuantity3(occupantCount, "occupantCount");
+      const amountVnd = quantityTimesUnitPriceVnd(quantity, item.unitPriceVnd);
+      const description = item.description
+        ? `${item.description} (${occupantCount} người)`
+        : `Tiền điện (${occupantCount} người)`;
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'ELECTRICITY', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "OCCUPANT_COUNT",
+            occupantCount
+          })
+        ]
+      );
+      return null;
+    }
+
+    if (item.itemType === "ELECTRICITY_PER_ROOM") {
+      const quantity = "1.000";
+      const amountVnd = item.unitPriceVnd;
+      const description = item.description || "Tiền điện (khoán theo phòng)";
+
+      await client.query(
+        `INSERT INTO renter_invoice_lines (
+           organization_id,
+           invoice_id,
+           line_type,
+           description,
+           quantity,
+           unit_price_vnd,
+           amount_vnd,
+           sort_order,
+           snapshot
+         )
+         VALUES ($1, $2, 'ELECTRICITY', $3, $4::numeric, $5, $6, $7, $8::jsonb)`,
+        [
+          organizationId,
+          invoiceId,
+          description,
+          quantity,
+          item.unitPriceVnd,
+          amountVnd,
+          item.sortOrder,
+          JSON.stringify({
+            pricingPolicyId: policy.id,
+            pricingPolicyName: policy.name,
+            pricingItemId: item.id,
+            itemType: item.itemType,
+            effectiveFrom: policy.effectiveFrom,
+            effectiveTo: policy.effectiveTo,
+            quantitySource: "FIXED_ROOM"
+          })
+        ]
+      );
+      return null;
+    }
+
     if (item.itemType === "WATER_PER_PERSON") {
       const occupantRes = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count

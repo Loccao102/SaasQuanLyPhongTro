@@ -1408,8 +1408,19 @@ Implemented follow-up:
 - campaign creation + link rotation are transactional and idempotent;
 - missing tenant phone numbers are reported as skipped.
 
-Still required:
-- optional payer-bank deeplink selector can be added after pilot evidence.
+Implemented follow-up (Realtime Public Invoice & Mobile Payment UX):
+- SSE realtime payment status updates: dynamic celebration banner when PAID, hiding VietQR to prevent duplicate transfers;
+- dynamic VietQR URL regeneration on partial payment (`PARTIALLY_PAID`) reflecting the updated remaining amount without page refresh;
+- 1-click independent copy actions for Account Number, Amount, and Payment Reference with visual copied feedback;
+- download VietQR image button for mobile gallery storage;
+- banking deeplink integration (`vietqr://transfer`) and realtime pulse live indicator.
+
+Implemented follow-up (Diversified Pricing Policy Variants):
+- added `ELECTRICITY_PER_PERSON` (flat electricity per resident occupant count) and `ELECTRICITY_PER_ROOM` (flat electricity per room);
+- added `ELEVATOR` (elevator service fee per room/period);
+- migration `0044_pricing_electricity_and_elevator_variants.sql` updating check constraints;
+- staff metering auto-adapts: rooms using flat electricity no longer require meter readings (`electricity_meter_required = false`);
+- admin pricing setup UI provides selector for electricity billing mode and elevator input.
 
 
 ## Production SePay renter-payment adapter

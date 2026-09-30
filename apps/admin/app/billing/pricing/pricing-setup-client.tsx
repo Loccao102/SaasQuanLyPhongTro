@@ -30,7 +30,9 @@ import {
 } from "../../../lib/pricing-api";
 
 const itemLabels: Record<PricingItemType, string> = {
-  ELECTRICITY_PER_KWH: "Điện (đồng hồ)",
+  ELECTRICITY_PER_KWH: "Điện (đồng hồ kWh)",
+  ELECTRICITY_PER_PERSON: "Điện (theo đầu người)",
+  ELECTRICITY_PER_ROOM: "Điện (khoán theo phòng)",
   WATER_PER_M3: "Nước (đồng hồ m³)",
   WATER_PER_PERSON: "Nước (theo đầu người)",
   WATER_PER_ROOM: "Nước (khoán theo phòng)",
@@ -39,6 +41,7 @@ const itemLabels: Record<PricingItemType, string> = {
   INTERNET: "Internet",
   PARKING: "Gửi xe (khoán phòng)",
   TRASH: "Rác / vệ sinh",
+  ELEVATOR: "Thang máy",
   CUSTOM: "Phí khác"
 };
 
@@ -48,15 +51,18 @@ function itemUnit(itemType: PricingItemType) {
       return "/ kWh";
     case "WATER_PER_M3":
       return "/ m³";
+    case "ELECTRICITY_PER_PERSON":
     case "WATER_PER_PERSON":
     case "SERVICE_PER_PERSON":
       return "/ người / tháng";
     case "VEHICLE_PARKING":
       return "/ xe / tháng";
+    case "ELECTRICITY_PER_ROOM":
+    case "WATER_PER_ROOM":
     case "INTERNET":
     case "PARKING":
     case "TRASH":
-    case "WATER_PER_ROOM":
+    case "ELEVATOR":
       return "/ phòng / tháng";
     default:
       return "/ đơn vị";
@@ -117,6 +123,9 @@ export function PricingSetupClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState<CreatePricingPolicyInput | null>(null);
+  const [electricityMode, setElectricityMode] = useState<
+    "ELECTRICITY_PER_KWH" | "ELECTRICITY_PER_PERSON" | "ELECTRICITY_PER_ROOM"
+  >("ELECTRICITY_PER_KWH");
   const [waterMode, setWaterMode] = useState<
     "WATER_PER_M3" | "WATER_PER_PERSON" | "WATER_PER_ROOM"
   >("WATER_PER_M3");
@@ -205,6 +214,8 @@ export function PricingSetupClient() {
         if (unitPriceVnd === null) return;
         const isDynamic =
           itemType === "ELECTRICITY_PER_KWH" ||
+          itemType === "ELECTRICITY_PER_PERSON" ||
+          itemType === "ELECTRICITY_PER_ROOM" ||
           itemType === "WATER_PER_M3" ||
           itemType === "WATER_PER_PERSON" ||
           itemType === "WATER_PER_ROOM" ||
@@ -220,7 +231,13 @@ export function PricingSetupClient() {
         });
       };
 
-      addItem("electricityPriceVnd", "ELECTRICITY_PER_KWH", "Tiền điện", 20);
+      if (electricityMode === "ELECTRICITY_PER_PERSON") {
+        addItem("electricityPriceVnd", "ELECTRICITY_PER_PERSON", "Tiền điện (theo người)", 20);
+      } else if (electricityMode === "ELECTRICITY_PER_ROOM") {
+        addItem("electricityPriceVnd", "ELECTRICITY_PER_ROOM", "Tiền điện (khoán phòng)", 20);
+      } else {
+        addItem("electricityPriceVnd", "ELECTRICITY_PER_KWH", "Tiền điện", 20);
+      }
 
       if (waterMode === "WATER_PER_PERSON") {
         addItem("waterPriceVnd", "WATER_PER_PERSON", "Tiền nước (theo người)", 30);
@@ -242,6 +259,7 @@ export function PricingSetupClient() {
         "Phí dịch vụ chung (theo người)",
         50
       );
+      addItem("elevatorPriceVnd", "ELEVATOR", "Phí thang máy", 55);
       addItem("internetPriceVnd", "INTERNET", "Internet", 60);
       addItem("trashPriceVnd", "TRASH", "Rác / vệ sinh", 70);
 
@@ -383,17 +401,53 @@ export function PricingSetupClient() {
                 chồng lấn.
               </small>
             </label>
-            <label>
-              <span>Điện · VND/kWh</span>
-              <input
-                name="electricityPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="3500"
-              />
-            </label>
+            <div style={{ display: "grid", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-subtle, rgba(0,0,0,0.02))", borderRadius: "8px", border: "1px solid var(--border-color, #e5e7eb)" }}>
+              <label>
+                <span style={{ fontWeight: 600 }}>Phương thức tính tiền điện</span>
+                <select
+                  value={electricityMode}
+                  onChange={(e) =>
+                    setElectricityMode(e.target.value as typeof electricityMode)
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "0.625rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color, #d1d5db)",
+                    background: "var(--bg-surface, #fff)",
+                    fontSize: "0.875rem"
+                  }}
+                >
+                  <option value="ELECTRICITY_PER_KWH">Theo đồng hồ điện (VND/kWh)</option>
+                  <option value="ELECTRICITY_PER_PERSON">Theo số người ở (VND/người/tháng)</option>
+                  <option value="ELECTRICITY_PER_ROOM">Khoán cố định phòng (VND/phòng/tháng)</option>
+                </select>
+              </label>
+              <label>
+                <span>
+                  {electricityMode === "ELECTRICITY_PER_KWH"
+                    ? "Đơn giá điện · VND/kWh"
+                    : electricityMode === "ELECTRICITY_PER_PERSON"
+                    ? "Đơn giá điện · VND/người/tháng"
+                    : "Đơn giá điện · VND/phòng/tháng"}
+                </span>
+                <input
+                  name="electricityPriceVnd"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder={
+                    electricityMode === "ELECTRICITY_PER_KWH"
+                      ? "3500"
+                      : electricityMode === "ELECTRICITY_PER_PERSON"
+                      ? "100000"
+                      : "300000"
+                  }
+                />
+              </label>
+            </div>
 
             <div style={{ display: "grid", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-subtle, rgba(0,0,0,0.02))", borderRadius: "8px", border: "1px solid var(--border-color, #e5e7eb)" }}>
               <label>
@@ -480,9 +534,20 @@ export function PricingSetupClient() {
             </div>
 
             <label>
-              <span>Phí dịch vụ theo đầu người · VND/người/tháng (vệ sinh, thang máy...)</span>
+              <span>Phí dịch vụ theo đầu người · VND/người/tháng (vệ sinh...)</span>
               <input
                 name="servicePerPersonPriceVnd"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                placeholder="50000"
+              />
+            </label>
+            <label>
+              <span>Phí thang máy · VND/phòng/tháng</span>
+              <input
+                name="elevatorPriceVnd"
                 type="number"
                 min="0"
                 step="1"

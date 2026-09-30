@@ -134,12 +134,18 @@ Các số tiền dùng integer VND.
 
 Pricing Policy chứa các Pricing Item:
 - ROOM_RENT
-- ELECTRICITY_PER_KWH
-- WATER_PER_M3
-- WATER_PER_PERSON
+- ELECTRICITY_PER_KWH (đồng hồ)
+- ELECTRICITY_PER_PERSON (khoán theo đầu người)
+- ELECTRICITY_PER_ROOM (khoán theo phòng)
+- WATER_PER_M3 (đồng hồ m³)
+- WATER_PER_PERSON (theo đầu người)
+- WATER_PER_ROOM (khoán theo phòng)
+- VEHICLE_PARKING (theo số lượng xe)
+- SERVICE_PER_PERSON (dịch vụ theo người)
 - INTERNET
-- PARKING
+- PARKING (khoán theo phòng)
 - TRASH
+- ELEVATOR (thang máy)
 - CUSTOM
 
 Invoice phải snapshot mô tả, quantity, unit_price và amount; sửa pricing hiện tại không được làm thay đổi invoice lịch sử.

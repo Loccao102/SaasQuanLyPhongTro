@@ -13,6 +13,8 @@ import type { TenantPrincipal } from "../identity/tenant-principal.js";
 
 export const pricingItemTypes = [
   "ELECTRICITY_PER_KWH",
+  "ELECTRICITY_PER_PERSON",
+  "ELECTRICITY_PER_ROOM",
   "WATER_PER_M3",
   "WATER_PER_PERSON",
   "WATER_PER_ROOM",
@@ -21,6 +23,7 @@ export const pricingItemTypes = [
   "INTERNET",
   "PARKING",
   "TRASH",
+  "ELEVATOR",
   "CUSTOM"
 ] as const;
 
@@ -114,7 +117,11 @@ export function normalizePricingItems(
           "Unsupported pricing item type: " + String(item.itemType)
         );
       }
-      if (item.itemType === "ELECTRICITY_PER_KWH") electricityCount += 1;
+      const isElectricityItem =
+        item.itemType === "ELECTRICITY_PER_KWH" ||
+        item.itemType === "ELECTRICITY_PER_PERSON" ||
+        item.itemType === "ELECTRICITY_PER_ROOM";
+      if (isElectricityItem) electricityCount += 1;
       const isWaterItem =
         item.itemType === "WATER_PER_M3" ||
         item.itemType === "WATER_PER_PERSON" ||
@@ -126,7 +133,7 @@ export function normalizePricingItems(
 
       if (electricityCount > 1) {
         throw new ConflictException(
-          "A pricing policy can contain at most one electricity meter item."
+          "A pricing policy can contain at most one electricity pricing item (choose meter, per person, or per room)."
         );
       }
       if (waterCount > 1) {
@@ -148,6 +155,8 @@ export function normalizePricingItems(
 
       const isDynamicQuantity =
         item.itemType === "ELECTRICITY_PER_KWH" ||
+        item.itemType === "ELECTRICITY_PER_PERSON" ||
+        item.itemType === "ELECTRICITY_PER_ROOM" ||
         item.itemType === "WATER_PER_M3" ||
         item.itemType === "WATER_PER_PERSON" ||
         item.itemType === "WATER_PER_ROOM" ||

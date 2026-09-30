@@ -12,8 +12,11 @@ test("pricing item types include all diversified types", () => {
   assert.ok(pricingItemTypes.includes("VEHICLE_PARKING"));
   assert.ok(pricingItemTypes.includes("SERVICE_PER_PERSON"));
   assert.ok(pricingItemTypes.includes("ELECTRICITY_PER_KWH"));
+  assert.ok(pricingItemTypes.includes("ELECTRICITY_PER_PERSON"));
+  assert.ok(pricingItemTypes.includes("ELECTRICITY_PER_ROOM"));
   assert.ok(pricingItemTypes.includes("WATER_PER_M3"));
   assert.ok(pricingItemTypes.includes("INTERNET"));
+  assert.ok(pricingItemTypes.includes("ELEVATOR"));
 });
 
 test("formatDecimal3 formats decimal with up to 3 decimals", () => {
@@ -142,3 +145,66 @@ test("normalizePricingItems rejects duplicate item IDs and negative prices", () 
     /unitPriceVnd must be a non-negative safe integer/
   );
 });
+
+test("normalizePricingItems accepts electricity per room and elevator", () => {
+  const items = normalizePricingItems([
+    {
+      id: "item-e1",
+      itemType: "ELECTRICITY_PER_ROOM",
+      description: "Điện khoán phòng",
+      unitPriceVnd: 250000
+    },
+    {
+      id: "item-elev",
+      itemType: "ELEVATOR",
+      description: "Thang máy",
+      unitPriceVnd: 50000,
+      fixedQuantity: 1
+    }
+  ]);
+
+  assert.equal(items.length, 2);
+  assert.equal(items.find((i) => i.itemType === "ELECTRICITY_PER_ROOM")?.fixedQuantity, "1.000");
+  assert.equal(items.find((i) => i.itemType === "ELEVATOR")?.fixedQuantity, "1.000");
+});
+
+test("normalizePricingItems rejects conflicting electricity pricing models", () => {
+  assert.throws(
+    () =>
+      normalizePricingItems([
+        {
+          id: "item-e1",
+          itemType: "ELECTRICITY_PER_KWH",
+          description: "Điện đồng hồ",
+          unitPriceVnd: 3500
+        },
+        {
+          id: "item-e2",
+          itemType: "ELECTRICITY_PER_ROOM",
+          description: "Điện khoán phòng",
+          unitPriceVnd: 200000
+        }
+      ]),
+    /at most one electricity pricing item/
+  );
+
+  assert.throws(
+    () =>
+      normalizePricingItems([
+        {
+          id: "item-e1",
+          itemType: "ELECTRICITY_PER_PERSON",
+          description: "Điện theo người",
+          unitPriceVnd: 100000
+        },
+        {
+          id: "item-e2",
+          itemType: "ELECTRICITY_PER_ROOM",
+          description: "Điện khoán phòng",
+          unitPriceVnd: 200000
+        }
+      ]),
+    /at most one electricity pricing item/
+  );
+});
+

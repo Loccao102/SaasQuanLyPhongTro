@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircleOutlined,
   CloseOutlined,
+  CopyOutlined,
+  DownloadOutlined,
+  MobileOutlined,
   ToolOutlined
 } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
@@ -64,12 +67,23 @@ function label(status: CollectionStatus) {
   return "CHƯA THANH TOÁN";
 }
 
+function updateQrAmount(qrUrl: string, amount: number): string {
+  try {
+    const url = new URL(qrUrl);
+    url.searchParams.set("amount", String(amount));
+    return url.toString();
+  } catch {
+    return qrUrl;
+  }
+}
+
 export function PublicInvoiceClient({ token }: { token: string }) {
   const [data, setData] = useState<PublicInvoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
   const [live, setLive] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState<string | null>(null);
@@ -156,17 +170,27 @@ export function PublicInvoiceClient({ token }: { token: string }) {
         collectionStatus: CollectionStatus;
         updatedAt: string;
       };
-      setData((current) =>
-        current
-          ? {
-              ...current,
-              paidVnd: status.paidVnd,
-              remainingVnd: status.remainingVnd,
-              collectionStatus: status.collectionStatus,
-              updatedAt: status.updatedAt
-            }
-          : current
-      );
+      setData((current) => {
+        if (!current) return current;
+        const nextPayment =
+          current.payment.configured && status.remainingVnd > 0
+            ? {
+                ...current.payment,
+                qrImageUrl: updateQrAmount(
+                  current.payment.qrImageUrl,
+                  status.remainingVnd
+                )
+              }
+            : current.payment;
+        return {
+          ...current,
+          paidVnd: status.paidVnd,
+          remainingVnd: status.remainingVnd,
+          collectionStatus: status.collectionStatus,
+          updatedAt: status.updatedAt,
+          payment: nextPayment
+        };
+      });
     });
     return () => stream.close();
   }, [data?.invoiceNumber, encodedToken, invalid]);
@@ -183,6 +207,16 @@ export function PublicInvoiceClient({ token }: { token: string }) {
     await navigator.clipboard.writeText(text);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function copySingleField(key: string, val: string) {
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey(null), 1800);
+    } catch {
+      // fallback
+    }
   }
 
   if (loading) {
@@ -211,6 +245,8 @@ export function PublicInvoiceClient({ token }: { token: string }) {
       </main>
     );
   }
+
+  const configuredPayment = data.payment.configured ? data.payment : null;
 
   return (
     <main className="invoice-page">
@@ -264,35 +300,110 @@ export function PublicInvoiceClient({ token }: { token: string }) {
         </section>
 
         {data.collectionStatus === "PAID" ? (
-          <section className="payment-complete">
-            <strong>Đã nhận đủ thanh toán</strong>
+          <section className="payment-complete--celebration">
+            <CheckCircleOutlined className="celebration-icon" aria-hidden="true" />
+            <h2>Thanh toán thành công!</h2>
             <p>
-              Hóa đơn này đã được cập nhật thanh toán đầy đủ. Bạn không cần
-              chuyển thêm tiền.
+              Hóa đơn <strong>{data.invoiceNumber}</strong> đã được ghi nhận thanh toán đầy đủ.
+              <br />
+              Cảm ơn bạn đã hoàn thành tiền phòng đúng hạn. Bạn không cần chuyển thêm tiền.
             </p>
           </section>
-        ) : data.payment.configured ? (
+        ) : configuredPayment ? (
           <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="realtime-indicator">
+                <span className="pulse-dot" /> Nhận tiền tự động 24/7
+              </span>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>
+                Tự gạch nợ sau khi chuyển
+              </span>
+            </div>
             <section className="payment-box">
-              <img
-                className="vietqr-image"
-                src={data.payment.qrImageUrl}
-                alt={"VietQR thanh toán " + data.invoiceNumber}
-                referrerPolicy="no-referrer"
-              />
+              <div>
+                <img
+                  className="vietqr-image"
+                  src={configuredPayment.qrImageUrl}
+                  alt={"VietQR thanh toán " + data.invoiceNumber}
+                  referrerPolicy="no-referrer"
+                />
+                <div className="qr-actions">
+                  <a
+                    className="qr-action-btn"
+                    href={configuredPayment.qrImageUrl}
+                    download={`VietQR_${data.invoiceNumber}.png`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <DownloadOutlined aria-hidden="true" /> Tải ảnh QR
+                  </a>
+                  <a
+                    className="qr-action-btn"
+                    href={`vietqr://transfer?bank=${encodeURIComponent(configuredPayment.bankId)}&account=${encodeURIComponent(configuredPayment.accountNo)}&amount=${data.remainingVnd}&memo=${encodeURIComponent(configuredPayment.paymentReference)}`}
+                  >
+                    <MobileOutlined aria-hidden="true" /> Mở App NH
+                  </a>
+                </div>
+              </div>
               <div className="payment-copy">
-                <span className="invoice-kicker">VIETQR</span>
+                <span className="invoice-kicker">VIETQR NAPAS 247</span>
                 <h2>Quét mã để chuyển đúng số tiền còn lại</h2>
                 <dl>
-                  <div><dt>Ngân hàng</dt><dd>{data.payment.bankId}</dd></div>
-                  <div><dt>Số tài khoản</dt><dd>{data.payment.accountNo}</dd></div>
-                  <div><dt>Thụ hưởng</dt><dd>{data.payment.accountName}</dd></div>
-                  <div><dt>Nội dung</dt><dd>{data.payment.paymentReference}</dd></div>
+                  <div>
+                    <dt>Ngân hàng</dt>
+                    <dd>{configuredPayment.bankId}</dd>
+                  </div>
+                  <div>
+                    <dt>Số tài khoản</dt>
+                    <dd>
+                      {configuredPayment.accountNo}
+                      <button
+                        type="button"
+                        className={`copy-chip ${copiedKey === "accountNo" ? "copy-chip--copied" : ""}`}
+                        onClick={() => void copySingleField("accountNo", configuredPayment.accountNo)}
+                      >
+                        <CopyOutlined aria-hidden="true" />
+                        {copiedKey === "accountNo" ? "Đã chép" : "Chép"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Thụ hưởng</dt>
+                    <dd>{configuredPayment.accountName}</dd>
+                  </div>
+                  <div>
+                    <dt>Số tiền cần chuyển</dt>
+                    <dd>
+                      <MoneyDisplay amountVnd={data.remainingVnd} />
+                      <button
+                        type="button"
+                        className={`copy-chip ${copiedKey === "amount" ? "copy-chip--copied" : ""}`}
+                        onClick={() => void copySingleField("amount", String(data.remainingVnd))}
+                      >
+                        <CopyOutlined aria-hidden="true" />
+                        {copiedKey === "amount" ? "Đã chép" : "Chép"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Nội dung chuyển khoản</dt>
+                    <dd>
+                      {configuredPayment.paymentReference}
+                      <button
+                        type="button"
+                        className={`copy-chip ${copiedKey === "memo" ? "copy-chip--copied" : ""}`}
+                        onClick={() => void copySingleField("memo", configuredPayment.paymentReference)}
+                      >
+                        <CopyOutlined aria-hidden="true" />
+                        {copiedKey === "memo" ? "Đã chép" : "Chép"}
+                      </button>
+                    </dd>
+                  </div>
                 </dl>
               </div>
             </section>
             <button className="pay-button" type="button" onClick={() => void copyPayment()}>
-              {copied ? "Đã sao chép" : "Sao chép thông tin chuyển khoản"}
+              {copied ? "Đã sao chép tất cả thông tin" : "Sao chép toàn bộ thông tin chuyển khoản"}
             </button>
           </>
         ) : (

@@ -40,6 +40,11 @@ type ChecklistRow = QueryResultRow & {
   water_baseline_usage: string | null;
   pricing_policy_id: string | null;
   electricity_meter_required: boolean | null;
+  electricity_billing_mode:
+    | "ELECTRICITY_PER_KWH"
+    | "ELECTRICITY_PER_PERSON"
+    | "ELECTRICITY_PER_ROOM"
+    | null;
   water_meter_required: boolean | null;
   water_billing_mode:
     | "WATER_PER_M3"
@@ -226,6 +231,17 @@ export class StaffMeteringService {
              bool_or(i.item_type = 'ELECTRICITY_PER_KWH'),
              false
            ) AS electricity_meter_required,
+           max(
+             CASE
+               WHEN i.item_type IN (
+                 'ELECTRICITY_PER_KWH',
+                 'ELECTRICITY_PER_PERSON',
+                 'ELECTRICITY_PER_ROOM'
+               )
+               THEN i.item_type
+               ELSE NULL
+             END
+           ) AS electricity_billing_mode,
            COALESCE(
              bool_or(i.item_type = 'WATER_PER_M3'),
              false
@@ -279,6 +295,11 @@ export class StaffMeteringService {
           electricity: MeterChecklist | null;
           water: MeterChecklist | null;
           requiredMeterTypes: MeterType[];
+          electricityBillingMode:
+            | "ELECTRICITY_PER_KWH"
+            | "ELECTRICITY_PER_PERSON"
+            | "ELECTRICITY_PER_ROOM"
+            | null;
           waterBillingMode:
             | "WATER_PER_M3"
             | "WATER_PER_PERSON"
@@ -349,6 +370,7 @@ export class StaffMeteringService {
         electricity,
         water,
         requiredMeterTypes,
+        electricityBillingMode: row.electricity_billing_mode,
         waterBillingMode: row.water_billing_mode,
         complete,
         missingMeter
