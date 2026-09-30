@@ -3,8 +3,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
+import { CacheService } from "../cache/cache.service.js";
 import type { PoolClient, QueryResultRow } from "pg";
 import { CommercialPolicyService } from "../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -69,8 +71,33 @@ export class RenterPublicInvoiceService {
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
     private readonly commercialPolicy: CommercialPolicyService,
-    private readonly payments: RenterPaymentsService
-  ) {}
+    private readonly payments: RenterPaymentsService,
+    @Optional() private readonly cache?: CacheService
+  ) {
+    if (this.cache) {
+      this.cache.subscribe<{ tokenHash?: string }>(
+        "public_invoice_status_invalidated",
+        (msg) => {
+          if (msg?.tokenHash) {
+            this.statusCache.delete(msg.tokenHash);
+          } else {
+            this.statusCache.clear();
+          }
+        }
+      );
+    }
+  }
+
+  async invalidateStatus(tokenHash?: string) {
+    if (tokenHash) {
+      this.statusCache.delete(tokenHash);
+    } else {
+      this.statusCache.clear();
+    }
+    if (this.cache) {
+      await this.cache.publish("public_invoice_status_invalidated", { tokenHash });
+    }
+  }
 
   async issueAccess(principal: TenantPrincipal, invoiceId: string) {
     return this.db.withTransaction((client) =>

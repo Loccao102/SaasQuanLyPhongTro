@@ -23,7 +23,10 @@
     "lint": "eslint apps packages scripts",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "test:load": "node scripts/load-test.mjs",
+    "db:backup": "node scripts/backup-db.mjs",
+    "db:restore": "node scripts/restore-db.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.4",

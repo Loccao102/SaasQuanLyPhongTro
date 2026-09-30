@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
   Injectable,
   Logger,
@@ -18,7 +19,9 @@ export interface CacheStats {
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
+  private readonly localEmitter = new EventEmitter();
   private client: Redis | null = null;
+  private subscriber: Redis | null = null;
   private isConnected = false;
   private hits = 0;
   private misses = 0;
@@ -64,6 +67,20 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     if (this.client) {
       try {
         await this.client.connect();
+        try {
+          this.subscriber = this.client.duplicate();
+          await this.subscriber.connect();
+          this.subscriber.on("message", (channel: string, message: string) => {
+            try {
+              const parsed = JSON.parse(message);
+              this.localEmitter.emit(channel, parsed);
+            } catch {
+              this.localEmitter.emit(channel, message);
+            }
+          });
+        } catch (subErr) {
+          this.logger.warn(`Redis subscriber connection failed: ${subErr instanceof Error ? subErr.message : String(subErr)}`);
+        }
       } catch (err) {
         this.logger.warn(`Could not connect to Redis at startup (will operate without cache): ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -71,6 +88,13 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.subscriber) {
+      try {
+        await this.subscriber.quit();
+      } catch {
+        this.subscriber.disconnect();
+      }
+    }
     if (this.client) {
       try {
         await this.client.quit();
@@ -153,6 +177,34 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     const fresh = await fetcher();
     await this.set(key, fresh, ttlSeconds);
     return fresh;
+  }
+
+  async publish(channel: string, message: unknown): Promise<void> {
+    // Always notify local listeners immediately (zero latency)
+    this.localEmitter.emit(channel, message);
+
+    if (this.client && this.isConnected) {
+      try {
+        const serialized = JSON.stringify(message);
+        await this.client.publish(channel, serialized);
+      } catch (err) {
+        this.logger.warn(`Redis publish failed for ${channel}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  subscribe<T>(channel: string, listener: (message: T) => void): () => void {
+    this.localEmitter.on(channel, listener as (...args: unknown[]) => void);
+
+    if (this.subscriber && this.isConnected) {
+      this.subscriber.subscribe(channel).catch((err: unknown) => {
+        this.logger.warn(`Redis subscribe failed for ${channel}: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
+
+    return () => {
+      this.localEmitter.off(channel, listener as (...args: unknown[]) => void);
+    };
   }
 
   getStats(): CacheStats {
