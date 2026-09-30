@@ -12,6 +12,7 @@ test("worker role defaults to notification and accepts isolated billing roles", 
     resolveWorkerRole("billing_webhook"),
     "BILLING_WEBHOOK"
   );
+  assert.equal(resolveWorkerRole("dunning"), "DUNNING");
 });
 
 test("worker role rejects unknown processes", () => {

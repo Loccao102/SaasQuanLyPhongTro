@@ -10,9 +10,12 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards
 } from "@nestjs/common";
+import type { Response } from "express";
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
 import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type {
@@ -113,6 +116,38 @@ export class LeaseAdminController {
   @Get()
   list(@Req() request: TenantRequest) {
     return this.admin.list(this.principal(request));
+  }
+
+  @Get("residence-declaration-export")
+  async exportResidenceDeclaration(
+    @Req() request: TenantRequest,
+    @Res() res: Response,
+    @Query("propertyId") propertyId?: string,
+    @Query("format") format?: string
+  ) {
+    const result = await this.admin.exportTemporaryResidence(
+      this.principal(request),
+      { propertyId: propertyId ? propertyId.trim() : undefined }
+    );
+
+    if (format === "json") {
+      res.json({
+        total: result.total,
+        records: result.records
+      });
+      return;
+    }
+
+    const filename = `danh_sach_tam_tru_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    res.send(result.excelBuffer);
   }
 
   @Get(":leaseId")

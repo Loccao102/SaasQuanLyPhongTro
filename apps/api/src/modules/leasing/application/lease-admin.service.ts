@@ -15,6 +15,10 @@ import {
   normalizeIdempotencyKey
 } from "./idempotent-command.js";
 import { PostgresLeaseRepository } from "../infrastructure/postgres-lease-repository.js";
+import {
+  generateResidenceDeclarationExcel,
+  type TemporaryResidenceRecord
+} from "./residence-declaration.helper.js";
 
 type LeaseListRow = QueryResultRow & {
   id: string;
@@ -1441,5 +1445,113 @@ export class LeaseAdminService {
         changesSummary
       };
     });
+  }
+
+  async exportTemporaryResidence(
+    principal: TenantPrincipal,
+    filter?: { propertyId?: string }
+  ) {
+    const conditions = [
+      "res.organization_id = $1::uuid",
+      "l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')",
+      "(lr.left_on IS NULL OR lr.left_on >= CURRENT_DATE)"
+    ];
+    const values: unknown[] = [principal.organizationId];
+
+    if (filter?.propertyId) {
+      values.push(filter.propertyId);
+      conditions.push(`p.id = $${values.length}::uuid`);
+    }
+
+    const result = await this.db.query<{
+      full_name: string;
+      date_of_birth: string | null;
+      identity_document_type: string | null;
+      identity_document_number: string | null;
+      phone: string | null;
+      notes: string | null;
+      party_role: string;
+      joined_on: string;
+      planned_end_date: string | null;
+      lease_code: string;
+      room_code: string;
+      property_name: string;
+      address_line_1: string | null;
+      address_line_2: string | null;
+      ward: string | null;
+      district: string | null;
+      city: string | null;
+    }>(
+      `SELECT
+         res.full_name,
+         res.date_of_birth::text,
+         res.identity_document_type,
+         res.identity_document_number,
+         res.phone,
+         res.notes,
+         lr.party_role,
+         lr.joined_on::text,
+         l.planned_end_date::text,
+         l.lease_code,
+         r.room_code,
+         p.name AS property_name,
+         p.address_line_1,
+         p.address_line_2,
+         p.ward,
+         p.district,
+         p.city
+       FROM residents res
+       JOIN lease_residents lr
+         ON lr.organization_id = res.organization_id
+        AND lr.resident_id = res.id
+       JOIN leases l
+         ON l.organization_id = lr.organization_id
+        AND l.id = lr.lease_id
+       JOIN rooms r
+         ON r.organization_id = l.organization_id
+        AND r.id = l.room_id
+       JOIN properties p
+         ON p.organization_id = r.organization_id
+        AND p.id = r.property_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY p.name ASC, r.room_code ASC, lr.party_role ASC, res.full_name ASC`,
+      values
+    );
+
+    const records: TemporaryResidenceRecord[] = result.rows.map((row) => {
+      const addressParts = [
+        row.address_line_1,
+        row.address_line_2,
+        row.ward,
+        row.district,
+        row.city
+      ].filter((p): p is string => Boolean(p && p.trim()));
+
+      return {
+        fullName: row.full_name,
+        dateOfBirth: row.date_of_birth,
+        idNumber: row.identity_document_number,
+        phone: row.phone,
+        propertyName: row.property_name,
+        propertyAddress: addressParts.join(", ") || row.property_name,
+        roomCode: row.room_code,
+        partyRole: row.party_role,
+        joinedOn: row.joined_on,
+        plannedEndDate: row.planned_end_date,
+        leaseCode: row.lease_code,
+        notes: row.notes
+      };
+    });
+
+    const excelBuffer = generateResidenceDeclarationExcel(
+      records,
+      principal.organizationName
+    );
+
+    return {
+      records,
+      total: records.length,
+      excelBuffer
+    };
   }
 }

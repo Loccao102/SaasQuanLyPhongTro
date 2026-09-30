@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PlusOutlined, RightOutlined } from "@ant-design/icons";
+import { FileExcelOutlined, PlusOutlined, RightOutlined } from "@ant-design/icons";
 import { MetricCard, MoneyDisplay, PageHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../components/admin-shell";
+import { getSelectedOrganizationId } from "../../lib/admin-api-client";
 import {
   adminLeasesApi,
   type LeaseListResponse,
   type LeaseStatus
 } from "../../lib/admin-leases-api";
+import { ReservationsTab } from "./reservations-tab";
 
 function statusMeta(status: LeaseStatus) {
   switch (status) {
@@ -26,12 +28,40 @@ function statusMeta(status: LeaseStatus) {
 }
 
 export function LeasesClient() {
+  const [activeTab, setActiveTab] = useState<"LEASES" | "RESERVATIONS">("LEASES");
   const [data, setData] = useState<LeaseListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("CURRENT");
   const [propertyId, setPropertyId] = useState("ALL");
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExportTemporaryResidence() {
+    setExporting(true);
+    try {
+      const selectedProp = propertyId !== "ALL" ? "?propertyId=" + encodeURIComponent(propertyId) : "";
+      const orgId = getSelectedOrganizationId();
+      const res = await fetch("/api/admin/leases/residence-declaration-export" + selectedProp, {
+        credentials: "include",
+        headers: orgId ? { "x-organization-id": orgId } : {}
+      });
+      if (!res.ok) throw new Error("Không thể xuất danh sách tạm trú.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "danh_sach_tam_tru_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Có lỗi khi xuất file tạm trú.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,13 +135,50 @@ export function LeasesClient() {
         title="Quản lý hợp đồng thuê"
         description="Theo dõi hợp đồng hiện tại, lịch sử người thuê và các workflow kích hoạt / trả phòng theo đúng property scope."
         action={
-          <a className="primary-button" href="/leases/new">
-            <PlusOutlined aria-hidden="true" /> Tạo hợp đồng
-          </a>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void handleExportTemporaryResidence()}
+              disabled={exporting}
+            >
+              <FileExcelOutlined aria-hidden="true" /> {exporting ? "Đang xuất..." : "Xuất tạm trú (Công an)"}
+            </button>
+            <a className="primary-button" href="/leases/new">
+              <PlusOutlined aria-hidden="true" /> Tạo hợp đồng
+            </a>
+          </div>
         }
       />
 
-      {error ? (
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "20px",
+          borderBottom: "1px solid var(--color-border)",
+          paddingBottom: "12px"
+        }}
+      >
+        <button
+          type="button"
+          className={activeTab === "LEASES" ? "primary-button" : "secondary-button"}
+          onClick={() => setActiveTab("LEASES")}
+        >
+          Hợp đồng thuê ({data?.leases.length ?? 0})
+        </button>
+        <button
+          type="button"
+          className={activeTab === "RESERVATIONS" ? "primary-button" : "secondary-button"}
+          onClick={() => setActiveTab("RESERVATIONS")}
+        >
+          Đặt cọc giữ chỗ phòng
+        </button>
+      </div>
+
+      {activeTab === "RESERVATIONS" ? (
+        <ReservationsTab properties={properties} activePropertyId={propertyId} />
+      ) : error ? (
         <div className="admin-state admin-state--error">
           <strong>Không thể tải hợp đồng.</strong>
           <span>{error}</span>

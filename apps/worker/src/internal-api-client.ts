@@ -176,13 +176,32 @@ export class InternalWorkerApiClient {
     return this.request("/internal/billing/sweep", { limit });
   }
 
+  renterBillingReminderSweep(limit: number): Promise<{
+    scanned: number;
+    reminded: number;
+    skipped: number;
+    reminders: Array<{
+      invoiceId: string;
+      invoiceNumber: string;
+      roomCode: string;
+      recipientPhone: string;
+      recipientName: string | null;
+      tier: string;
+      remainingVnd: number;
+      dueDate: string;
+    }>;
+  }> {
+    return this.request("/internal/renter-billing/reminder-sweep", { limit });
+  }
+
   observabilityHeartbeat(input: {
     workerId: string;
     role:
       | "NOTIFICATION"
       | "BILLING"
       | "BILLING_WEBHOOK"
-      | "RENTER_PAYMENT_WEBHOOK";
+      | "RENTER_PAYMENT_WEBHOOK"
+      | "DUNNING";
     provider?: string | null;
     status: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPING";
     staleAfterSeconds: number;

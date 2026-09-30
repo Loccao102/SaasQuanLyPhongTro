@@ -15,6 +15,12 @@ export async function runBillingWorker(): Promise<void> {
     100,
     "BILLING_SWEEP_LIMIT"
   );
+  const dunningIntervalMs = positiveInteger(
+    process.env.DUNNING_SWEEP_INTERVAL_MS,
+    3_600_000,
+    "DUNNING_SWEEP_INTERVAL_MS"
+  );
+  let lastDunningAt = 0;
 
   if (sweepLimit > 500) {
     throw new Error("BILLING_SWEEP_LIMIT must be <= 500.");
@@ -104,6 +110,30 @@ export async function runBillingWorker(): Promise<void> {
           String(durationMs) +
           "\n"
       );
+
+      if (Date.now() - lastDunningAt >= dunningIntervalMs) {
+        lastDunningAt = Date.now();
+        try {
+          const dunningResult = await api.renterBillingReminderSweep(sweepLimit);
+          process.stdout.write(
+            "[billing-worker][dunning] scanned=" +
+              String(dunningResult.scanned) +
+              " reminded=" +
+              String(dunningResult.reminded) +
+              " skipped=" +
+              String(dunningResult.skipped) +
+              "\n"
+          );
+        } catch (dunningError) {
+          const dunningMsg =
+            dunningError instanceof Error
+              ? dunningError.message
+              : "Unknown dunning sweep error";
+          process.stderr.write(
+            "[billing-worker][dunning-error] " + dunningMsg + "\n"
+          );
+        }
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown billing worker error";

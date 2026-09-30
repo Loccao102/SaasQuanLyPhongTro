@@ -19,10 +19,42 @@ import {
   type OperatingExpense,
   type OperatingExpenseCategory
 } from "../../lib/admin-finances-api";
+import { FileExcelOutlined } from "@ant-design/icons";
+import * as XLSX from "xlsx";
 import {
   adminAssetsApi,
   type AdminAssetPropertySummary
 } from "../../lib/admin-assets-api";
+
+function getPresetPeriod(type: "THIS_MONTH" | "LAST_MONTH" | "THIS_QUARTER" | "THIS_YEAR") {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  if (type === "THIS_MONTH") {
+    return {
+      from: new Date(year, month, 1).toISOString().slice(0, 10),
+      to: new Date(year, month + 1, 0).toISOString().slice(0, 10)
+    };
+  }
+  if (type === "LAST_MONTH") {
+    return {
+      from: new Date(year, month - 1, 1).toISOString().slice(0, 10),
+      to: new Date(year, month, 0).toISOString().slice(0, 10)
+    };
+  }
+  if (type === "THIS_QUARTER") {
+    const qMonth = Math.floor(month / 3) * 3;
+    return {
+      from: new Date(year, qMonth, 1).toISOString().slice(0, 10),
+      to: new Date(year, qMonth + 3, 0).toISOString().slice(0, 10)
+    };
+  }
+  return {
+    from: `${year}-01-01`,
+    to: `${year}-12-31`
+  };
+}
 
 function formatVnd(amount: number) {
   return new Intl.NumberFormat("vi-VN", {
@@ -189,6 +221,89 @@ export function FinancesClient() {
     }
   }
 
+  function handleExportExcel() {
+    if (!summary) return;
+    const wb = XLSX.utils.book_new();
+
+    const propName = properties.find((p) => p.id === selectedPropertyId)?.name || "Toàn bộ cơ sở";
+    const pnlRows: (string | number)[][] = [
+      ["BÁO CÁO LỢI NHUẬN RÒNG & DÒNG TIỀN (P&L)"],
+      ["Cơ sở:", propName],
+      ["Kỳ báo cáo:", `Từ ${fromDate || "Đầu"} đến ${toDate || "Hiện tại"}`],
+      ["Ngày xuất:", new Date().toLocaleString("vi-VN")],
+      [],
+      ["CHỈ SỐ TÀI CHÍNH", "GIÁ TRỊ (VND)", "TỶ TRỌNG (%)"],
+      ["1. Tổng doanh thu thực thu", summary.totalIncomeVnd, "100%"],
+      [
+        "2. Tổng chi phí vận hành",
+        summary.totalExpenseVnd,
+        `${summary.totalIncomeVnd > 0 ? ((summary.totalExpenseVnd / summary.totalIncomeVnd) * 100).toFixed(1) : 0}%`
+      ],
+      [
+        "3. DÒNG TIỀN / LỢI NHUẬN RÒNG",
+        summary.netCashflowVnd,
+        `${summary.totalIncomeVnd > 0 ? ((summary.netCashflowVnd / summary.totalIncomeVnd) * 100).toFixed(1) : 0}%`
+      ],
+      [],
+      ["CHI TIẾT CHI PHÍ THEO DANH MỤC", "SỐ TIỀN (VND)", "TỶ LỆ TRÊN TỔNG CHI (%)"],
+      ...summary.categoryBreakdown.map((item) => {
+        const meta = expenseCategoryMeta(item.category);
+        const ratio =
+          summary.totalExpenseVnd > 0
+            ? ((item.totalVnd / summary.totalExpenseVnd) * 100).toFixed(1)
+            : "0";
+        return [meta.label, item.totalVnd, `${ratio}%`];
+      })
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(pnlRows);
+    wsSummary["!cols"] = [{ wch: 35 }, { wch: 22 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Tong_Quan_PNL");
+
+    const expenseRows: (string | number)[][] = [
+      ["DANH SÁCH CÁC KHOẢN CHI VẬN HÀNH"],
+      ["Ngày xuất:", new Date().toLocaleString("vi-VN")],
+      [],
+      [
+        "STT",
+        "Ngày chi",
+        "Cơ sở",
+        "Danh mục",
+        "Số tiền (VND)",
+        "Người nhận / Đối tác",
+        "Hình thức",
+        "Ghi chú",
+        "Người lập"
+      ],
+      ...expenses.map((exp, idx) => [
+        idx + 1,
+        exp.occurredAt.slice(0, 10),
+        exp.propertyName || "Chi phí chung",
+        expenseCategoryMeta(exp.category).label,
+        exp.amountVnd,
+        exp.paidTo || "-",
+        paymentMethodLabel(exp.paymentMethod),
+        exp.note || "-",
+        exp.createdByName || "-"
+      ])
+    ];
+    const wsExpenses = XLSX.utils.aoa_to_sheet(expenseRows);
+    wsExpenses["!cols"] = [
+      { wch: 6 },
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 30 },
+      { wch: 18 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsExpenses, "Danh_Sach_Khoan_Chi");
+
+    const fileName = `So_Quy_PNL_${fromDate || "all"}_${toDate || "all"}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }
+
   return (
     <AdminShell title="Sổ quỹ Thu - Chi Vận Hành" activeNav="Sổ quỹ Thu - Chi">
       <PageHeader
@@ -197,6 +312,14 @@ export function FinancesClient() {
         description="Theo dõi dòng tiền thu phòng, quản lý các khoản chi vận hành (bảo trì, điện nước, vệ sinh) và lợi nhuận ròng theo từng cơ sở."
         action={
           <div className="button-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleExportExcel}
+              disabled={!summary}
+            >
+              <FileExcelOutlined style={{ marginRight: 6 }} /> Xuất Excel Sổ Quỹ (P&L)
+            </button>
             <button
               className="primary-button"
               type="button"
@@ -224,6 +347,60 @@ export function FinancesClient() {
 
       {/* FILTER BAR */}
       <section className="panel" style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-secondary, #64748b)" }}>
+            Kỳ nhanh:
+          </span>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "auto" }}
+            onClick={() => {
+              const p = getPresetPeriod("THIS_MONTH");
+              setFromDate(p.from);
+              setToDate(p.to);
+            }}
+          >
+            Tháng này
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "auto" }}
+            onClick={() => {
+              const p = getPresetPeriod("LAST_MONTH");
+              setFromDate(p.from);
+              setToDate(p.to);
+            }}
+          >
+            Tháng trước
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "auto" }}
+            onClick={() => {
+              const p = getPresetPeriod("THIS_QUARTER");
+              setFromDate(p.from);
+              setToDate(p.to);
+            }}
+          >
+            Quý này
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "auto" }}
+            onClick={() => {
+              const p = getPresetPeriod("THIS_YEAR");
+              setFromDate(p.from);
+              setToDate(p.to);
+            }}
+          >
+            Năm nay
+          </button>
+        </div>
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
             <span style={{ fontWeight: 600 }}>Cơ sở</span>

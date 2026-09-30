@@ -507,3 +507,74 @@ export const adminLeasesApi = {
       { method: "POST", body: input }
     )
 };
+
+export type RoomReservation = {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  roomId: string;
+  roomCode: string;
+  prospectiveTenantName: string;
+  prospectiveTenantPhone: string;
+  prospectiveTenantIdNumber?: string | null;
+  depositAmountVnd: number;
+  reservedFrom: string;
+  reservedUntil: string;
+  expectedMoveInDate?: string | null;
+  expectedMonthlyRentVnd?: number | null;
+  status: "ACTIVE" | "CONVERTED_TO_LEASE" | "CANCELLED_REFUNDED" | "CANCELLED_FORFEITED" | "EXPIRED";
+  notes?: string | null;
+  createdAt: string;
+};
+
+export const adminReservationsApi = {
+  list(filter?: { propertyId?: string; roomId?: string; status?: string }) {
+    const params = new URLSearchParams();
+    if (filter?.propertyId) params.set("propertyId", filter.propertyId);
+    if (filter?.roomId) params.set("roomId", filter.roomId);
+    if (filter?.status) params.set("status", filter.status);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return adminApiRequest<{ reservations: RoomReservation[] }>(`/admin/reservations${qs}`);
+  },
+  create(input: {
+    propertyId: string;
+    roomId: string;
+    prospectiveTenantName: string;
+    prospectiveTenantPhone: string;
+    prospectiveTenantIdNumber?: string | null;
+    depositAmountVnd: number;
+    reservedFrom?: string;
+    reservedUntil: string;
+    expectedMoveInDate?: string | null;
+    expectedMonthlyRentVnd?: number | null;
+    notes?: string | null;
+  }) {
+    return adminApiRequest<{ id: string; status: string }>(`/admin/reservations`, {
+      method: "POST",
+      body: input
+    });
+  },
+  cancel(id: string, input: { action: "REFUND" | "FORFEIT"; reason?: string }) {
+    return adminApiRequest<{ id: string; status: string }>(
+      `/admin/reservations/${encodeURIComponent(id)}/cancel`,
+      {
+        method: "POST",
+        body: input
+      }
+    );
+  },
+  convertToLease(id: string) {
+    return adminApiRequest<{
+      id: string;
+      status: string;
+      roomId: string;
+      propertyId: string;
+      tenantName: string;
+      tenantPhone: string;
+      depositVnd: number;
+    }>(`/admin/reservations/${encodeURIComponent(id)}/convert-to-lease`, {
+      method: "POST"
+    });
+  }
+};
+

@@ -13,6 +13,8 @@ import { LeaseTerminationReadinessController } from "./application/lease-termina
 import { LeaseTerminationReadinessService } from "./application/lease-termination-readiness.service.js";
 import { LeaseVehiclesController } from "./application/lease-vehicles.controller.js";
 import { LeaseVehiclesService } from "./application/lease-vehicles.service.js";
+import { RoomReservationController } from "./application/room-reservation.controller.js";
+import { RoomReservationService } from "./application/room-reservation.service.js";
 
 @Module({
   imports: [DatabaseModule, IdentityModule, CommercialModule],
@@ -21,7 +23,8 @@ import { LeaseVehiclesService } from "./application/lease-vehicles.service.js";
     LeaseTerminationReadinessController,
     LeaseDraftManagementController,
     LeaseDepositController,
-    LeaseVehiclesController
+    LeaseVehiclesController,
+    RoomReservationController
   ],
   providers: [
     LeaseLifecycleApplicationService,
@@ -29,7 +32,8 @@ import { LeaseVehiclesService } from "./application/lease-vehicles.service.js";
     LeaseTerminationReadinessService,
     LeaseDraftManagementService,
     LeaseDepositService,
-    LeaseVehiclesService
+    LeaseVehiclesService,
+    RoomReservationService
   ],
   exports: [
     LeaseLifecycleApplicationService,
@@ -37,7 +41,8 @@ import { LeaseVehiclesService } from "./application/lease-vehicles.service.js";
     LeaseTerminationReadinessService,
     LeaseDraftManagementService,
     LeaseDepositService,
-    LeaseVehiclesService
+    LeaseVehiclesService,
+    RoomReservationService
   ]
 })
 export class LeasingModule {}

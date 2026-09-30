@@ -11,6 +11,9 @@ import { RenterPublicInvoiceController } from "./renter-public-invoice.controlle
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
 import { RenterInvoiceNotificationService } from "./renter-invoice-notification.service.js";
 import { NotificationsModule } from "../notifications/notifications.module.js";
+import { RenterBillingReminderService } from "./renter-billing-reminder.service.js";
+import { RenterBillingReminderInternalController } from "./renter-billing-reminder-internal.controller.js";
+import { InternalServiceGuard } from "../internal/internal-service.guard.js";
 
 @Module({
   imports: [
@@ -22,12 +25,22 @@ import { NotificationsModule } from "../notifications/notifications.module.js";
     RenterPaymentsModule,
     NotificationsModule
   ],
-  controllers: [RenterBillingController, RenterPublicInvoiceController],
+  controllers: [
+    RenterBillingController,
+    RenterPublicInvoiceController,
+    RenterBillingReminderInternalController
+  ],
   providers: [
+    InternalServiceGuard,
     RenterBillingService,
     RenterPublicInvoiceService,
-    RenterInvoiceNotificationService
+    RenterInvoiceNotificationService,
+    RenterBillingReminderService
   ],
-  exports: [RenterBillingService, RenterPublicInvoiceService]
+  exports: [
+    RenterBillingService,
+    RenterPublicInvoiceService,
+    RenterBillingReminderService
+  ]
 })
 export class RenterBillingModule {}

@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -19,6 +20,7 @@ import type {
 import { RenterBillingService } from "./renter-billing.service.js";
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
 import { RenterInvoiceNotificationService } from "./renter-invoice-notification.service.js";
+import { RenterBillingReminderService } from "./renter-billing-reminder.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -49,8 +51,34 @@ export class RenterBillingController {
   constructor(
     private readonly billing: RenterBillingService,
     private readonly publicInvoices: RenterPublicInvoiceService,
-    private readonly invoiceNotifications: RenterInvoiceNotificationService
+    private readonly invoiceNotifications: RenterInvoiceNotificationService,
+    private readonly reminders: RenterBillingReminderService
   ) {}
+
+  @Get("reminders")
+  listReminders(
+    @Req() request: TenantRequest,
+    @Query("invoiceId") invoiceId?: string,
+    @Query("limit") limit?: string
+  ) {
+    return this.reminders.listReminders(this.principal(request), {
+      invoiceId: invoiceId ? invoiceId.trim() : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+  }
+
+  @Post("invoices/:invoiceId/remind")
+  manualRemind(
+    @Req() request: TenantRequest,
+    @Param("invoiceId", new ParseUUIDPipe({ version: "4" })) invoiceId: string
+  ) {
+    return this.reminders.manualTriggerReminder(this.principal(request), invoiceId);
+  }
+
+  @Post("reminders/sweep")
+  manualSweepReminders() {
+    return this.reminders.sweepDueReminders(100);
+  }
 
   @Get()
   list(@Req() request: TenantRequest) {

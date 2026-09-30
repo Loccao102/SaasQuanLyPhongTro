@@ -1,5 +1,6 @@
 import { runBillingWebhookWorker } from "./billing-webhook-worker.js";
 import { runBillingWorker } from "./billing-worker.js";
+import { runDunningWorker } from "./dunning-worker.js";
 import { runNotificationWorker } from "./notification-worker.js";
 import { runRenterPaymentWebhookWorker } from "./renter-payment-webhook-worker.js";
 import { resolveWorkerRole } from "./worker-config.js";
@@ -9,6 +10,11 @@ async function main(): Promise<void> {
 
   if (role === "BILLING") {
     await runBillingWorker();
+    return;
+  }
+
+  if (role === "DUNNING") {
+    await runDunningWorker();
     return;
   }
 
