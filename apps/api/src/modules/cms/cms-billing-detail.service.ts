@@ -66,9 +66,275 @@ type InvoiceAuditRow = QueryResultRow & {
   reason: string;
 };
 
+export type CmsListInvoicesParams = {
+  status?: string;
+  plan?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type CmsInvoiceSummaryItem = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  subscriptionId: string;
+  planCode: string;
+  billingInterval: "MONTHLY" | "YEARLY";
+  periodStart: string;
+  periodEnd: string;
+  amountVnd: number;
+  paidAmountVnd: number;
+  remainingAmountVnd: number;
+  paymentReference: string;
+  status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  isOverdue: boolean;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  createdAt: string;
+};
+
+export type CmsInvoiceStatistics = {
+  totalRevenueVnd: number;
+  pendingRevenueVnd: number;
+  totalInvoicesCount: number;
+  paidInvoicesCount: number;
+  openInvoicesCount: number;
+  voidInvoicesCount: number;
+  monthlyRevenueVnd: number;
+  yearlyRevenueVnd: number;
+  planBreakdown: Array<{
+    planCode: string;
+    invoiceCount: number;
+    paidCount: number;
+    revenueVnd: number;
+  }>;
+  subscriptionDistribution: Array<{
+    planCode: string;
+    status: string;
+    count: number;
+  }>;
+};
+
+export type CmsListInvoicesResponse = {
+  items: CmsInvoiceSummaryItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  statistics: CmsInvoiceStatistics;
+};
+
 @Injectable()
 export class CmsBillingDetailService {
   constructor(private readonly db: DatabaseService) {}
+
+  async listInvoices(
+    principal: PlatformPrincipal,
+    params: CmsListInvoicesParams
+  ): Promise<CmsListInvoicesResponse> {
+    this.requireBillingRead(principal);
+
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(100, Math.max(1, params.limit ?? 20));
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = ["1=1"];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+
+    if (params.status && params.status !== "ALL") {
+      conditions.push(`i.status = $${paramIdx++}`);
+      values.push(params.status.toUpperCase());
+    }
+
+    if (params.plan && params.plan !== "ALL") {
+      conditions.push(`UPPER(p.code) = UPPER($${paramIdx++})`);
+      values.push(params.plan);
+    }
+
+    if (params.q && params.q.trim()) {
+      const searchPattern = `%${params.q.trim()}%`;
+      conditions.push(
+        `(o.name ILIKE $${paramIdx} OR o.slug ILIKE $${paramIdx} OR i.payment_reference ILIKE $${paramIdx} OR i.id::text ILIKE $${paramIdx})`
+      );
+      values.push(searchPattern);
+      paramIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countResult = await this.db.query<{ total: string }>(
+      `SELECT count(*)::text AS total
+       FROM saas_subscription_invoices i
+       JOIN organizations o ON o.id = i.organization_id
+       JOIN saas_plans p ON p.id = i.plan_id
+       WHERE ${whereClause}`,
+      values
+    );
+    const total = Number(countResult.rows[0]?.total ?? 0);
+
+    const itemsResult = await this.db.query<InvoiceDetailRow>(
+      `SELECT
+         i.id::text,
+         i.organization_id::text,
+         o.name AS organization_name,
+         o.slug AS organization_slug,
+         i.subscription_id::text,
+         i.plan_id::text,
+         i.plan_version_id::text,
+         p.code AS plan_code,
+         i.billing_interval,
+         i.period_start,
+         i.period_end,
+         i.amount_vnd::text,
+         i.payment_reference,
+         i.status,
+         i.issued_at,
+         i.due_at,
+         i.paid_at,
+         i.created_at,
+         i.updated_at,
+         COALESCE(alloc.paid_amount_vnd, 0)::text AS paid_amount_vnd,
+         GREATEST(
+           i.amount_vnd - COALESCE(alloc.paid_amount_vnd, 0),
+           0
+         )::text AS remaining_amount_vnd,
+         (
+           i.due_at <= now()
+           AND i.status IN ('OPEN', 'PARTIALLY_PAID')
+         ) AS is_overdue
+       FROM saas_subscription_invoices i
+       JOIN organizations o ON o.id = i.organization_id
+       JOIN saas_plans p ON p.id = i.plan_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(sum(a.amount_vnd), 0)::bigint AS paid_amount_vnd
+         FROM saas_subscription_payment_allocations a
+         JOIN saas_subscription_payments pay
+           ON pay.organization_id = a.organization_id
+          AND pay.id = a.payment_id
+         WHERE a.organization_id = i.organization_id
+           AND a.invoice_id = i.id
+           AND pay.status = 'SUCCEEDED'
+       ) alloc ON true
+       WHERE ${whereClause}
+       ORDER BY i.created_at DESC
+       LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+      [...values, limit, offset]
+    );
+
+    const [statsResult, planBreakdownResult, subDistributionResult] =
+      await Promise.all([
+        this.db.query<{
+          total_invoices: string;
+          paid_invoices: string;
+          open_invoices: string;
+          void_invoices: string;
+          total_revenue_vnd: string;
+          pending_revenue_vnd: string;
+          monthly_revenue_vnd: string;
+          yearly_revenue_vnd: string;
+        }>(
+          `SELECT
+             count(*)::text AS total_invoices,
+             count(*) FILTER (WHERE i.status = 'PAID')::text AS paid_invoices,
+             count(*) FILTER (WHERE i.status = 'OPEN')::text AS open_invoices,
+             count(*) FILTER (WHERE i.status = 'VOID')::text AS void_invoices,
+             COALESCE(sum(i.amount_vnd) FILTER (WHERE i.status = 'PAID'), 0)::text AS total_revenue_vnd,
+             COALESCE(sum(i.amount_vnd) FILTER (WHERE i.status = 'OPEN'), 0)::text AS pending_revenue_vnd,
+             COALESCE(sum(i.amount_vnd) FILTER (WHERE i.status = 'PAID' AND i.billing_interval = 'MONTHLY'), 0)::text AS monthly_revenue_vnd,
+             COALESCE(sum(i.amount_vnd) FILTER (WHERE i.status = 'PAID' AND i.billing_interval = 'YEARLY'), 0)::text AS yearly_revenue_vnd
+           FROM saas_subscription_invoices i`
+        ),
+        this.db.query<{
+          plan_code: string;
+          invoice_count: string;
+          paid_count: string;
+          revenue_vnd: string;
+        }>(
+          `SELECT
+             p.code AS plan_code,
+             count(i.id)::text AS invoice_count,
+             count(i.id) FILTER (WHERE i.status = 'PAID')::text AS paid_count,
+             COALESCE(sum(i.amount_vnd) FILTER (WHERE i.status = 'PAID'), 0)::text AS revenue_vnd
+           FROM saas_plans p
+           LEFT JOIN saas_subscription_invoices i ON i.plan_id = p.id
+           GROUP BY p.code
+           ORDER BY p.code ASC`
+        ),
+        this.db.query<{
+          plan_code: string;
+          status: string;
+          count: string;
+        }>(
+          `SELECT
+             p.code AS plan_code,
+             s.status,
+             count(*)::text AS count
+           FROM organization_subscriptions s
+           JOIN saas_plans p ON p.id = s.plan_id
+           GROUP BY p.code, s.status
+           ORDER BY p.code ASC, s.status ASC`
+        )
+      ]);
+
+    const statRow = statsResult.rows[0];
+
+    return {
+      items: itemsResult.rows.map((row) => ({
+        id: row.id,
+        organizationId: row.organization_id,
+        organizationName: row.organization_name,
+        organizationSlug: row.organization_slug,
+        subscriptionId: row.subscription_id,
+        planCode: row.plan_code,
+        billingInterval: row.billing_interval,
+        periodStart: row.period_start.toISOString(),
+        periodEnd: row.period_end.toISOString(),
+        amountVnd: Number(row.amount_vnd),
+        paidAmountVnd: Number(row.paid_amount_vnd),
+        remainingAmountVnd: Number(row.remaining_amount_vnd),
+        paymentReference: row.payment_reference,
+        status: row.status,
+        isOverdue: row.is_overdue,
+        issuedAt: row.issued_at.toISOString(),
+        dueAt: row.due_at.toISOString(),
+        paidAt: row.paid_at ? row.paid_at.toISOString() : null,
+        createdAt: row.created_at.toISOString()
+      })),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1
+      },
+      statistics: {
+        totalRevenueVnd: Number(statRow?.total_revenue_vnd ?? 0),
+        pendingRevenueVnd: Number(statRow?.pending_revenue_vnd ?? 0),
+        totalInvoicesCount: Number(statRow?.total_invoices ?? 0),
+        paidInvoicesCount: Number(statRow?.paid_invoices ?? 0),
+        openInvoicesCount: Number(statRow?.open_invoices ?? 0),
+        voidInvoicesCount: Number(statRow?.void_invoices ?? 0),
+        monthlyRevenueVnd: Number(statRow?.monthly_revenue_vnd ?? 0),
+        yearlyRevenueVnd: Number(statRow?.yearly_revenue_vnd ?? 0),
+        planBreakdown: planBreakdownResult.rows.map((r) => ({
+          planCode: r.plan_code,
+          invoiceCount: Number(r.invoice_count),
+          paidCount: Number(r.paid_count),
+          revenueVnd: Number(r.revenue_vnd)
+        })),
+        subscriptionDistribution: subDistributionResult.rows.map((r) => ({
+          planCode: r.plan_code,
+          status: r.status,
+          count: Number(r.count)
+        }))
+      }
+    };
+  }
 
   async getInvoiceDetail(
     principal: PlatformPrincipal,

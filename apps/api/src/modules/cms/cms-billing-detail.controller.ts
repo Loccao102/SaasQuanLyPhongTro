@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
   Req,
   UseGuards
 } from "@nestjs/common";
@@ -13,6 +14,24 @@ import type { CmsRequest, PlatformPrincipal } from "./cms.types.js";
 @UseGuards(CmsPlatformGuard)
 export class CmsBillingDetailController {
   constructor(private readonly billingDetail: CmsBillingDetailService) {}
+
+  @Get("invoices")
+  listInvoices(
+    @Req() request: CmsRequest,
+    @Query("status") status?: string,
+    @Query("plan") plan?: string,
+    @Query("q") query?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
+  ) {
+    return this.billingDetail.listInvoices(this.principal(request), {
+      status,
+      plan,
+      q: query,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+  }
 
   @Get("invoices/:invoiceId")
   getInvoiceDetail(

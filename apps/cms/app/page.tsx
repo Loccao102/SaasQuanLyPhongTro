@@ -39,6 +39,7 @@ import {
   type CmsTenantFeatureKey,
   type IntegrationStatus
 } from "../lib/cms-api";
+import { CmsSaasBillingPanel } from "../components/cms-saas-billing-panel";
 
 type View =
   | "dashboard"
@@ -235,6 +236,9 @@ export default function CmsPage() {
   const [jobsStatus, setJobsStatus] = useState<CmsJobsStatus | null>(null);
   const [billingReconciliation, setBillingReconciliation] =
     useState<CmsBillingReconciliation | null>(null);
+  const [billingTab, setBillingTab] = useState<
+    "subscriptions" | "reconciliation"
+  >("subscriptions");
   const [providerPaymentFilters, setProviderPaymentFilters] = useState({
     query: "",
     provider: "",
@@ -1918,8 +1922,45 @@ export default function CmsPage() {
 
           {!loading && view === "billing" && (
             <>
-              <section
-                className="cms-metrics"
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  borderBottom: "1px solid var(--color-border, #e2e8f0)",
+                  paddingBottom: "14px",
+                  marginBottom: "8px"
+                }}
+              >
+                <button
+                  type="button"
+                  className={
+                    billingTab === "subscriptions"
+                      ? "primary-button"
+                      : "secondary-button"
+                  }
+                  onClick={() => setBillingTab("subscriptions")}
+                >
+                  Đơn mua gói & Doanh thu SaaS
+                </button>
+                <button
+                  type="button"
+                  className={
+                    billingTab === "reconciliation"
+                      ? "primary-button"
+                      : "secondary-button"
+                  }
+                  onClick={() => setBillingTab("reconciliation")}
+                >
+                  Đối soát Provider & Webhooks
+                </button>
+              </div>
+
+              {billingTab === "subscriptions" ? (
+                <CmsSaasBillingPanel />
+              ) : (
+                <>
+                  <section
+                    className="cms-metrics"
                 aria-label="Billing webhook pipeline summary"
               >
                 <MetricCard
@@ -2919,6 +2960,8 @@ export default function CmsPage() {
                 )}
               </article>
             </section>
+                </>
+              )}
             </>
           )}
 

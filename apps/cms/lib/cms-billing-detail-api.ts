@@ -63,6 +63,69 @@ export type CmsInvoiceDetail = {
   }> | null;
 };
 
+export type CmsListInvoicesParams = {
+  status?: string;
+  plan?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type CmsInvoiceSummaryItem = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  subscriptionId: string;
+  planCode: string;
+  billingInterval: "MONTHLY" | "YEARLY";
+  periodStart: string;
+  periodEnd: string;
+  amountVnd: number;
+  paidAmountVnd: number;
+  remainingAmountVnd: number;
+  paymentReference: string;
+  status: "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  isOverdue: boolean;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  createdAt: string;
+};
+
+export type CmsInvoiceStatistics = {
+  totalRevenueVnd: number;
+  pendingRevenueVnd: number;
+  totalInvoicesCount: number;
+  paidInvoicesCount: number;
+  openInvoicesCount: number;
+  voidInvoicesCount: number;
+  monthlyRevenueVnd: number;
+  yearlyRevenueVnd: number;
+  planBreakdown: Array<{
+    planCode: string;
+    invoiceCount: number;
+    paidCount: number;
+    revenueVnd: number;
+  }>;
+  subscriptionDistribution: Array<{
+    planCode: string;
+    status: string;
+    count: number;
+  }>;
+};
+
+export type CmsListInvoicesResponse = {
+  items: CmsInvoiceSummaryItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  statistics: CmsInvoiceStatistics;
+};
+
 const apiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 
@@ -85,5 +148,15 @@ export const cmsBillingDetailApi = {
   getInvoice: (invoiceId: string) =>
     request<CmsInvoiceDetail>(
       "/invoices/" + encodeURIComponent(invoiceId)
-    )
+    ),
+  listInvoices: (params: CmsListInvoicesParams = {}) => {
+    const sp = new URLSearchParams();
+    if (params.status && params.status !== "ALL") sp.set("status", params.status);
+    if (params.plan && params.plan !== "ALL") sp.set("plan", params.plan);
+    if (params.q?.trim()) sp.set("q", params.q.trim());
+    if (params.page) sp.set("page", String(params.page));
+    if (params.limit) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<CmsListInvoicesResponse>("/invoices" + (qs ? "?" + qs : ""));
+  }
 };
