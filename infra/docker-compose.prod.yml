@@ -206,6 +206,20 @@ services:
       api:
         condition: service_started
 
+  staff:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.prod
+      target: staff
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
+    depends_on:
+      api:
+        condition: service_started
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -220,6 +234,7 @@ services:
     depends_on:
       - api
       - admin
+      - staff
       - cms
       - public-invoice
 

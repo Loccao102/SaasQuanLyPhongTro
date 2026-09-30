@@ -45,3 +45,11 @@ COPY --from=builder /app ./
 ENV NODE_ENV=production
 EXPOSE 3002
 CMD ["pnpm", "--filter", "@propops/public-invoice", "start", "-p", "3002"]
+
+# Target: Staff PWA
+FROM base AS staff
+WORKDIR /app
+COPY --from=builder /app ./
+ENV NODE_ENV=production
+EXPOSE 3001
+CMD ["pnpm", "--filter", "@propops/staff", "start", "-p", "3001"]

@@ -97,8 +97,12 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log("[db] apply idempotent development seed");
-  await pool.query(await readFile(devSeedPath, "utf8"));
+  if (process.env.NODE_ENV !== "production" || process.env.APPLY_DEV_SEED === "true") {
+    console.log("[db] apply idempotent development seed");
+    await pool.query(await readFile(devSeedPath, "utf8"));
+  } else {
+    console.log("[db] skipping development seed in production");
+  }
   console.log("[db] ready");
 }
 
