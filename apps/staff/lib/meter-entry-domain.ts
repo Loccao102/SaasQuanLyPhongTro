@@ -7,7 +7,7 @@ export function formatMeterValue(value: string | number): string {
 export function normalizeMeterInput(raw: string): string | null {
   const normalized = raw.trim().replace(",", ".");
   const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(normalized);
-  if (!match) return null;
+  if (!match || !match[1]) return null;
   const fraction = match[2]?.replace(/0+$/, "") ?? "";
   return fraction ? match[1] + "." + fraction : match[1];
 }
