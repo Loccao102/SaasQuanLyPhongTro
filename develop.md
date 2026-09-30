@@ -452,14 +452,14 @@ The renter billing foundation now implements:
 - tenant PaymentTransaction -> PaymentAllocation foundation;
 - partial-payment projection with paid / remaining / UNPAID / PARTIALLY_PAID / PAID;
 - idempotent manual reconciliation with overpayment blocking;
-- Admin manual-payment review/confirmation and allocation history.
+- Admin manual-payment review/confirmation and allocation history;
+- previous debt carry-forward policy (PREVIOUS_DEBT_CARRY_FORWARD_V1) with automatic net liability rollup, PREVIOUS_DEBT line snapshot, reactive draft recalculation on partial/full payment, and lease-termination non-double-counting.
 
 Still required for the full rental invoice domain:
 
 - WATER_PER_PERSON and other non-meter utility policy variants when demanded;
 - discounts;
 - adjustments;
-- previous debt carry-forward policy;
 - provider/webhook transaction ingestion and safe matching;
 - payment reversal/refund/correction policy;
 - void/correction policy.

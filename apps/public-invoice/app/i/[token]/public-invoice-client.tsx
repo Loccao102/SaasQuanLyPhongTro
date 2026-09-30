@@ -19,6 +19,9 @@ type PublicInvoice = {
   periodEnd: string;
   dueDate: string;
   issuedAt: string;
+  subtotalVnd?: number;
+  adjustmentVnd?: number;
+  previousBalanceVnd?: number;
   totalVnd: number;
   paidVnd: number;
   remainingVnd: number;
@@ -240,13 +243,18 @@ export function PublicInvoiceClient({ token }: { token: string }) {
           {data.lines.map((line, index) => (
             <div className="invoice-line" key={line.description + index}>
               <div>
-                <span>{line.description}</span>
+                <span style={line.type === "PREVIOUS_DEBT" ? { color: "#b91c1c", fontWeight: 600 } : undefined}>
+                  {line.description}
+                </span>
                 <small>
-                  {line.quantity} ×{" "}
-                  {new Intl.NumberFormat("vi-VN").format(line.unitPriceVnd)}đ
+                  {line.type === "PREVIOUS_DEBT"
+                    ? "Dư nợ các kỳ trước chưa thanh toán"
+                    : `${line.quantity} × ${new Intl.NumberFormat("vi-VN").format(line.unitPriceVnd)}đ`}
                 </small>
               </div>
-              <strong><MoneyDisplay amountVnd={line.amountVnd} /></strong>
+              <strong style={line.type === "PREVIOUS_DEBT" ? { color: "#b91c1c" } : undefined}>
+                <MoneyDisplay amountVnd={line.amountVnd} />
+              </strong>
             </div>
           ))}
           <div className="invoice-line invoice-line--total">

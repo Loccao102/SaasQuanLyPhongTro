@@ -30,6 +30,9 @@ type PublicInvoiceRow = QueryResultRow & {
   period_start: Date | string;
   period_end: Date | string;
   due_date: Date | string;
+  subtotal_vnd: string;
+  adjustment_vnd: string;
+  previous_balance_vnd: string;
   total_vnd: string;
   paid_vnd: string;
   remaining_vnd: string;
@@ -193,6 +196,9 @@ export class RenterPublicInvoiceService {
          i.period_start,
          i.period_end,
          i.due_date,
+         i.subtotal_vnd::text,
+         i.adjustment_vnd::text,
+         i.previous_balance_vnd::text,
          i.total_vnd::text,
          i.paid_vnd::text,
          i.remaining_vnd::text,
@@ -272,6 +278,9 @@ export class RenterPublicInvoiceService {
       periodEnd: this.dateOnly(row.period_end),
       dueDate: this.dateOnly(row.due_date),
       issuedAt: this.timestamp(row.issued_at),
+      subtotalVnd: Number(row.subtotal_vnd),
+      adjustmentVnd: Number(row.adjustment_vnd),
+      previousBalanceVnd: Number(row.previous_balance_vnd),
       totalVnd: Number(row.total_vnd),
       paidVnd: Number(row.paid_vnd),
       remainingVnd,

@@ -388,6 +388,14 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                       <span>Adjustment</span>
                       <strong><MoneyDisplay amountVnd={invoice.adjustmentVnd} /></strong>
                     </div>
+                    {invoice.previousBalanceVnd > 0 ? (
+                      <div>
+                        <span>Nợ cũ</span>
+                        <strong style={{ color: "var(--danger, #dc2626)" }}>
+                          <MoneyDisplay amountVnd={invoice.previousBalanceVnd} />
+                        </strong>
+                      </div>
+                    ) : null}
                     <div>
                       <span>Tổng</span>
                       <strong><MoneyDisplay amountVnd={invoice.totalVnd} /></strong>
@@ -406,10 +414,13 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                     {invoice.lines.map((line) => (
                       <div className="renter-invoice-line" key={line.id}>
                         <div>
-                          <strong>{line.description}</strong>
+                          <strong style={line.type === "PREVIOUS_DEBT" ? { color: "var(--danger, #dc2626)" } : undefined}>
+                            {line.description}
+                          </strong>
                           <span>
-                            {line.type} · {line.quantity} ×{" "}
-                            {new Intl.NumberFormat("vi-VN").format(line.unitPriceVnd)}
+                            {line.type === "PREVIOUS_DEBT"
+                              ? "Dư nợ các kỳ trước chuyển sang"
+                              : `${line.type} · ${line.quantity} × ${new Intl.NumberFormat("vi-VN").format(line.unitPriceVnd)}`}
                           </span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

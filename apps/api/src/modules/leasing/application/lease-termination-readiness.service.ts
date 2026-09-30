@@ -61,6 +61,9 @@ type TerminationInvoiceRow = QueryResultRow & {
   period_start: Date | string;
   period_end: Date | string;
   due_date: Date | string;
+  subtotal_vnd: string;
+  adjustment_vnd: string;
+  previous_balance_vnd: string;
   total_vnd: string;
   paid_vnd: string;
   remaining_vnd: string;
@@ -128,7 +131,11 @@ export async function syncLeaseTerminationFinancialReadiness(
          CASE
            WHEN count(i.id) = 0 THEN 'NOT_REQUIRED'
            WHEN count(i.id) FILTER (WHERE i.status = 'DRAFT') > 0 THEN 'PENDING'
-           WHEN coalesce(sum(i.remaining_vnd) FILTER (WHERE i.status = 'ISSUED'), 0) > 0 THEN 'PENDING'
+           WHEN greatest(
+             0,
+             coalesce(sum(i.subtotal_vnd + i.adjustment_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+             - coalesce(sum(i.paid_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+           ) > 0 THEN 'PENDING'
            ELSE 'READY'
          END AS next_readiness
        FROM target
@@ -448,7 +455,7 @@ export class LeaseTerminationReadinessService {
       [principal.organizationId, context.termination_id]
     );
 
-    const invoices = await this.db.query<TerminationInvoiceRow>(
+     const invoices = await this.db.query<TerminationInvoiceRow>(
       `SELECT
          id::text,
          invoice_number,
@@ -457,6 +464,9 @@ export class LeaseTerminationReadinessService {
          period_start,
          period_end,
          due_date,
+         subtotal_vnd::text,
+         adjustment_vnd::text,
+         previous_balance_vnd::text,
          total_vnd::text,
          paid_vnd::text,
          remaining_vnd::text
@@ -469,16 +479,23 @@ export class LeaseTerminationReadinessService {
 
     const nonVoidInvoices = invoices.rows.filter((inv) => inv.status !== "VOID");
     const totalInvoicedVnd = nonVoidInvoices.reduce(
-      (sum, inv) => sum + Number(inv.total_vnd),
+      (sum, inv) => sum + Number(inv.subtotal_vnd) + Number(inv.adjustment_vnd),
       0
     );
     const totalPaidVnd = nonVoidInvoices.reduce(
       (sum, inv) => sum + Number(inv.paid_vnd),
       0
     );
-    const outstandingDebtVnd = nonVoidInvoices
-      .filter((inv) => inv.status === "ISSUED")
-      .reduce((sum, inv) => sum + Number(inv.remaining_vnd), 0);
+    const issuedInvoices = nonVoidInvoices.filter((inv) => inv.status === "ISSUED");
+    const issuedInvoicedVnd = issuedInvoices.reduce(
+      (sum, inv) => sum + Number(inv.subtotal_vnd) + Number(inv.adjustment_vnd),
+      0
+    );
+    const issuedPaidVnd = issuedInvoices.reduce(
+      (sum, inv) => sum + Number(inv.paid_vnd),
+      0
+    );
+    const outstandingDebtVnd = Math.max(0, issuedInvoicedVnd - issuedPaidVnd);
     const hasDraftInvoices = nonVoidInvoices.some((inv) => inv.status === "DRAFT");
 
     const effectiveDate = refreshedContext.rows[0]?.effective_date

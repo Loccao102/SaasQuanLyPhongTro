@@ -591,7 +591,7 @@ export class RenterBillingService {
           `DELETE FROM renter_invoice_lines
            WHERE organization_id = $1::uuid
              AND invoice_id = $2::uuid
-             AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE')`,
+             AND line_type IN ('RENT', 'ELECTRICITY', 'WATER', 'SERVICE', 'PREVIOUS_DEBT')`,
           [principal.organizationId, invoiceId]
         );
 
@@ -622,6 +622,69 @@ export class RenterBillingService {
             })
           ]
         );
+
+        const priorDebtResult = await client.query<{ prior_unpaid_debt: string }>(
+          `SELECT
+             GREATEST(
+               0,
+               COALESCE(SUM(subtotal_vnd + adjustment_vnd), 0) - COALESCE(SUM(paid_vnd), 0)
+             )::text AS prior_unpaid_debt
+           FROM renter_invoices
+           WHERE organization_id = $1::uuid
+             AND lease_id = $2::uuid
+             AND status = 'ISSUED'
+             AND period_start < $3::date`,
+          [principal.organizationId, lease.id, cycle.periodStart]
+        );
+        const previousBalanceVnd = Math.round(
+          Number(priorDebtResult.rows[0]?.prior_unpaid_debt ?? "0")
+        );
+
+        if (previousBalanceVnd > 0) {
+          const priorInvoices = await client.query<{
+            id: string;
+            invoice_number: string;
+            period_start: string;
+            period_end: string;
+          }>(
+            `SELECT id::text, invoice_number, period_start::text, period_end::text
+             FROM renter_invoices
+             WHERE organization_id = $1::uuid
+               AND lease_id = $2::uuid
+               AND status = 'ISSUED'
+               AND period_start < $3::date
+             ORDER BY period_start ASC`,
+            [principal.organizationId, lease.id, cycle.periodStart]
+          );
+
+          await client.query(
+            `INSERT INTO renter_invoice_lines (
+               organization_id,
+               invoice_id,
+               line_type,
+               description,
+               quantity,
+               unit_price_vnd,
+               amount_vnd,
+               sort_order,
+               snapshot
+             )
+             VALUES (
+               $1, $2, 'PREVIOUS_DEBT', 'Nợ cũ kỳ trước chuyển sang', 1, $3, $3, 90, $4::jsonb
+             )`,
+            [
+              principal.organizationId,
+              invoiceId,
+              previousBalanceVnd,
+              JSON.stringify({
+                policy: "PREVIOUS_DEBT_CARRY_FORWARD_V1",
+                carriedDebtVnd: previousBalanceVnd,
+                sourceInvoiceIds: priorInvoices.rows.map((row) => row.id),
+                sourceInvoiceNumbers: priorInvoices.rows.map((row) => row.invoice_number)
+              })
+            ]
+          );
+        }
 
         const reviewReasons: Array<Record<string, unknown>> = [];
         if (!pricingPolicy) {
@@ -676,11 +739,12 @@ export class RenterBillingService {
           `UPDATE renter_invoices
            SET subtotal_vnd = $3::bigint,
                adjustment_vnd = $6::bigint,
-               total_vnd = $3::bigint + $6::bigint + previous_balance_vnd,
+               previous_balance_vnd = $7::bigint,
+               total_vnd = $3::bigint + $6::bigint + $7::bigint,
                paid_vnd = 0,
-               remaining_vnd = $3::bigint + $6::bigint + previous_balance_vnd,
+               remaining_vnd = $3::bigint + $6::bigint + $7::bigint,
                collection_status = CASE
-                 WHEN $3::bigint + $6::bigint + previous_balance_vnd = 0
+                 WHEN $3::bigint + $6::bigint + $7::bigint = 0
                    THEN 'PAID'
                  ELSE 'UNPAID'
                END,
@@ -697,7 +761,8 @@ export class RenterBillingService {
             subtotalVnd,
             calculationStatus,
             JSON.stringify(reviewReasons),
-            adjustmentVnd
+            adjustmentVnd,
+            previousBalanceVnd
           ]
         );
       }
@@ -715,7 +780,8 @@ export class RenterBillingService {
           partialLeaseCount,
           reviewRequiredInvoiceCount,
           rentPricingPolicy: "FULL_PERIOD_BASE_RENT_V1",
-          utilityPricingPolicyId: pricingPolicy?.id ?? null
+          utilityPricingPolicyId: pricingPolicy?.id ?? null,
+          previousDebtPolicy: "PREVIOUS_DEBT_CARRY_FORWARD_V1"
         }
       );
 

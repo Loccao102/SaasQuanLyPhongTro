@@ -218,7 +218,11 @@ export class PostgresLeaseRepository {
          SELECT
            count(i.id)::int AS invoice_count,
            count(i.id) FILTER (WHERE i.status = 'DRAFT')::int AS draft_count,
-           coalesce(sum(i.remaining_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)::bigint AS remaining_debt_vnd
+           greatest(
+             0,
+             coalesce(sum(i.subtotal_vnd + i.adjustment_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+             - coalesce(sum(i.paid_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+           )::bigint AS remaining_debt_vnd
          FROM renter_invoices i
          WHERE i.organization_id = $1::uuid
            AND i.lease_id = $2::uuid
@@ -326,7 +330,11 @@ export class PostgresLeaseRepository {
            CASE
              WHEN count(i.id) = 0 THEN 'NOT_REQUIRED'
              WHEN count(i.id) FILTER (WHERE i.status = 'DRAFT') > 0 THEN 'PENDING'
-             WHEN coalesce(sum(i.remaining_vnd) FILTER (WHERE i.status = 'ISSUED'), 0) > 0 THEN 'PENDING'
+             WHEN greatest(
+               0,
+               coalesce(sum(i.subtotal_vnd + i.adjustment_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+               - coalesce(sum(i.paid_vnd) FILTER (WHERE i.status = 'ISSUED'), 0)
+             ) > 0 THEN 'PENDING'
              ELSE 'READY'
            END AS current_financial_readiness
          FROM target t

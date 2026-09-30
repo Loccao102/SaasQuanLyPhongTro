@@ -480,11 +480,13 @@ export class ReportingService {
        debt AS (
          SELECT
            property_id,
-           COALESCE(SUM(remaining_vnd), 0)::text AS outstanding_debt_vnd
+           GREATEST(
+             0,
+             COALESCE(SUM(subtotal_vnd + adjustment_vnd), 0) - COALESCE(SUM(paid_vnd), 0)
+           )::text AS outstanding_debt_vnd
          FROM renter_invoices
          WHERE organization_id = $1::uuid
            AND status = 'ISSUED'
-           AND collection_status != 'PAID'
          GROUP BY property_id
        )
        SELECT

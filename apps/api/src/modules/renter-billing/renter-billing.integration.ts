@@ -545,3 +545,234 @@ test("renter billing snapshots rent, utilities and services and blocks incomplet
     await fixturePool.end();
   }
 });
+
+async function cleanupOrg(pool: Pool, orgId: string, uId: string) {
+  await pool.query("DELETE FROM renter_payment_allocations WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM renter_payment_transactions WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM renter_invoice_lines WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM renter_invoices WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM renter_billing_cycles WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM meter_readings WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM meters WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM pricing_policy_items WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM pricing_policies WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM lease_command_receipts WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM lease_terminations WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM lease_residents WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM leases WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM residents WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM audit_events WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM organization_entitlement_overrides WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM organization_subscriptions WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM organization_memberships WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM rooms WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM properties WHERE organization_id = $1", [orgId]);
+  await pool.query("DELETE FROM organizations WHERE id = $1", [orgId]);
+  await pool.query("DELETE FROM users WHERE id = $1", [uId]);
+}
+
+test("previous debt carry-forward policy rolls unpaid balance into next cycle and reactively clears upon payment", async () => {
+  const connectionString = process.env.DATABASE_URL;
+  assert.ok(connectionString, "DATABASE_URL must be set for integration test.");
+
+  const fixturePool = new Pool({ connectionString });
+  const database = new DatabaseService();
+  const accessControl = new AccessControlService();
+  const commercialPolicy = new CommercialPolicyService();
+  const pricing = new PricingService(database, accessControl, commercialPolicy);
+  const metering = new MeteringService(database, accessControl, commercialPolicy);
+  const service = new RenterBillingService(database, accessControl, commercialPolicy, pricing, metering);
+  const payments = new RenterPaymentsService(database, accessControl, commercialPolicy);
+
+  const orgId = "12000000-0000-4000-8000-000000000009";
+  const uId = "22000000-0000-4000-8000-000000000009";
+  const pId = "32000000-0000-4000-8000-000000000009";
+  const rId = "42000000-0000-4000-8000-000000000009";
+  const lId = "52000000-0000-4000-8000-000000000009";
+  const resId = "62000000-0000-4000-8000-000000000009";
+  const c1Id = "72000000-0000-4000-8000-000000000009";
+  const c2Id = "72000000-0000-4000-8000-00000000000a";
+  const polId = "91000000-0000-4000-8000-000000000009";
+
+  const p = (): TenantPrincipal => ({
+    userId: uId,
+    membershipId: "82000000-0000-4000-8000-000000000009",
+    organizationId: orgId,
+    organizationName: "Carry Forward Test Org",
+    role: "OWNER",
+    membership: {
+      organizationId: orgId,
+      role: "OWNER",
+      status: "ACTIVE",
+      scopes: [{ type: "ORGANIZATION" }]
+    }
+  });
+
+  try {
+    await cleanupOrg(fixturePool, orgId, uId);
+
+    await fixturePool.query(
+      `INSERT INTO users (id, email, display_name)
+       VALUES ($1, 'carry-forward-test@example.invalid', 'Carry Forward Test')`,
+      [uId]
+    );
+    await fixturePool.query(
+      `INSERT INTO organizations (id, slug, name, organization_type)
+       VALUES ($1, 'carry-forward-test', 'Carry Forward Test', 'INDIVIDUAL')`,
+      [orgId]
+    );
+    await fixturePool.query(
+      `INSERT INTO organization_subscriptions (
+         organization_id, plan_id, plan_version_id, status
+       )
+       SELECT $1, p.id, p.current_version_id, 'ACTIVE'
+       FROM saas_plans p
+       WHERE p.code = 'STARTER'`,
+      [orgId]
+    );
+    await fixturePool.query(
+      `INSERT INTO properties (id, organization_id, code, name, property_type)
+       VALUES ($1, $2, 'PROP-CF', 'Carry Forward Property', 'BOARDING_HOUSE')`,
+      [pId, orgId]
+    );
+    await fixturePool.query(
+      `INSERT INTO rooms (id, organization_id, property_id, code, name)
+       VALUES ($1, $2, $3, 'CF101', 'Room CF 101')`,
+      [rId, orgId, pId]
+    );
+    await fixturePool.query(
+      `INSERT INTO residents (id, organization_id, full_name, phone)
+       VALUES ($1, $2, 'Resident CF', '0909999999')`,
+      [resId, orgId]
+    );
+    await fixturePool.query(
+      `INSERT INTO leases (
+         id, organization_id, room_id, lease_code, status,
+         start_date, base_rent_vnd, deposit_required_vnd, billing_day
+       )
+       VALUES ($1, $2, $3, 'LEASE-CF-1', 'ACTIVE', '2026-08-01', 3000000, 3000000, 5)`,
+      [lId, orgId, rId]
+    );
+    await fixturePool.query(
+      `INSERT INTO lease_residents (organization_id, lease_id, resident_id, party_role, joined_on)
+       VALUES ($1, $2, $3, 'PRIMARY_TENANT', '2026-08-01')`,
+      [orgId, lId, resId]
+    );
+
+    // Create pricing policy
+    await pricing.createPolicy(p(), {
+      id: polId,
+      propertyId: pId,
+      name: "Standard CF Pricing",
+      effectiveFrom: "2026-08-01",
+      effectiveTo: null,
+      items: []
+    });
+
+    // 1. Create cycle 1 (August 2026)
+    await service.createCycle(p(), {
+      id: c1Id,
+      propertyId: pId,
+      code: "CF-2026-08",
+      periodStart: "2026-08-01",
+      periodEnd: "2026-08-31",
+      dueDate: "2026-09-05"
+    });
+
+    // Generate cycle 1 drafts
+    const c1Drafts = await service.generateRentDrafts(p(), c1Id);
+    assert.equal(c1Drafts.created, 1);
+    assert.equal(c1Drafts.eligibleLeaseCount, 1);
+    assert.equal(c1Drafts.reviewRequiredInvoiceCount, 0);
+
+    // Check cycle 1 invoice: previousBalance should be 0
+    const c1Detail = await service.detail(p(), c1Id);
+    assert.equal(c1Detail.invoices.length, 1);
+    const inv1 = c1Detail.invoices[0]!;
+    assert.equal(inv1.previousBalanceVnd, 0);
+    assert.equal(inv1.subtotalVnd, 3000000);
+    assert.equal(inv1.totalVnd, 3000000);
+    assert.equal(inv1.remainingVnd, 3000000);
+
+    // Finalize cycle 1 (ISSUED)
+    await service.finalizeCycle(p(), c1Id);
+
+    // 2. Create cycle 2 (September 2026) - Cycle 1 remains completely unpaid (remaining = 3,000,000)
+    await service.createCycle(p(), {
+      id: c2Id,
+      propertyId: pId,
+      code: "CF-2026-09",
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-30",
+      dueDate: "2026-10-05"
+    });
+
+    const c2Drafts = await service.generateRentDrafts(p(), c2Id);
+    assert.equal(c2Drafts.created, 1);
+
+    let c2Detail = await service.detail(p(), c2Id);
+    let inv2 = c2Detail.invoices[0]!;
+    assert.equal(inv2.previousBalanceVnd, 3000000, "Cycle 2 must carry forward 3,000,000 previous debt");
+    assert.equal(inv2.subtotalVnd, 3000000);
+    assert.equal(inv2.totalVnd, 6000000, "Total must be subtotal + previous balance");
+    assert.equal(inv2.remainingVnd, 6000000);
+
+    const prevDebtLine = inv2.lines.find((l) => l.type === "PREVIOUS_DEBT");
+    assert.ok(prevDebtLine, "Must have PREVIOUS_DEBT line item");
+    assert.equal(prevDebtLine.amountVnd, 3000000);
+    assert.equal(prevDebtLine.description, "Nợ cũ kỳ trước chuyển sang");
+
+    // 3. Partial payment of 1,000,000 on Cycle 1 invoice
+    await payments.createManualAllocation(p(), {
+      transactionId: "95000000-0000-4000-8000-000000000009",
+      allocationId: "96000000-0000-4000-8000-000000000009",
+      invoiceId: inv1.id,
+      amountVnd: 1000000,
+      occurredAt: "2026-09-02T10:00:00.000Z",
+      note: "Partial payment of cycle 1"
+    });
+
+    // Refresh Cycle 2 drafts
+    await service.generateRentDrafts(p(), c2Id);
+    c2Detail = await service.detail(p(), c2Id);
+    inv2 = c2Detail.invoices[0]!;
+    assert.equal(inv2.previousBalanceVnd, 2000000, "Previous balance should reactively update to 2,000,000");
+    assert.equal(inv2.totalVnd, 5000000);
+    assert.equal(inv2.remainingVnd, 5000000);
+
+    // 4. Pay remaining 2,000,000 on Cycle 1 invoice
+    await payments.createManualAllocation(p(), {
+      transactionId: "95000000-0000-4000-8000-00000000000a",
+      allocationId: "96000000-0000-4000-8000-00000000000a",
+      invoiceId: inv1.id,
+      amountVnd: 2000000,
+      occurredAt: "2026-09-03T10:00:00.000Z",
+      note: "Final payment of cycle 1"
+    });
+
+    // Refresh Cycle 2 drafts again
+    await service.generateRentDrafts(p(), c2Id);
+    c2Detail = await service.detail(p(), c2Id);
+    inv2 = c2Detail.invoices[0]!;
+    assert.equal(inv2.previousBalanceVnd, 0, "Previous balance should become 0 after full payment");
+    assert.equal(inv2.totalVnd, 3000000);
+    assert.equal(inv2.remainingVnd, 3000000);
+    assert.equal(inv2.lines.some((l) => l.type === "PREVIOUS_DEBT"), false, "PREVIOUS_DEBT line should be removed");
+
+    // Check audit event
+    const audits = await fixturePool.query<{ action: string; payload: Record<string, unknown> }>(
+      `SELECT action, payload
+       FROM audit_events
+       WHERE organization_id = $1
+         AND action = 'RENTER_RENT_DRAFTS_GENERATED'
+       ORDER BY occurred_at DESC
+       LIMIT 1`,
+      [orgId]
+    );
+    assert.equal(audits.rows[0]?.payload.previousDebtPolicy, "PREVIOUS_DEBT_CARRY_FORWARD_V1");
+  } finally {
+    await database.onModuleDestroy();
+    await cleanupOrg(fixturePool, orgId, uId);
+    await fixturePool.end();
+  }
+});
