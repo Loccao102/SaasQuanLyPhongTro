@@ -222,6 +222,10 @@ export function PublicInvoiceClient({ token }: { token: string }) {
 
   useEffect(() => {
     if (!data || invalid) return;
+    if (data.collectionStatus === "PAID") {
+      setLive(true);
+      return;
+    }
     const stream = new EventSource(
       apiBase + "/public/renter-invoices/" + encodedToken + "/events"
     );
@@ -234,6 +238,9 @@ export function PublicInvoiceClient({ token }: { token: string }) {
         collectionStatus: CollectionStatus;
         updatedAt: string;
       };
+      if (status.collectionStatus === "PAID") {
+        stream.close();
+      }
       setData((current) => {
         if (!current) return current;
         const nextPayment =

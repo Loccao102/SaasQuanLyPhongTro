@@ -63,11 +63,33 @@ export class DatabaseService implements OnModuleDestroy {
       );
     }
 
+    const connectionTimeoutMillis = Number(
+      process.env.DATABASE_CONNECT_TIMEOUT_MS ?? "5000"
+    );
+    const idleTimeoutMillis = Number(
+      process.env.DATABASE_IDLE_TIMEOUT_MS ?? "10000"
+    );
+    const statementTimeoutMs = Number(
+      process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? "15000"
+    );
+
     this.poolMax = max;
     this.slowOperationThresholdMs = slowOperationThresholdMs;
     this.pool = new Pool({
       connectionString,
-      max
+      max,
+      connectionTimeoutMillis:
+        Number.isFinite(connectionTimeoutMillis) && connectionTimeoutMillis > 0
+          ? connectionTimeoutMillis
+          : 5000,
+      idleTimeoutMillis:
+        Number.isFinite(idleTimeoutMillis) && idleTimeoutMillis > 0
+          ? idleTimeoutMillis
+          : 10000,
+      statement_timeout:
+        Number.isFinite(statementTimeoutMs) && statementTimeoutMs > 0
+          ? statementTimeoutMs
+          : 15000
     });
   }
 

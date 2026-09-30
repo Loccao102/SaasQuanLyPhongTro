@@ -52,6 +52,19 @@ type PublicLineRow = QueryResultRow & {
 
 @Injectable()
 export class RenterPublicInvoiceService {
+  private readonly statusCache = new Map<
+    string,
+    {
+      data: {
+        paidVnd: number;
+        remainingVnd: number;
+        collectionStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+        updatedAt: string;
+      };
+      expiresAt: number;
+    }
+  >();
+
   constructor(
     private readonly db: DatabaseService,
     private readonly accessControl: AccessControlService,
@@ -299,6 +312,12 @@ export class RenterPublicInvoiceService {
 
   async status(token: string) {
     const tokenHash = this.hashToken(this.requireToken(token));
+    const now = Date.now();
+    const cached = this.statusCache.get(tokenHash);
+    if (cached && now < cached.expiresAt) {
+      return cached.data;
+    }
+
     const result = await this.db.query<QueryResultRow & {
       paid_vnd: string;
       remaining_vnd: string;
@@ -325,12 +344,25 @@ export class RenterPublicInvoiceService {
     if (!row) {
       throw new NotFoundException("Public invoice link is invalid or no longer active.");
     }
-    return {
+    const data = {
       paidVnd: Number(row.paid_vnd),
       remainingVnd: Number(row.remaining_vnd),
       collectionStatus: row.collection_status,
       updatedAt: this.timestamp(row.updated_at)
     };
+
+    const ttlMs = data.collectionStatus === "PAID" ? 120000 : 2500;
+    this.statusCache.set(tokenHash, { data, expiresAt: now + ttlMs });
+
+    if (this.statusCache.size > 2000) {
+      for (const [key, entry] of this.statusCache.entries()) {
+        if (now >= entry.expiresAt) {
+          this.statusCache.delete(key);
+        }
+      }
+    }
+
+    return data;
   }
 
   async portal(token: string) {
