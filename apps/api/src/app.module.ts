@@ -15,6 +15,7 @@ import { RenterBillingModule } from "./modules/renter-billing/renter-billing.mod
 import { RenterPaymentsModule } from "./modules/renter-payments/renter-payments.module.js";
 import { FinancesModule } from "./modules/finances/finances.module.js";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module.js";
+import { TenantSubscriptionModule } from "./modules/commercial/tenant-subscription.module.js";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MaintenanceModule } from "./modules/maintenance/maintenance.module.js";
     FinancesModule,
     MaintenanceModule,
     CommercialModule,
+    TenantSubscriptionModule,
     IntegrationsModule,
     NotificationsModule,
     ObservabilityModule,

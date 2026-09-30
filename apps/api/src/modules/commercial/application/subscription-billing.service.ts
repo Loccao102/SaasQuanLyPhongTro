@@ -1898,6 +1898,9 @@ export class SubscriptionBillingService {
     await client.query(
       `UPDATE organization_subscriptions
        SET status = 'ACTIVE',
+           plan_id = $4,
+           plan_version_id = $5,
+           billing_interval = $6,
            current_period_start = $2,
            current_period_end = $3,
            trial_ends_at = NULL,
@@ -1906,7 +1909,14 @@ export class SubscriptionBillingService {
            version = version + 1,
            updated_at = now()
        WHERE organization_id = $1`,
-      [organizationId, invoice.period_start, invoice.period_end]
+      [
+        organizationId,
+        invoice.period_start,
+        invoice.period_end,
+        invoice.plan_id,
+        invoice.plan_version_id,
+        invoice.billing_interval
+      ]
     );
 
     await this.insertSystemAudit(client, {
