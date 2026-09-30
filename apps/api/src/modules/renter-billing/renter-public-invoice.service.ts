@@ -333,6 +333,193 @@ export class RenterPublicInvoiceService {
     };
   }
 
+  async portal(token: string) {
+    const tokenHash = this.hashToken(this.requireToken(token));
+    const invoiceRes = await this.db.query<QueryResultRow & {
+      organization_id: string;
+      room_id: string;
+      lease_id: string;
+      organization_name: string;
+      property_name: string;
+      room_code_snapshot: string;
+      invoice_number: string;
+      period_start: Date | string;
+      period_end: Date | string;
+      due_date: Date | string;
+      total_vnd: string;
+      paid_vnd: string;
+      remaining_vnd: string;
+      collection_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+    }>(
+      `SELECT
+         i.organization_id::text,
+         i.room_id::text,
+         i.lease_id::text,
+         o.name AS organization_name,
+         i.property_name_snapshot AS property_name,
+         i.room_code_snapshot,
+         i.invoice_number,
+         i.period_start,
+         i.period_end,
+         i.due_date,
+         i.total_vnd::text,
+         i.paid_vnd::text,
+         i.remaining_vnd::text,
+         i.collection_status
+       FROM renter_invoice_public_links link
+       JOIN renter_invoices i
+         ON i.organization_id = link.organization_id
+        AND i.id = link.invoice_id
+       JOIN organizations o
+         ON o.id = i.organization_id
+       WHERE link.token_hash = $1
+         AND link.status = 'ACTIVE'
+         AND (link.expires_at IS NULL OR link.expires_at > now())
+         AND i.status = 'ISSUED'
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    const inv = invoiceRes.rows[0];
+    if (!inv) {
+      throw new NotFoundException("Public invoice link is invalid or no longer active.");
+    }
+
+    const leaseRes = await this.db.query<QueryResultRow & {
+      lease_code: string;
+      lease_status: string;
+      start_date: Date | string;
+      planned_end_date: Date | string | null;
+      base_rent_vnd: string;
+      deposit_required_vnd: string;
+      billing_day: number;
+      resident_name: string | null;
+      resident_phone: string | null;
+    }>(
+      `SELECT
+         l.lease_code,
+         l.status AS lease_status,
+         l.start_date,
+         l.planned_end_date,
+         l.base_rent_vnd::text,
+         l.deposit_required_vnd::text,
+         l.billing_day,
+         r.full_name AS resident_name,
+         r.phone AS resident_phone
+       FROM leases l
+       LEFT JOIN lease_residents lr
+         ON lr.organization_id = l.organization_id
+        AND lr.lease_id = l.id
+        AND lr.party_role = 'PRIMARY_TENANT'
+       LEFT JOIN residents r
+         ON r.organization_id = lr.organization_id
+        AND r.id = lr.resident_id
+       WHERE l.organization_id = $1::uuid
+         AND l.id = $2::uuid
+       LIMIT 1`,
+      [inv.organization_id, inv.lease_id]
+    );
+    const leaseRow = leaseRes.rows[0];
+
+    const historyRes = await this.db.query<QueryResultRow & {
+      id: string;
+      invoice_number: string;
+      period_start: Date | string;
+      period_end: Date | string;
+      due_date: Date | string;
+      total_vnd: string;
+      paid_vnd: string;
+      remaining_vnd: string;
+      collection_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+      issued_at: Date | string;
+    }>(
+      `SELECT
+         id::text,
+         invoice_number,
+         period_start,
+         period_end,
+         due_date,
+         total_vnd::text,
+         paid_vnd::text,
+         remaining_vnd::text,
+         collection_status,
+         issued_at
+       FROM renter_invoices
+       WHERE organization_id = $1::uuid
+         AND room_id = $2::uuid
+         AND status = 'ISSUED'
+       ORDER BY period_end DESC
+       LIMIT 12`,
+      [inv.organization_id, inv.room_id]
+    );
+
+    const eqRes = await this.db.query<QueryResultRow & {
+      id: string;
+      name: string;
+      brand: string | null;
+      model_or_serial: string | null;
+      quantity: number;
+      condition_status: string;
+      note: string | null;
+    }>(
+      `SELECT
+         id::text,
+         name,
+         brand,
+         model_or_serial,
+         quantity,
+         condition_status,
+         note
+       FROM room_equipment
+       WHERE organization_id = $1::uuid
+         AND room_id = $2::uuid
+       ORDER BY name ASC`,
+      [inv.organization_id, inv.room_id]
+    );
+
+    return {
+      organizationName: inv.organization_name,
+      propertyName: inv.property_name,
+      roomCode: inv.room_code_snapshot,
+      lease: leaseRow
+        ? {
+            code: leaseRow.lease_code,
+            status: leaseRow.lease_status,
+            startDate: this.dateOnly(leaseRow.start_date),
+            plannedEndDate: leaseRow.planned_end_date ? this.dateOnly(leaseRow.planned_end_date) : null,
+            baseRentVnd: Number(leaseRow.base_rent_vnd),
+            depositVnd: Number(leaseRow.deposit_required_vnd),
+            billingDay: leaseRow.billing_day
+          }
+        : null,
+      primaryResident: {
+        fullName: leaseRow?.resident_name || null,
+        phone: leaseRow?.resident_phone || null
+      },
+      invoices: historyRes.rows.map((row) => ({
+        id: row.id,
+        invoiceNumber: row.invoice_number,
+        periodStart: this.dateOnly(row.period_start),
+        periodEnd: this.dateOnly(row.period_end),
+        dueDate: this.dateOnly(row.due_date),
+        totalVnd: Number(row.total_vnd),
+        paidVnd: Number(row.paid_vnd),
+        remainingVnd: Number(row.remaining_vnd),
+        collectionStatus: row.collection_status,
+        issuedAt: this.timestamp(row.issued_at)
+      })),
+      equipment: eqRes.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        brand: row.brand,
+        modelOrSerial: row.model_or_serial,
+        quantity: row.quantity,
+        conditionStatus: row.condition_status,
+        note: row.note
+      }))
+    };
+  }
+
   private async requireInvoiceManage(
     client: PoolClient,
     principal: TenantPrincipal,

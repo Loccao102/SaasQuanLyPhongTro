@@ -6,6 +6,9 @@ import {
   CloseOutlined,
   CopyOutlined,
   DownloadOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  HomeOutlined,
   MobileOutlined,
   PrinterOutlined,
   ToolOutlined
@@ -13,6 +16,46 @@ import {
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 
 type CollectionStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
+
+type PortalData = {
+  organizationName: string;
+  propertyName: string;
+  roomCode: string;
+  lease: {
+    code: string;
+    status: string;
+    startDate: string;
+    plannedEndDate: string | null;
+    baseRentVnd: number;
+    depositVnd: number;
+    billingDay: number;
+  } | null;
+  primaryResident: {
+    fullName: string | null;
+    phone: string | null;
+  } | null;
+  invoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    periodStart: string;
+    periodEnd: string;
+    dueDate: string;
+    totalVnd: number;
+    paidVnd: number;
+    remainingVnd: number;
+    collectionStatus: CollectionStatus;
+    issuedAt: string;
+  }>;
+  equipment: Array<{
+    id: string;
+    name: string;
+    brand: string | null;
+    modelOrSerial: string | null;
+    quantity: number;
+    conditionStatus: string;
+    note: string | null;
+  }>;
+};
 
 type PublicInvoice = {
   organizationName: string;
@@ -89,6 +132,26 @@ export function PublicInvoiceClient({ token }: { token: string }) {
   const [reporting, setReporting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"INVOICE" | "PORTAL">("INVOICE");
+  const [portalData, setPortalData] = useState<PortalData | null>(null);
+  const [loadingPortal, setLoadingPortal] = useState(false);
+
+  async function loadPortal() {
+    setLoadingPortal(true);
+    try {
+      const res = await fetch(apiBase + "/public/renter-invoices/" + encodedToken + "/portal", {
+        cache: "no-store"
+      });
+      if (res.ok) {
+        const p = (await res.json()) as PortalData;
+        setPortalData(p);
+      }
+    } catch {
+      // fallback
+    } finally {
+      setLoadingPortal(false);
+    }
+  }
 
   const encodedToken = useMemo(() => encodeURIComponent(token), [token]);
 
@@ -252,6 +315,153 @@ export function PublicInvoiceClient({ token }: { token: string }) {
   return (
     <main className="invoice-page">
       <article className="invoice-card">
+        <nav className="portal-tabs no-print" aria-label="Chuyển chế độ xem">
+          <button
+            type="button"
+            className={`portal-tab-btn ${activeTab === "INVOICE" ? "portal-tab-btn--active" : ""}`}
+            onClick={() => setActiveTab("INVOICE")}
+          >
+            <FileTextOutlined /> Hóa đơn kỳ này
+          </button>
+          <button
+            type="button"
+            className={`portal-tab-btn ${activeTab === "PORTAL" ? "portal-tab-btn--active" : ""}`}
+            onClick={() => {
+              setActiveTab("PORTAL");
+              if (!portalData && !loadingPortal) {
+                void loadPortal();
+              }
+            }}
+          >
+            <HomeOutlined /> Cổng cư dân & Tiện ích
+          </button>
+        </nav>
+
+        {activeTab === "PORTAL" ? (
+          <div>
+            <header className="invoice-header" style={{ marginBottom: "16px" }}>
+              <div>
+                <span className="invoice-kicker">CỔNG TRA CỨU CƯ DÂN</span>
+                <h1>Phòng {data.roomCode}</h1>
+                <p className="invoice-period">{data.propertyName}</p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "11px", color: "var(--color-text-muted)", display: "block" }}>Người thuê chính</span>
+                <strong style={{ fontSize: "14px", color: "var(--color-text)" }}>
+                  {portalData?.primaryResident?.fullName || "Khách thuê"}
+                </strong>
+                {portalData?.primaryResident?.phone ? (
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    {portalData.primaryResident.phone}
+                  </div>
+                ) : null}
+              </div>
+            </header>
+
+            {loadingPortal ? (
+              <div style={{ padding: "36px 0", textAlign: "center", color: "var(--color-text-muted)" }}>
+                Đang tải dữ liệu phòng & tiện ích…
+              </div>
+            ) : portalData ? (
+              <>
+                <section className="portal-section" aria-label="Thông tin hợp đồng">
+                  <h3><FileTextOutlined style={{ color: "var(--color-primary)" }} /> Hợp đồng thuê phòng</h3>
+                  {portalData.lease ? (
+                    <div className="portal-grid">
+                      <div className="portal-info-box">
+                        <span>Mã hợp đồng</span>
+                        <strong>{portalData.lease.code}</strong>
+                      </div>
+                      <div className="portal-info-box">
+                        <span>Giá thuê cơ bản</span>
+                        <strong><MoneyDisplay amountVnd={portalData.lease.baseRentVnd} /> / tháng</strong>
+                      </div>
+                      <div className="portal-info-box">
+                        <span>Tiền đặt cọc</span>
+                        <strong><MoneyDisplay amountVnd={portalData.lease.depositVnd} /></strong>
+                      </div>
+                      <div className="portal-info-box">
+                        <span>Thời hạn hợp đồng</span>
+                        <strong>
+                          {formatDateVi(portalData.lease.startDate)}
+                          {portalData.lease.plannedEndDate ? ` – ${formatDateVi(portalData.lease.plannedEndDate)}` : " (Lâu dài)"}
+                        </strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                      Hợp đồng chưa được lưu trên hệ thống hoặc đã hết hiệu lực.
+                    </p>
+                  )}
+                </section>
+
+                <section className="portal-section" aria-label="Lịch sử hóa đơn">
+                  <h3><HistoryOutlined style={{ color: "var(--color-primary)" }} /> Lịch sử hóa đơn tiền phòng</h3>
+                  {portalData.invoices && portalData.invoices.length > 0 ? (
+                    <div>
+                      {portalData.invoices.map((inv) => (
+                        <div className="history-item" key={inv.id}>
+                          <div>
+                            <strong style={{ display: "block" }}>{inv.invoiceNumber}</strong>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>
+                              Kỳ: {formatDateVi(inv.periodStart)} – {formatDateVi(inv.periodEnd)}
+                            </span>
+                          </div>
+                          <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                            <strong><MoneyDisplay amountVnd={inv.totalVnd} /></strong>
+                            <StatusBadge tone={tone(inv.collectionStatus)}>
+                              {label(inv.collectionStatus)}
+                            </StatusBadge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                      Chưa có hóa đơn nào khác ngoài kỳ hiện tại.
+                    </p>
+                  )}
+                </section>
+
+                <section className="portal-section" aria-label="Trang thiết bị phòng">
+                  <h3><CheckCircleOutlined style={{ color: "var(--color-primary)" }} /> Tiện nghi & Trang thiết bị</h3>
+                  {portalData.equipment && portalData.equipment.length > 0 ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {portalData.equipment.map((eq) => (
+                        <div className="equipment-badge" key={eq.id}>
+                          <span style={{ color: "#16a34a" }}>✓</span>
+                          <strong>{eq.name}</strong>
+                          {eq.quantity > 1 ? <span>(x{eq.quantity})</span> : null}
+                          {eq.brand ? <span style={{ color: "#64748b" }}>· {eq.brand}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                      Phòng đã được trang bị các tiện ích cơ bản theo thỏa thuận hợp đồng.
+                    </p>
+                  )}
+                </section>
+
+                <section className="portal-section no-print">
+                  <h3><ToolOutlined style={{ color: "var(--color-primary)" }} /> Hỗ trợ & Báo hỏng thiết bị</h3>
+                  <p style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "12px" }}>
+                    Nếu gặp sự cố điện, nước, internet hoặc hư hỏng thiết bị trong phòng, bạn có thể gửi yêu cầu trực tiếp tới quản lý.
+                  </p>
+                  <button
+                    type="button"
+                    className="pay-button"
+                    style={{ background: "#475569", minHeight: "44px" }}
+                    onClick={() => setShowReportModal(true)}
+                  >
+                    <ToolOutlined /> Báo hỏng / Gửi yêu cầu sửa chữa
+                  </button>
+                </section>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <>
         <header className="invoice-header">
           <div>
             <span className="invoice-kicker">
@@ -474,6 +684,9 @@ export function PublicInvoiceClient({ token }: { token: string }) {
             <ToolOutlined aria-hidden="true" /> Báo hỏng / Yêu cầu sửa chữa
           </button>
         </section>
+
+        </>
+        )}
 
         {showReportModal ? (
           <div

@@ -27,6 +27,15 @@ export class RenterPublicInvoiceController {
     return this.publicInvoices.detail(token);
   }
 
+  @Get(":token/portal")
+  async portal(
+    @Req() request: Request,
+    @Param("token") token: string
+  ) {
+    await this.security.assertPublicInvoiceAllowed(this.requestIp(request));
+    return this.publicInvoices.portal(token);
+  }
+
   @Sse(":token/events")
   events(
     @Req() request: Request,

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftOutlined, ArrowRightOutlined, CopyOutlined, ExportOutlined, PlusOutlined, PrinterOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowRightOutlined, BellOutlined, CopyOutlined, ExportOutlined, FileExcelOutlined, MessageOutlined, PlusOutlined, PrinterOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
+import { exportBillingCycleToExcel } from "../../../../lib/billing-excel-export";
 import {
   renterBillingApi,
   type RenterBillingDetailResponse
@@ -61,6 +62,30 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [notificationRequestKey, setNotificationRequestKey] =
     useState<string | null>(null);
   const [adjustingInvoiceId, setAdjustingInvoiceId] = useState<string | null>(null);
+  const [copiedReminderId, setCopiedReminderId] = useState<string | null>(null);
+
+  function handleCopyReminderText(invoice: RenterBillingDetailResponse["invoices"][number]) {
+    if (!data) return;
+    const money = new Intl.NumberFormat("vi-VN");
+    const activeUrl = issuedUrls[invoice.id] || issuedUrl;
+    const linkText = activeUrl ? `\n👉 Xem chi tiết & quét mã QR: ${activeUrl}` : "";
+    const bankInfo = data.paymentProfile
+      ? `\n💳 Chuyển khoản: ${data.paymentProfile.bankId} - STK: ${data.paymentProfile.accountNo} (${data.paymentProfile.accountName})\nNội dung: ${invoice.paymentReference}`
+      : "";
+
+    const text = [
+      `[HABI · THÔNG BÁO TIỀN PHÒNG]`,
+      `Kính gửi bạn ${invoice.primaryResidentName || "thuê phòng"},`,
+      `Habi xin gửi thông báo số tiền phòng ${invoice.room.code} (Kỳ ${data.cycle.code}):`,
+      `- Số tiền còn lại: ${money.format(invoice.remainingVnd)} VND`,
+      `- Hạn thanh toán: ${formatDateVi(data.cycle.dueDate)}${linkText}${bankInfo}`,
+      `Bạn vui lòng kiểm tra và thanh toán đúng hạn nhé. Xin cảm ơn bạn!`
+    ].join("\n");
+
+    navigator.clipboard.writeText(text);
+    setCopiedReminderId(invoice.id);
+    setTimeout(() => setCopiedReminderId(null), 2500);
+  }
   const [adjustmentType, setAdjustmentType] = useState<
     "DISCOUNT" | "SURCHARGE" | "COMPENSATION" | "OTHER"
   >("DISCOUNT");
@@ -312,14 +337,24 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                 {data.cycle.status}
               </StatusBadge>
               {data.invoices.length > 0 ? (
-                <a
-                  className="secondary-link-button"
-                  href={`/billing/cycles/${data.cycle.id}/print`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <PrinterOutlined style={{ marginRight: 6 }} /> In phiếu thu cả kỳ
-                </a>
+                <>
+                  <a
+                    className="secondary-link-button"
+                    href={`/billing/cycles/${data.cycle.id}/print`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <PrinterOutlined style={{ marginRight: 6 }} /> In phiếu thu cả kỳ
+                  </a>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => exportBillingCycleToExcel(data)}
+                    title="Xuất bảng kê chi tiết toàn bộ phòng ra file Microsoft Excel (.xlsx)"
+                  >
+                    <FileExcelOutlined style={{ marginRight: 6, color: "#16a34a" }} /> Xuất Excel
+                  </button>
+                </>
               ) : null}
               {data.cycle.status === "FINALIZED" ? (
                 <button
@@ -327,8 +362,14 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                   type="button"
                   disabled={notificationSaving}
                   onClick={() => void sendInvoiceNotifications()}
+                  title="Gửi thông báo hóa đơn tự động qua Zalo/SMS/Telegram tới các phòng còn nợ"
                 >
-                  {notificationSaving ? "Đang xếp hàng…" : "Gửi hóa đơn"}
+                  <BellOutlined style={{ marginRight: 6 }} />
+                  {notificationSaving
+                    ? "Đang xếp hàng…"
+                    : data.invoices.some((i) => i.remainingVnd > 0)
+                      ? `Nhắc nợ tự động (${data.invoices.filter((i) => i.remainingVnd > 0).length} phòng)`
+                      : "Gửi hóa đơn"}
                 </button>
               ) : null}
             </div>
@@ -546,6 +587,17 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                       >
                         <PrinterOutlined style={{ marginRight: 6 }} /> In phiếu thu
                       </a>
+                      {invoice.remainingVnd > 0 ? (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => handleCopyReminderText(invoice)}
+                          title="Sao chép tin nhắn nhắc nợ Zalo/SMS cho phòng này"
+                        >
+                          <MessageOutlined style={{ marginRight: 6, color: "#2563eb" }} />
+                          {copiedReminderId === invoice.id ? "Đã chép tin nhắn!" : "Nhắc nợ Zalo"}
+                        </button>
+                      ) : null}
                       <a
                         className="secondary-link-button"
                         href={

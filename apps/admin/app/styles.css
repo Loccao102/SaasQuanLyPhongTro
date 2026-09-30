@@ -670,6 +670,30 @@ body { background: var(--color-bg); }
   font-size: 14px;
 }
 
+.contract-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 20px 0;
+  font-size: 13px;
+}
+.contract-table th,
+.contract-table td {
+  border: 1px solid #374151;
+  padding: 6px 10px;
+  text-align: left;
+}
+.contract-table th {
+  background: #f3f4f6;
+  font-weight: 700;
+  text-align: center;
+}
+.contract-table td.center {
+  text-align: center;
+}
+.contract-table td.right {
+  text-align: right;
+}
+
 @media print {
   body {
     background: white !important;
@@ -687,6 +711,9 @@ body { background: var(--color-bg); }
     box-shadow: none !important;
     padding: 10mm 15mm !important;
     border-radius: 0 !important;
+  }
+  .contract-appendix {
+    page-break-before: always !important;
   }
   @page {
     size: A4 portrait;
