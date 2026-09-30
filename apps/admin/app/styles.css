@@ -1525,3 +1525,222 @@ textarea.form-input {
     justify-self: start;
   }
 }
+
+/* Metering Board & Quick Entry */
+.metering-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.metering-toolbar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.metering-toolbar__search {
+  position: relative;
+  min-width: 200px;
+}
+
+.metering-toolbar__search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.metering-toolbar__search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.metering-table-container {
+  overflow-x: auto;
+  margin-top: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.metering-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.metering-table th {
+  padding: 12px 14px;
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.metering-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border-soft, #f0f2f5);
+  vertical-align: middle;
+}
+
+.metering-table tr:hover td {
+  background: rgba(36, 87, 230, 0.02);
+}
+
+.metering-room-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.metering-room-cell strong {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.metering-room-cell span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.metering-input-group {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.metering-input-group .previous-value {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.metering-input-group input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.metering-input-group input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(36, 87, 230, 0.12);
+}
+
+.metering-input-group input.has-error {
+  border-color: var(--color-danger);
+  background: #fff8f8;
+}
+
+.metering-delta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #107569;
+  background: #e6f4f1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.metering-delta-tag.is-anomaly {
+  color: #b54708;
+  background: #fef0c7;
+}
+
+.metering-delta-tag.is-error {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.metering-batch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #eef4ff;
+  border: 1px solid #c7d7fe;
+  color: #1d2939;
+}
+
+.metering-billing-card {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.metering-billing-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metering-billing-card__header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.metering-billing-card__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.metering-billing-card__form label {
+  display: grid;
+  gap: 5px;
+}
+
+.metering-billing-card__form label span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.metering-billing-card__form input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+

@@ -382,6 +382,9 @@ The Staff offline-first baseline now implements:
 - explicit server/local conflict visibility without silent overwrite;
 - retry failed sync;
 - Admin property-level progress tracking;
+- Admin desktop meter entry board with room checklist, live consumption calculation, and anomaly warning;
+- Admin single-room and batch meter reading persistence with allowCorrection support and audit events;
+- direct bridge from completed/in-progress metering to Billing Cycle creation and automatic draft invoice generation;
 - membership scopes as the initial Staff assignment source.
 
 Still required for the expanded Staff operations layer:

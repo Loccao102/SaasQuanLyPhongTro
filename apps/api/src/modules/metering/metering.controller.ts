@@ -81,6 +81,20 @@ export class MeteringController {
     private readonly staffMetering: StaffMeteringService
   ) {}
 
+  @Get("checklist")
+  async checklist(
+    @Req() request: TenantRequest,
+    @Query("readingDate") readingDate: string | undefined
+  ) {
+    if (!readingDate) {
+      throw new BadRequestException("readingDate is required.");
+    }
+    return this.staffMetering.checklist(
+      this.principal(request),
+      readingDate
+    );
+  }
+
   @Get("progress")
   async progress(
     @Req() request: TenantRequest,
@@ -157,7 +171,36 @@ export class MeteringController {
       id: requiredUuid(input, "id"),
       readingDate: requiredString(input, "readingDate"),
       readingValue: decimalInput(input, "readingValue"),
-      source: (optionalString(input, "source") ?? "ADMIN") as MeterReadingSource
+      source: (optionalString(input, "source") ?? "ADMIN") as MeterReadingSource,
+      allowCorrection: optionalBoolean(input, "allowCorrection")
+    });
+  }
+
+  @Post("readings/batch")
+  batchAddReadings(
+    @Req() request: TenantRequest,
+    @Body() input: BodyInput
+  ) {
+    const readingDate = requiredString(input, "readingDate");
+    const rawReadings = input.readings;
+    if (!Array.isArray(rawReadings) || rawReadings.length === 0) {
+      throw new BadRequestException("readings must be a non-empty array.");
+    }
+    const readings = rawReadings.map((item, index) => {
+      if (typeof item !== "object" || item === null) {
+        throw new BadRequestException(`readings[${index}] must be an object.`);
+      }
+      const r = item as Record<string, unknown>;
+      return {
+        id: requiredUuid(r, "id"),
+        meterId: requiredUuid(r, "meterId"),
+        readingValue: decimalInput(r, "readingValue"),
+        allowCorrection: optionalBoolean(r, "allowCorrection") ?? true
+      };
+    });
+    return this.metering.batchAddReadings(this.principal(request), {
+      readingDate,
+      readings
     });
   }
 

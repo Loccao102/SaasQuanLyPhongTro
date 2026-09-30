@@ -376,7 +376,8 @@ export class MeteringService {
     };
   }
 
-  async addReading(
+  async addReadingWithClient(
+    client: PoolClient,
     principal: TenantPrincipal,
     meterId: string,
     input: {
@@ -384,6 +385,7 @@ export class MeteringService {
       readingDate: string;
       readingValue: string | number;
       source?: MeterReadingSource;
+      allowCorrection?: boolean;
     }
   ) {
     const readingDate = this.isoDate(input.readingDate, "readingDate");
@@ -393,53 +395,78 @@ export class MeteringService {
       throw new ConflictException("Unsupported meter reading source.");
     }
 
-    return this.db.withTransaction(async (client) => {
-      const meter = await this.requireMeterWithClient(
-        client,
-        principal,
-        meterId,
-        "meter.write"
-      );
-      if (!meter.is_active) {
-        throw new ConflictException("Cannot add a reading to an inactive meter.");
-      }
-      await this.commercialPolicy.assertTenantWriteAllowed(
-        client,
-        principal.organizationId
-      );
+    const meter = await this.requireMeterWithClient(
+      client,
+      principal,
+      meterId,
+      "meter.write"
+    );
+    if (!meter.is_active) {
+      throw new ConflictException("Cannot add a reading to an inactive meter.");
+    }
+    await this.commercialPolicy.assertTenantWriteAllowed(
+      client,
+      principal.organizationId
+    );
 
-      const existing = await client.query<ReadingRow>(
-        `SELECT
-           id::text,
-           meter_id::text,
-           reading_date,
-           reading_value::text,
-           source
-         FROM meter_readings
-         WHERE organization_id = $1::uuid
-           AND id = $2::uuid
-         LIMIT 1`,
-        [principal.organizationId, input.id]
-      );
-      const existingRow = existing.rows[0];
-      if (existingRow) {
-        if (
-          existingRow.meter_id !== meterId ||
-          this.dateOnly(existingRow.reading_date) !== readingDate ||
-          this.decimal3(existingRow.reading_value) !== readingValue ||
-          existingRow.source !== source
-        ) {
-          throw new ConflictException({
-            statusCode: 409,
-            code: "METER_READING_ID_CONFLICT",
-            message: "Meter reading id was already used with different data.",
-            serverReading: this.mapReading(existingRow)
-          });
-        }
-        return this.mapReading(existingRow);
+    const existing = await client.query<ReadingRow>(
+      `SELECT
+         id::text,
+         meter_id::text,
+         reading_date,
+         reading_value::text,
+         source
+       FROM meter_readings
+       WHERE organization_id = $1::uuid
+         AND id = $2::uuid
+       LIMIT 1`,
+      [principal.organizationId, input.id]
+    );
+    const existingRow = existing.rows[0];
+    if (existingRow) {
+      if (
+        existingRow.meter_id !== meterId ||
+        this.dateOnly(existingRow.reading_date) !== readingDate ||
+        this.decimal3(existingRow.reading_value) !== readingValue ||
+        existingRow.source !== source
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "METER_READING_ID_CONFLICT",
+          message: "Meter reading id was already used with different data.",
+          serverReading: this.mapReading(existingRow)
+        });
       }
+      return this.mapReading(existingRow);
+    }
 
-      const sameDate = await client.query<ReadingRow>(
+    const sameDate = await client.query<ReadingRow>(
+      `SELECT
+         id::text,
+         meter_id::text,
+         reading_date,
+         reading_value::text,
+         source
+       FROM meter_readings
+       WHERE organization_id = $1::uuid
+         AND meter_id = $2::uuid
+         AND reading_date = $3::date
+       ORDER BY id
+       LIMIT 1`,
+      [principal.organizationId, meterId, readingDate]
+    );
+    const sameDateRow = sameDate.rows[0];
+    if (sameDateRow && !input.allowCorrection) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "METER_READING_DATE_CONFLICT",
+        message: "A meter reading already exists for this date.",
+        serverReading: this.mapReading(sameDateRow)
+      });
+    }
+
+    const [previous, next] = await Promise.all([
+      client.query<ReadingRow>(
         `SELECT
            id::text,
            meter_id::text,
@@ -449,114 +476,86 @@ export class MeteringService {
          FROM meter_readings
          WHERE organization_id = $1::uuid
            AND meter_id = $2::uuid
-           AND reading_date = $3::date
-         ORDER BY id
+           AND reading_date < $3::date
+         ORDER BY reading_date DESC, id DESC
          LIMIT 1`,
         [principal.organizationId, meterId, readingDate]
-      );
-      const sameDateRow = sameDate.rows[0];
-      if (sameDateRow) {
-        throw new ConflictException({
-          statusCode: 409,
-          code: "METER_READING_DATE_CONFLICT",
-          message: "A meter reading already exists for this date.",
-          serverReading: this.mapReading(sameDateRow)
-        });
-      }
-
-      const [previous, next] = await Promise.all([
-        client.query<ReadingRow>(
-          `SELECT
-             id::text,
-             meter_id::text,
-             reading_date,
-             reading_value::text,
-             source
-           FROM meter_readings
-           WHERE organization_id = $1::uuid
-             AND meter_id = $2::uuid
-             AND reading_date < $3::date
-           ORDER BY reading_date DESC, id DESC
-           LIMIT 1`,
-          [principal.organizationId, meterId, readingDate]
-        ),
-        client.query<ReadingRow>(
-          `SELECT
-             id::text,
-             meter_id::text,
-             reading_date,
-             reading_value::text,
-             source
-           FROM meter_readings
-           WHERE organization_id = $1::uuid
-             AND meter_id = $2::uuid
-             AND reading_date > $3::date
-           ORDER BY reading_date ASC, id ASC
-           LIMIT 1`,
-          [principal.organizationId, meterId, readingDate]
-        )
-      ]);
-
-      const valueMilli = this.toMilli(readingValue);
-      const previousRow = previous.rows[0];
-      if (
-        previousRow &&
-        valueMilli < this.toMilli(this.decimal3(previousRow.reading_value))
-      ) {
-        throw new ConflictException({
-          statusCode: 409,
-          code: "METER_READING_BELOW_PREVIOUS",
-          message: "Meter reading cannot be lower than the previous reading.",
-          previousReading: this.mapReading(previousRow)
-        });
-      }
-      const nextRow = next.rows[0];
-      if (
-        nextRow &&
-        valueMilli > this.toMilli(this.decimal3(nextRow.reading_value))
-      ) {
-        throw new ConflictException({
-          statusCode: 409,
-          code: "METER_READING_ABOVE_NEXT",
-          message: "Meter reading cannot be higher than the next reading.",
-          nextReading: this.mapReading(nextRow)
-        });
-      }
-
-      await client.query(
-        `INSERT INTO meter_readings (
-           id,
-           organization_id,
-           meter_id,
+      ),
+      client.query<ReadingRow>(
+        `SELECT
+           id::text,
+           meter_id::text,
            reading_date,
-           reading_value,
-           source,
-           created_by_user_id
-         )
-         VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)`,
+           reading_value::text,
+           source
+         FROM meter_readings
+         WHERE organization_id = $1::uuid
+           AND meter_id = $2::uuid
+           AND reading_date > $3::date
+         ORDER BY reading_date ASC, id ASC
+         LIMIT 1`,
+        [principal.organizationId, meterId, readingDate]
+      )
+    ]);
+
+    const valueMilli = this.toMilli(readingValue);
+    const previousRow = previous.rows[0];
+    if (
+      previousRow &&
+      valueMilli < this.toMilli(this.decimal3(previousRow.reading_value))
+    ) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "METER_READING_BELOW_PREVIOUS",
+        message: "Meter reading cannot be lower than the previous reading.",
+        previousReading: this.mapReading(previousRow)
+      });
+    }
+    const nextRow = next.rows[0];
+    if (
+      nextRow &&
+      valueMilli > this.toMilli(this.decimal3(nextRow.reading_value))
+    ) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "METER_READING_ABOVE_NEXT",
+        message: "Meter reading cannot be higher than the next reading.",
+        nextReading: this.mapReading(nextRow)
+      });
+    }
+
+    if (sameDateRow && input.allowCorrection) {
+      if (this.decimal3(sameDateRow.reading_value) === readingValue) {
+        return this.mapReading(sameDateRow);
+      }
+      await client.query(
+        `UPDATE meter_readings
+         SET reading_value = $1::numeric,
+             source = $2,
+             created_by_user_id = $3
+         WHERE organization_id = $4::uuid
+           AND id = $5::uuid`,
         [
-          input.id,
-          principal.organizationId,
-          meterId,
-          readingDate,
           readingValue,
           source,
-          principal.userId
+          principal.userId,
+          principal.organizationId,
+          sameDateRow.id
         ]
       );
-
       await this.audit(
         client,
         principal,
-        "METER_READING_RECORDED",
+        "METER_READING_UPDATED",
         "METER_READING",
-        input.id,
+        sameDateRow.id,
         {
           meterId,
           roomId: meter.room_id,
           meterType: meter.meter_type,
           readingDate,
-          readingValue,
+          oldReadingValue: this.decimal3(sameDateRow.reading_value),
+          newReadingValue: readingValue,
           source
         }
       );
@@ -566,12 +565,121 @@ export class MeteringService {
         meter.room_id,
         "METER_READING_RECORDED"
       );
-
       return {
-        id: input.id,
+        id: sameDateRow.id,
         readingDate,
         readingValue,
         source
+      };
+    }
+
+    await client.query(
+      `INSERT INTO meter_readings (
+         id,
+         organization_id,
+         meter_id,
+         reading_date,
+         reading_value,
+         source,
+         created_by_user_id
+       )
+       VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)`,
+      [
+        input.id,
+        principal.organizationId,
+        meterId,
+        readingDate,
+        readingValue,
+        source,
+        principal.userId
+      ]
+    );
+
+    await this.audit(
+      client,
+      principal,
+      "METER_READING_RECORDED",
+      "METER_READING",
+      input.id,
+      {
+        meterId,
+        roomId: meter.room_id,
+        meterType: meter.meter_type,
+        readingDate,
+        readingValue,
+        source
+      }
+    );
+    await this.syncOpenTerminationMeterReadiness(
+      client,
+      principal,
+      meter.room_id,
+      "METER_READING_RECORDED"
+    );
+
+    return {
+      id: input.id,
+      readingDate,
+      readingValue,
+      source
+    };
+  }
+
+  async addReading(
+    principal: TenantPrincipal,
+    meterId: string,
+    input: {
+      id: string;
+      readingDate: string;
+      readingValue: string | number;
+      source?: MeterReadingSource;
+      allowCorrection?: boolean;
+    }
+  ) {
+    return this.db.withTransaction((client) =>
+      this.addReadingWithClient(client, principal, meterId, input)
+    );
+  }
+
+  async batchAddReadings(
+    principal: TenantPrincipal,
+    input: {
+      readingDate: string;
+      readings: Array<{
+        id: string;
+        meterId: string;
+        readingValue: string | number;
+        allowCorrection?: boolean;
+      }>;
+    }
+  ) {
+    const readingDate = this.isoDate(input.readingDate, "readingDate");
+    return this.db.withTransaction(async (client) => {
+      const results: Array<{
+        id: string;
+        readingDate: string;
+        readingValue: string;
+        source: MeterReadingSource;
+      }> = [];
+      for (const item of input.readings) {
+        const result = await this.addReadingWithClient(
+          client,
+          principal,
+          item.meterId,
+          {
+            id: item.id,
+            readingDate,
+            readingValue: item.readingValue,
+            source: "ADMIN",
+            allowCorrection: item.allowCorrection ?? true
+          }
+        );
+        results.push(result);
+      }
+      return {
+        readingDate,
+        savedCount: results.length,
+        readings: results
       };
     });
   }
