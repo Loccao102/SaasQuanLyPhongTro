@@ -44,6 +44,9 @@ export type LeaseDetailResponse = {
     version: number;
     createdAt: string;
     renewedFromLeaseId?: string | null;
+    signatureDataUrl?: string | null;
+    signedAt?: string | null;
+    signedByName?: string | null;
   };
   permissions: {
     manage: boolean;

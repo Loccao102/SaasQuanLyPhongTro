@@ -47,6 +47,9 @@ type LeaseDetailRow = LeaseListRow & {
   version: number;
   created_at: Date | string;
   renewed_from_lease_id: string | null;
+  signature_data_url: string | null;
+  signed_at: Date | string | null;
+  signed_by_name: string | null;
 };
 
 type PartyRow = QueryResultRow & {
@@ -260,6 +263,9 @@ export class LeaseAdminService {
          l.version,
          l.created_at,
          l.renewed_from_lease_id::text AS renewed_from_lease_id,
+         l.signature_data_url,
+         l.signed_at,
+         l.signed_by_name,
          r.id::text AS room_id,
          r.code AS room_code,
          r.name AS room_name,
@@ -303,6 +309,7 @@ export class LeaseAdminService {
          l.termination_effective_date, l.termination_reason,
          l.base_rent_vnd, l.deposit_required_vnd, l.billing_day,
          l.version, l.created_at, l.renewed_from_lease_id,
+         l.signature_data_url, l.signed_at, l.signed_by_name,
          r.id, r.code, r.name,
          p.id, p.code, p.name,
          primary_party.resident_id, primary_party.full_name, primary_party.phone
@@ -388,7 +395,10 @@ export class LeaseAdminService {
         terminationReason: row.termination_reason,
         version: row.version,
         createdAt: this.isoTimestamp(row.created_at),
-        renewedFromLeaseId: row.renewed_from_lease_id ?? null
+        renewedFromLeaseId: row.renewed_from_lease_id ?? null,
+        signatureDataUrl: row.signature_data_url ?? null,
+        signedAt: row.signed_at ? this.isoTimestamp(row.signed_at) : null,
+        signedByName: row.signed_by_name ?? null
       },
       permissions: {
         manage: this.accessControl.can(principal.membership, "lease.manage", {

@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import * as XLSX from "xlsx";
 import type { PoolClient, QueryResultRow } from "pg";
 import { CommercialPolicyService } from "../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -876,6 +879,49 @@ export class MeteringService {
     }
   }
 
+  private async requireProperty(
+    principal: TenantPrincipal,
+    propertyId: string,
+    permission: "meter.read" | "meter.write"
+  ) {
+    if (!roleHasPermission(principal.role, permission)) {
+      throw new ForbiddenException("Meter permission denied.");
+    }
+    const result = await this.db.query<{
+      id: string;
+      operational_group_ids: string[];
+    }>(
+      `SELECT
+         p.id::text,
+         COALESCE(
+           array_agg(DISTINCT pog.operational_group_id::text)
+             FILTER (WHERE pog.operational_group_id IS NOT NULL),
+           '{}'::text[]
+         ) AS operational_group_ids
+       FROM properties p
+       LEFT JOIN property_operational_groups pog
+         ON pog.organization_id = p.organization_id
+        AND pog.property_id = p.id
+       WHERE p.organization_id = $1::uuid
+         AND p.id = $2::uuid
+       GROUP BY p.id
+       LIMIT 1`,
+      [principal.organizationId, propertyId]
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException("Property was not found.");
+    if (
+      !this.accessControl.can(principal.membership, permission, {
+        organizationId: principal.organizationId,
+        propertyId: row.id,
+        operationalGroupIds: row.operational_group_ids
+      })
+    ) {
+      throw new ForbiddenException("Property scope denied.");
+    }
+    return row;
+  }
+
   private async requireMeter(
     principal: TenantPrincipal,
     meterId: string,
@@ -1146,5 +1192,244 @@ export class MeteringService {
         JSON.stringify(metadata)
       ]
     );
+  }
+
+  async generateExcelTemplate(
+    principal: TenantPrincipal,
+    propertyId: string,
+    readingDateStr: string
+  ): Promise<Buffer> {
+    if (!roleHasPermission(principal.role, "meter.read")) {
+      throw new ForbiddenException("Không có quyền xem chỉ số điện nước.");
+    }
+    await this.requireProperty(principal, propertyId, "meter.read");
+    const readingDate = this.isoDate(readingDateStr, "readingDate");
+
+    const queryRes = await this.db.query<{
+      floor_number: number;
+      room_code: string;
+      room_name: string;
+      meter_id: string;
+      meter_type: string;
+      meter_label: string | null;
+      previous_value: string | null;
+      previous_date: Date | string | null;
+    }>(
+      `SELECT
+         COALESCE(fl.floor_number, 1) AS floor_number,
+         rm.code AS room_code,
+         rm.name AS room_name,
+         m.id::text AS meter_id,
+         m.meter_type,
+         m.label AS meter_label,
+         prev.reading_value::text AS previous_value,
+         prev.reading_date AS previous_date
+       FROM rooms rm
+       LEFT JOIN floors fl
+         ON fl.organization_id = rm.organization_id
+        AND fl.id = rm.floor_id
+       JOIN meters m
+         ON m.organization_id = rm.organization_id
+        AND m.room_id = rm.id
+        AND m.is_active = true
+       LEFT JOIN LATERAL (
+         SELECT reading_value, reading_date
+         FROM meter_readings
+         WHERE organization_id = rm.organization_id
+           AND meter_id = m.id
+           AND reading_date < $3::date
+         ORDER BY reading_date DESC, created_at DESC
+         LIMIT 1
+       ) prev ON true
+       WHERE rm.organization_id = $1::uuid
+         AND rm.property_id = $2::uuid
+       ORDER BY COALESCE(fl.floor_number, 1) ASC, rm.code ASC, m.meter_type ASC`,
+      [principal.organizationId, propertyId, readingDate]
+    );
+
+    const wb = XLSX.utils.book_new();
+    const rows: (string | number)[][] = [
+      ["BẢNG KÊ NHẬP CHỈ SỐ ĐIỆN NƯỚC (EXCEL)"],
+      [`Ngày chốt chỉ số: ${readingDate}`],
+      ["Hướng dẫn: Nhập chỉ số mới vào cột 'Chỉ số mới'. Chỉ số mới phải lớn hơn hoặc bằng chỉ số kỳ trước."],
+      [],
+      [
+        "Tầng",
+        "Mã phòng",
+        "Tên phòng",
+        "Loại đồng hồ",
+        "Tên/Vị trí đồng hồ",
+        "Chỉ số cũ",
+        "Ngày chốt cũ",
+        "Chỉ số mới",
+        "Mã hệ thống (Không sửa)"
+      ]
+    ];
+
+    for (const r of queryRes.rows) {
+      const typeLabel = r.meter_type === "ELECTRICITY" ? "Điện (KWH)" : "Nước (m3)";
+      const prevVal = r.previous_value ? Number(r.previous_value) : 0;
+      const prevDate = r.previous_date
+        ? new Date(r.previous_date).toISOString().slice(0, 10)
+        : "";
+      rows.push([
+        r.floor_number,
+        r.room_code,
+        r.room_name,
+        typeLabel,
+        r.meter_label || "",
+        prevVal,
+        prevDate,
+        "", // User enters new reading here
+        r.meter_id
+      ]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [
+      { wch: 8 },  // Tầng
+      { wch: 12 }, // Mã phòng
+      { wch: 16 }, // Tên phòng
+      { wch: 16 }, // Loại đồng hồ
+      { wch: 20 }, // Tên đồng hồ
+      { wch: 14 }, // Chỉ số cũ
+      { wch: 14 }, // Ngày chốt cũ
+      { wch: 20 }, // Chỉ số mới
+      { wch: 38 }  // Mã hệ thống
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, "ChiSoDienNuoc");
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  async importFromExcel(
+    principal: TenantPrincipal,
+    propertyId: string,
+    readingDateStr: string,
+    fileBuffer: Buffer
+  ): Promise<{
+    totalRows: number;
+    importedCount: number;
+    warnings: string[];
+    errors: string[];
+  }> {
+    if (!roleHasPermission(principal.role, "meter.write")) {
+      throw new ForbiddenException("Không có quyền ghi chỉ số điện nước.");
+    }
+    await this.requireProperty(principal, propertyId, "meter.write");
+    const readingDate = this.isoDate(readingDateStr, "readingDate");
+
+    const wb = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException("File Excel không có sheet nào hợp lệ.");
+    }
+    const ws = wb.Sheets[sheetName]!;
+    const rows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1 });
+
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
+      const row = rows[i];
+      if (Array.isArray(row)) {
+        const text = row.join(" ").toLowerCase();
+        if (text.includes("mã hệ thống") || text.includes("chỉ số mới") || text.includes("mã đồng hồ")) {
+          headerIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (headerIndex === -1) {
+      throw new BadRequestException("Không tìm thấy dòng tiêu đề hợp lệ trong file Excel. Vui lòng dùng đúng file mẫu.");
+    }
+
+    const headers = rows[headerIndex]!.map((c) => String(c || "").trim().toLowerCase());
+    const meterIdCol = headers.findIndex((h) => h.includes("mã hệ thống") || h.includes("mã đồng hồ"));
+    const newReadingCol = headers.findIndex((h) => h.includes("chỉ số mới"));
+    const roomCodeCol = headers.findIndex((h) => h.includes("mã phòng"));
+    const prevReadingCol = headers.findIndex((h) => h.includes("chỉ số cũ"));
+
+    if (meterIdCol === -1 || newReadingCol === -1) {
+      throw new BadRequestException("File Excel thiếu cột 'Chỉ số mới' hoặc 'Mã hệ thống (Không sửa)'.");
+    }
+
+    const readingsToBatch: Array<{
+      id: string;
+      meterId: string;
+      readingValue: string | number;
+      allowCorrection: boolean;
+    }> = [];
+    const warnings: string[] = [];
+    const errors: string[] = [];
+    let dataRowCount = 0;
+
+    for (let i = headerIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!Array.isArray(row) || row.length === 0) continue;
+      const rawMeterId = String(row[meterIdCol] || "").trim();
+      const rawNewVal = row[newReadingCol];
+      const roomCode = roomCodeCol !== -1 ? String(row[roomCodeCol] || "").trim() : `Dòng ${i + 1}`;
+      const rawPrevVal = prevReadingCol !== -1 ? row[prevReadingCol] : null;
+
+      if (!rawMeterId) continue;
+      dataRowCount++;
+
+      if (rawNewVal === undefined || rawNewVal === null || String(rawNewVal).trim() === "") {
+        continue;
+      }
+
+      const numVal = Number(String(rawNewVal).replace(",", "."));
+      if (isNaN(numVal) || numVal < 0) {
+        errors.push(`Phòng ${roomCode}: Chỉ số mới '${rawNewVal}' không phải là số hợp lệ.`);
+        continue;
+      }
+
+      if (rawPrevVal !== null && rawPrevVal !== undefined && String(rawPrevVal).trim() !== "") {
+        const prevNum = Number(String(rawPrevVal).replace(",", "."));
+        if (!isNaN(prevNum) && numVal < prevNum) {
+          errors.push(`Phòng ${roomCode}: Chỉ số mới (${numVal}) nhỏ hơn chỉ số cũ (${prevNum}).`);
+          continue;
+        }
+        if (!isNaN(prevNum) && prevNum > 0 && numVal - prevNum > prevNum * 2.5) {
+          warnings.push(`Phòng ${roomCode}: Mức tiêu thụ (${(numVal - prevNum).toFixed(1)}) tăng hơn 2.5 lần so với kỳ trước.`);
+        }
+      }
+
+      readingsToBatch.push({
+        id: randomUUID(),
+        meterId: rawMeterId,
+        readingValue: numVal,
+        allowCorrection: true
+      });
+    }
+
+    if (errors.length > 0) {
+      return {
+        totalRows: dataRowCount,
+        importedCount: 0,
+        warnings,
+        errors
+      };
+    }
+
+    if (readingsToBatch.length === 0) {
+      return {
+        totalRows: dataRowCount,
+        importedCount: 0,
+        warnings: ["Không có chỉ số mới nào được điền trong file."],
+        errors: []
+      };
+    }
+
+    await this.batchAddReadings(principal, {
+      readingDate,
+      readings: readingsToBatch
+    });
+
+    return {
+      totalRows: dataRowCount,
+      importedCount: readingsToBatch.length,
+      warnings,
+      errors: []
+    };
   }
 }

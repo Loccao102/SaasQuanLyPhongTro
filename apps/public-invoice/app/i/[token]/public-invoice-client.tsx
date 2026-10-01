@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircleOutlined,
   CloseOutlined,
   CopyOutlined,
   DownloadOutlined,
+  EditOutlined,
   FileTextOutlined,
   HistoryOutlined,
   HomeOutlined,
@@ -16,6 +17,21 @@ import {
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 
 type CollectionStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
+
+type PublicMaintenanceTicket = {
+  id: string;
+  title: string;
+  category: string;
+  priority: string;
+  status: string;
+  description: string;
+  residentName: string;
+  residentPhone: string | null;
+  images: string[];
+  reportedAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+};
 
 type PortalData = {
   organizationName: string;
@@ -29,6 +45,9 @@ type PortalData = {
     baseRentVnd: number;
     depositVnd: number;
     billingDay: number;
+    signatureDataUrl?: string | null;
+    signedAt?: string | null;
+    signedByName?: string | null;
   } | null;
   primaryResident: {
     fullName: string | null;
@@ -135,6 +154,14 @@ export function PublicInvoiceClient({ token }: { token: string }) {
   const [activeTab, setActiveTab] = useState<"INVOICE" | "PORTAL">("INVOICE");
   const [portalData, setPortalData] = useState<PortalData | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
+  const [tickets, setTickets] = useState<PublicMaintenanceTicket[]>([]);
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
 
   async function loadPortal() {
     setLoadingPortal(true);
@@ -146,10 +173,103 @@ export function PublicInvoiceClient({ token }: { token: string }) {
         const p = (await res.json()) as PortalData;
         setPortalData(p);
       }
+      const ticketRes = await fetch(apiBase + "/public/maintenance/" + encodedToken, {
+        cache: "no-store"
+      });
+      if (ticketRes.ok) {
+        const tList = (await ticketRes.json()) as PublicMaintenanceTicket[];
+        setTickets(tList);
+      }
     } catch {
       // fallback
     } finally {
       setLoadingPortal(false);
+    }
+  }
+
+  function startDrawing(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = "touches" in e && e.touches.length > 0 ? e.touches[0] : null;
+    const clientX = touch ? touch.clientX : ("clientX" in e ? e.clientX : 0);
+    const clientY = touch ? touch.clientY : ("clientY" in e ? e.clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1e3a8a";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+    setHasDrawn(true);
+  }
+
+  function draw(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = "touches" in e && e.touches.length > 0 ? e.touches[0] : null;
+    const clientX = touch ? touch.clientX : ("clientX" in e ? e.clientX : 0);
+    const clientY = touch ? touch.clientY : ("clientY" in e ? e.clientY : 0);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+  function stopDrawing() {
+    setIsDrawing(false);
+  }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+  }
+
+  async function handleSignSubmit() {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasDrawn) {
+      setSignError("Vui lòng vẽ chữ ký của bạn vào khung trắng.");
+      return;
+    }
+    const name = (signerName || portalData?.primaryResident?.fullName || "").trim();
+    if (!name || name.length < 2) {
+      setSignError("Vui lòng nhập họ và tên người ký (tối thiểu 2 ký tự).");
+      return;
+    }
+    setSigning(true);
+    setSignError(null);
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      const res = await fetch(apiBase + "/public/renter-invoices/" + encodedToken + "/sign-lease", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signatureDataUrl: dataUrl,
+          signedByName: name
+        })
+      });
+      const body = (await res.json()) as { message?: string };
+      if (!res.ok) {
+        throw new Error(body.message || "Không thể lưu chữ ký điện tử.");
+      }
+      setShowSignModal(false);
+      void loadPortal();
+    } catch (err) {
+      setSignError(err instanceof Error ? err.message : "Có lỗi xảy ra khi ký hợp đồng.");
+    } finally {
+      setSigning(false);
     }
   }
 
@@ -394,6 +514,64 @@ export function PublicInvoiceClient({ token }: { token: string }) {
                           {portalData.lease.plannedEndDate ? ` – ${formatDateVi(portalData.lease.plannedEndDate)}` : " (Lâu dài)"}
                         </strong>
                       </div>
+                      {portalData.lease.signedAt ? (
+                        <div className="signature-box" style={{ gridColumn: "1 / -1", marginTop: "6px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                            <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
+                              ✓ ĐÃ KÝ ĐIỆN TỬ
+                            </span>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>
+                              {formatDateVi(portalData.lease.signedAt)}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#334155" }}>
+                            Người ký: <strong>{portalData.lease.signedByName || portalData.primaryResident?.fullName || "Khách thuê"}</strong>
+                          </div>
+                          {portalData.lease.signatureDataUrl ? (
+                            <div style={{ marginTop: "6px", background: "white", padding: "4px 8px", borderRadius: "6px", display: "inline-block", border: "1px solid #dcfce7" }}>
+                              <img
+                                src={portalData.lease.signatureDataUrl}
+                                alt="Chữ ký điện tử"
+                                style={{ maxHeight: "40px", maxWidth: "150px", display: "block" }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div style={{ gridColumn: "1 / -1", marginTop: "6px", padding: "10px 14px", background: "#f8fafc", borderRadius: "10px", border: "1px dashed #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                          <div>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block" }}>
+                              Chưa có chữ ký điện tử online
+                            </span>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>
+                              Xác nhận hợp đồng tiện lợi trực tiếp trên điện thoại
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="no-print"
+                            style={{
+                              padding: "6px 14px",
+                              background: "#0284c7",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px"
+                            }}
+                            onClick={() => {
+                              setSignerName(portalData.primaryResident?.fullName || "");
+                              setShowSignModal(true);
+                            }}
+                          >
+                            <EditOutlined /> Ký hợp đồng online
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
@@ -463,6 +641,33 @@ export function PublicInvoiceClient({ token }: { token: string }) {
                   >
                     <ToolOutlined /> Báo hỏng / Gửi yêu cầu sửa chữa
                   </button>
+
+                  {tickets && tickets.length > 0 ? (
+                    <div style={{ marginTop: "16px" }}>
+                      <h4 style={{ fontSize: "13px", fontWeight: 700, margin: "0 0 10px 0", color: "#334155" }}>
+                        Yêu cầu sự cố đã gửi ({tickets.length})
+                      </h4>
+                      {tickets.map((t) => (
+                        <div className="ticket-item" key={t.id}>
+                          <div className="ticket-header">
+                            <strong style={{ fontSize: "13px", color: "#1e293b" }}>{t.title}</strong>
+                            <StatusBadge tone={t.status === "RESOLVED" || t.status === "CLOSED" ? "success" : t.status === "IN_PROGRESS" ? "info" : "warning"}>
+                              {t.status === "OPEN" ? "Chờ xử lý" : t.status === "IN_PROGRESS" ? "Đang sửa" : t.status === "RESOLVED" ? "Đã giải quyết" : t.status === "CLOSED" ? "Đã đóng" : "Đã hủy"}
+                            </StatusBadge>
+                          </div>
+                          <p style={{ margin: "4px 0 6px 0", fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                            {t.description}
+                          </p>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "#94a3b8" }}>
+                            <span>Ngày báo: {formatDateVi(t.reportedAt)}</span>
+                            {t.resolutionNote ? (
+                              <span style={{ color: "#15803d", fontWeight: 600 }}>Ghi chú: {t.resolutionNote}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </section>
               </>
             ) : null}
@@ -867,6 +1072,135 @@ export function PublicInvoiceClient({ token }: { token: string }) {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        ) : null}
+
+        {showSignModal ? (
+          <div
+            className="no-print"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(15, 23, 42, 0.65)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px",
+              zIndex: 9999
+            }}
+          >
+            <div
+              style={{
+                background: "white",
+                borderRadius: "16px",
+                width: "min(100%, 460px)",
+                padding: "20px",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <h3 style={{ margin: 0, fontSize: "16px", color: "#1e293b", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <EditOutlined style={{ color: "#0284c7" }} /> Ký hợp đồng điện tử
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowSignModal(false)}
+                  style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
+                >
+                  <CloseOutlined />
+                </button>
+              </div>
+
+              <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#64748b", lineHeight: 1.5 }}>
+                Bằng việc ký tên bên dưới, bạn xác nhận đã đọc, hiểu và đồng ý với các điều khoản trong Hợp đồng thuê phòng <strong>{portalData?.lease?.code}</strong>.
+              </p>
+
+              {signError ? (
+                <div style={{ padding: "8px 12px", background: "#fef2f2", color: "#b91c1c", borderRadius: "8px", fontSize: "12px", marginBottom: "12px" }}>
+                  {signError}
+                </div>
+              ) : null}
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "12px" }}>
+                <span>Họ và tên người ký *</span>
+                <input
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="Nhập họ và tên của bạn"
+                  style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                />
+              </label>
+
+              <div style={{ marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Vẽ chữ ký tay (chạm hoặc rê chuột) *</span>
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    style={{ background: "none", border: "none", color: "#0284c7", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    Xóa vẽ lại
+                  </button>
+                </div>
+                <div className="signature-canvas-wrap">
+                  <canvas
+                    ref={canvasRef}
+                    width={400}
+                    height={140}
+                    style={{ width: "100%", height: "140px", display: "block" }}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                  />
+                </div>
+                <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginTop: "4px" }}>
+                  Chữ ký sẽ được lưu cùng dấu thời gian và địa chỉ IP để làm bằng chứng pháp lý.
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  disabled={signing}
+                  onClick={handleSignSubmit}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    background: "#0284c7",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  {signing ? "Đang lưu chữ ký..." : "Xác nhận & Hoàn tất ký"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSignModal(false)}
+                  style={{
+                    padding: "10px 14px",
+                    background: "#f1f5f9",
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "#475569",
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Hủy
+                </button>
+              </div>
             </div>
           </div>
         ) : null}

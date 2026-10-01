@@ -105,6 +105,13 @@ function featureBoolean(
   return false;
 }
 
+export type PolicyQueryClient = {
+  query<R extends QueryResultRow = any>(
+    text: string,
+    values?: any[]
+  ): Promise<{ rows: R[] }>;
+};
+
 @Injectable()
 export class CommercialPolicyService {
   async lockOrganizationForMutation(
@@ -125,7 +132,7 @@ export class CommercialPolicyService {
   }
 
   async loadPolicy(
-    client: PoolClient,
+    client: PolicyQueryClient,
     organizationId: string
   ): Promise<OrganizationCommercialPolicy> {
     const policyResult = await client.query<OrganizationPolicyRow>(

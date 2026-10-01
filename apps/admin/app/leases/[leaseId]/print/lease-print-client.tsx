@@ -300,8 +300,23 @@ export function LeasePrintClient({ leaseId }: { leaseId: string }) {
             <div className="sig-box">
               <span className="sig-title">ĐẠI DIỆN BÊN THUÊ (BÊN B)</span>
               <span className="sig-note">(Ký và ghi rõ họ tên)</span>
-              <div style={{ height: "70px" }} />
-              <span className="sig-name">{lease.primaryResident?.fullName ?? "—"}</span>
+              {lease.signatureDataUrl ? (
+                <div style={{ height: "70px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <img
+                    src={lease.signatureDataUrl}
+                    alt="Chữ ký Bên B"
+                    style={{ maxHeight: "55px", maxWidth: "160px", objectFit: "contain" }}
+                  />
+                  {lease.signedAt ? (
+                    <span style={{ fontSize: "10px", color: "#666" }}>
+                      Ký online: {formatDateVi(lease.signedAt)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ height: "70px" }} />
+              )}
+              <span className="sig-name">{lease.signedByName || lease.primaryResident?.fullName || "—"}</span>
             </div>
           </footer>
         </main>
@@ -434,8 +449,23 @@ export function LeasePrintClient({ leaseId }: { leaseId: string }) {
             <div className="sig-box">
               <span className="sig-title">ĐẠI DIỆN BÊN NHẬN (BÊN B)</span>
               <span className="sig-note">(Ký và ghi rõ họ tên)</span>
-              <div style={{ height: "70px" }} />
-              <span className="sig-name">{lease.primaryResident?.fullName ?? "—"}</span>
+              {lease.signatureDataUrl ? (
+                <div style={{ height: "70px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <img
+                    src={lease.signatureDataUrl}
+                    alt="Chữ ký Bên B"
+                    style={{ maxHeight: "55px", maxWidth: "160px", objectFit: "contain" }}
+                  />
+                  {lease.signedAt ? (
+                    <span style={{ fontSize: "10px", color: "#666" }}>
+                      Ký online: {formatDateVi(lease.signedAt)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ height: "70px" }} />
+              )}
+              <span className="sig-name">{lease.signedByName || lease.primaryResident?.fullName || "—"}</span>
             </div>
           </footer>
         </main>

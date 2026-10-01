@@ -9,7 +9,8 @@ import {
   PlusOutlined,
   CloseOutlined,
   EnvironmentOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
+  FileExcelOutlined
 } from "@ant-design/icons";
 import { MetricCard, StatusBadge } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
@@ -17,6 +18,7 @@ import {
   adminAssetsApi,
   type AdminPropertyDetail
 } from "../../../../lib/admin-assets-api";
+import { PropertyImportModal } from "../../property-import-modal";
 
 function occupancyTone(value: "OCCUPIED" | "VACANT") {
   return value === "OCCUPIED" ? ("success" as const) : ("warning" as const);
@@ -55,6 +57,7 @@ export function PropertyDetailClient({
   const [targetFloorIdForRoom, setTargetFloorIdForRoom] = useState<string>("");
   const [showAddFloorModal, setShowAddFloorModal] = useState(false);
   const [showEditPropertyModal, setShowEditPropertyModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingFloor, setEditingFloor] = useState<{
     id: string;
     code: string;
@@ -271,6 +274,18 @@ export function PropertyDetailClient({
                 title="Chỉnh sửa thông tin cơ sở"
               >
                 <SettingOutlined /> Sửa cơ sở
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setMutationError(null);
+                  setShowImportModal(true);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                title="Nhập phòng và thiết bị hàng loạt từ file Excel"
+              >
+                <FileExcelOutlined style={{ color: "#16a34a" }} /> Nhập từ Excel
               </button>
             </div>
           </section>
@@ -838,6 +853,21 @@ export function PropertyDetailClient({
                 </form>
               </div>
             </div>
+          ) : null}
+
+          {showImportModal && data ? (
+            <PropertyImportModal
+              targetProperty={{
+                id: data.property.id,
+                code: data.property.code,
+                name: data.property.name
+              }}
+              onClose={() => setShowImportModal(false)}
+              onSuccess={() => {
+                setShowImportModal(false);
+                void load();
+              }}
+            />
           ) : null}
         </>
       )}

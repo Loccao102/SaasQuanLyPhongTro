@@ -242,7 +242,10 @@ export const adminAssetsApi = {
 };
 
 export type PropertyImportPayload = {
-  property: {
+  mode?: "CREATE_NEW" | "EXISTING_PROPERTY";
+  targetPropertyId?: string;
+  autoCreateMeters?: boolean;
+  property?: {
     code: string;
     name: string;
     propertyType: "BOARDING_HOUSE" | "MINI_APARTMENT" | "APARTMENT" | "OTHER";
@@ -277,12 +280,16 @@ export type PropertyImportPayload = {
 export type PropertyImportValidationReport = {
   isValid: boolean;
   summary: {
+    isExistingProperty?: boolean;
     propertyCode: string;
     propertyName: string;
     propertyType: string;
     locationText: string;
     floorCount: number;
     roomCount: number;
+    newRoomCount?: number;
+    existingRoomCount?: number;
+    autoCreateMeters?: boolean;
     equipmentCount: number;
   };
   errors: Array<{
@@ -300,6 +307,9 @@ export type PropertyImportResult = {
   propertyName: string;
   floorCount: number;
   roomCount: number;
+  newRoomCount?: number;
+  existingRoomCount?: number;
+  metersCreatedCount?: number;
   equipmentCount: number;
   administrativeAreaId: string | null;
 };

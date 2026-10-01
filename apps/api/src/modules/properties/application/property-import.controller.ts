@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   Res,
   UseGuards
@@ -15,10 +16,7 @@ import type {
   TenantPrincipal,
   TenantRequest
 } from "../../identity/tenant-principal.js";
-import {
-  generatePropertyImportTemplateWorkbook,
-  type PropertyImportPayload
-} from "./excel-property.helper.js";
+import type { PropertyImportPayload } from "./excel-property.helper.js";
 import { PropertyImportService } from "./property-import.service.js";
 
 @RequireTenantFeature("properties")
@@ -28,15 +26,22 @@ export class PropertyImportController {
   constructor(private readonly importService: PropertyImportService) {}
 
   @Get("template")
-  getTemplate(@Res() res: Response) {
-    const buffer = generatePropertyImportTemplateWorkbook();
+  async getTemplate(
+    @Req() request: TenantRequest,
+    @Res() res: Response,
+    @Query("propertyId") propertyId?: string
+  ) {
+    const { buffer, filename } = await this.importService.generateTemplate(
+      this.principal(request),
+      propertyId
+    );
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="Mau_Nhap_Co_So_Phong_Tai_San.xlsx"'
+      `attachment; filename="${filename}"`
     );
     res.send(buffer);
   }

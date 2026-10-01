@@ -313,3 +313,161 @@ body { background: #eef0f3; }
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+
+/* Staff Top App Navigation Segmented Control */
+.staff-app-nav {
+  display: flex;
+  background: #e2e6eb;
+  padding: 4px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  gap: 4px;
+}
+.staff-app-nav button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #4e5b70;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.staff-app-nav button.active {
+  background: white;
+  color: var(--color-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Maintenance Cards & List */
+.maintenance-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: white;
+  box-shadow: var(--shadow-sm);
+}
+.maintenance-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.maintenance-card__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 750;
+  color: var(--color-text);
+}
+.maintenance-card__location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.maintenance-card__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  white-space: pre-wrap;
+}
+.maintenance-card__resident {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.maintenance-card__resident a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 700;
+}
+.maintenance-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.maintenance-action-btn {
+  flex: 1;
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.maintenance-action-btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+.maintenance-action-btn--success {
+  background: #059669;
+  border-color: #059669;
+  color: white;
+}
+
+/* Staff Modal */
+.staff-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+  padding: 0;
+}
+@media (min-width: 600px) {
+  .staff-modal-backdrop {
+    align-items: center;
+    padding: 16px;
+  }
+}
+.staff-modal {
+  width: 100%;
+  max-width: 500px;
+  background: white;
+  border-radius: 18px 18px 0 0;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 600px) {
+  .staff-modal {
+    border-radius: 16px;
+  }
+}
+.staff-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+.staff-modal__header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+

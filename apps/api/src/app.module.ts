@@ -17,6 +17,8 @@ import { FinancesModule } from "./modules/finances/finances.module.js";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module.js";
 import { TenantSubscriptionModule } from "./modules/commercial/tenant-subscription.module.js";
 
+import { StorageModule } from "./modules/storage/storage.module.js";
+
 @Module({
   imports: [
     CacheModule,
@@ -35,7 +37,8 @@ import { TenantSubscriptionModule } from "./modules/commercial/tenant-subscripti
     IntegrationsModule,
     NotificationsModule,
     ObservabilityModule,
-    CmsModule
+    CmsModule,
+    StorageModule
   ]
 })
 export class AppModule {}

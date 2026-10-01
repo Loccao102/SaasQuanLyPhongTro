@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   MessageEvent,
   Param,
+  Post,
   Req,
   Sse
 } from "@nestjs/common";
@@ -34,6 +36,20 @@ export class RenterPublicInvoiceController {
   ) {
     await this.security.assertPublicInvoiceAllowed(this.requestIp(request));
     return this.publicInvoices.portal(token);
+  }
+
+  @Post(":token/sign-lease")
+  async signLease(
+    @Req() request: Request,
+    @Param("token") token: string,
+    @Body() body: { signatureDataUrl: string; signedByName: string }
+  ) {
+    await this.security.assertPublicInvoiceAllowed(this.requestIp(request));
+    return this.publicInvoices.signLease(token, {
+      signatureDataUrl: body.signatureDataUrl,
+      signedByName: body.signedByName,
+      clientIp: this.requestIp(request)
+    });
   }
 
   @Sse(":token/events")

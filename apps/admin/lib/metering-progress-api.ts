@@ -133,5 +133,45 @@ export const meteringProgressApi = {
     }>("/readings/batch", {
       method: "POST",
       body: input
-    })
+    }),
+  downloadExcelTemplate: (propertyId: string, readingDate: string) =>
+    request<MeteringExcelTemplateResponse>(
+      "/properties/" + encodeURIComponent(propertyId) + "/excel-template?readingDate=" + encodeURIComponent(readingDate)
+    ),
+  importExcelReadings: (
+    propertyId: string,
+    input: { readingDate: string; fileBase64: string }
+  ) =>
+    request<MeteringExcelImportResponse>(
+      "/properties/" + encodeURIComponent(propertyId) + "/excel-import",
+      {
+        method: "POST",
+        body: input
+      }
+    )
+};
+
+export type MeteringExcelTemplateResponse = {
+  fileName: string;
+  base64: string;
+};
+
+export type MeteringExcelImportResponse = {
+  propertyId: string;
+  readingDate: string;
+  totalRows: number;
+  importedCount: number;
+  skippedCount: number;
+  errors: Array<{
+    row: number;
+    room?: string;
+    meter?: string;
+    message: string;
+  }>;
+  importedReadings: Array<{
+    meterId: string;
+    readingDate: string;
+    readingValue: string;
+    unit: string;
+  }>;
 };

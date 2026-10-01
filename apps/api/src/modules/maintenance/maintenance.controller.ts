@@ -84,6 +84,17 @@ export class PublicMaintenanceController {
     private readonly security: AuthSecurityService
   ) {}
 
+  @Get(":token")
+  async listPublic(
+    @Req() request: Request,
+    @Param("token") token: string
+  ) {
+    await this.security.assertPublicMaintenanceAllowed(
+      request.ip || request.socket.remoteAddress || "unknown"
+    );
+    return this.service.listForPublicInvoice(token);
+  }
+
   @Post(":token")
   async createPublic(
     @Req() request: Request,

@@ -9,8 +9,10 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards
 } from "@nestjs/common";
+import type { Response } from "express";
 import { TenantPrincipalGuard } from "../identity/tenant-principal.guard.js";
 import { RequireTenantFeature } from "../identity/tenant-feature.js";
 import type {
@@ -202,6 +204,50 @@ export class MeteringController {
       readingDate,
       readings
     });
+  }
+
+  @Get("properties/:propertyId/excel-template")
+  async exportExcelTemplate(
+    @Req() request: TenantRequest,
+    @Res() res: Response,
+    @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string,
+    @Query("readingDate") readingDate: string | undefined
+  ) {
+    if (!readingDate) {
+      throw new BadRequestException("readingDate is required.");
+    }
+    const buffer = await this.metering.generateExcelTemplate(
+      this.principal(request),
+      propertyId,
+      readingDate
+    );
+    const filename = `mau_nhap_dien_nuoc_${readingDate}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    res.send(buffer);
+  }
+
+  @Post("properties/:propertyId/excel-import")
+  async importExcel(
+    @Req() request: TenantRequest,
+    @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string,
+    @Body() input: BodyInput
+  ) {
+    const readingDate = requiredString(input, "readingDate");
+    const fileBase64 = requiredString(input, "fileBase64");
+    const buffer = Buffer.from(fileBase64, "base64");
+    return this.metering.importFromExcel(
+      this.principal(request),
+      propertyId,
+      readingDate,
+      buffer
+    );
   }
 
   private principal(request: TenantRequest): TenantPrincipal {

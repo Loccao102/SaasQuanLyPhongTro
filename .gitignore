@@ -11,3 +11,5 @@ coverage
 
 .runtime-secrets/
 *.tsbuildinfo
+
+data/

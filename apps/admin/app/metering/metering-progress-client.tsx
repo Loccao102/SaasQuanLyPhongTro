@@ -7,10 +7,13 @@ import {
   CalculatorOutlined,
   CheckCircleOutlined,
   CloseOutlined,
+  DownloadOutlined,
+  FileExcelOutlined,
   ReloadOutlined,
   SaveOutlined,
   SearchOutlined,
   ThunderboltOutlined,
+  UploadOutlined,
   WarningOutlined
 } from "@ant-design/icons";
 import { ProgressBar, StatusBadge } from "@propops/ui";
@@ -27,7 +30,8 @@ import {
   meteringProgressApi,
   type AdminChecklistProperty,
   type AdminChecklistRoom,
-  type AdminMeteringChecklistResponse
+  type AdminMeteringChecklistResponse,
+  type MeteringExcelImportResponse
 } from "../../lib/metering-progress-api";
 import { renterBillingApi } from "../../lib/renter-billing-api";
 
@@ -88,6 +92,73 @@ export function MeteringProgressClient() {
     eligible: number;
     reviewRequired: number;
   } | null>(null);
+
+  // Excel Bulk Import & Export state
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [importResult, setImportResult] = useState<MeteringExcelImportResponse | null>(null);
+
+  async function handleExportExcel(property: AdminChecklistProperty) {
+    setExportingExcel(true);
+    setError(null);
+    try {
+      const res = await meteringProgressApi.downloadExcelTemplate(property.id, readingDate);
+      const byteCharacters = atob(res.base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setSuccessMessage(`Đã xuất file mẫu thành công: ${res.fileName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể xuất file mẫu Excel.");
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
+  async function handleImportExcel(property: AdminChecklistProperty) {
+    if (!importFile) return;
+    setImportingExcel(true);
+    setError(null);
+    try {
+      const arrayBuffer = await importFile.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(arrayBuffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i] ?? 0);
+      }
+      const fileBase64 = btoa(binary);
+
+      const result = await meteringProgressApi.importExcelReadings(property.id, {
+        readingDate,
+        fileBase64
+      });
+      setImportResult(result);
+      setSuccessMessage(
+        `Nhập dữ liệu thành công ${result.importedCount}/${result.totalRows} dòng từ file Excel.`
+      );
+      void load(readingDate);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lỗi khi nhập file Excel.");
+    } finally {
+      setImportingExcel(false);
+    }
+  }
 
   const load = useCallback(async (date: string) => {
     setLoading(true);
@@ -594,7 +665,28 @@ export function MeteringProgressClient() {
                   <span className="eyebrow">CHỐT SỐ CHI TIẾT · {activeProperty.code}</span>
                   <h2>{activeProperty.name} ({filteredRooms.length}/{activeProperty.rooms.length} phòng)</h2>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={exportingExcel}
+                    onClick={() => handleExportExcel(activeProperty)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                  >
+                    <DownloadOutlined /> {exportingExcel ? "Đang xuất..." : "Xuất mẫu Excel"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      setImportModalOpen(true);
+                      setImportFile(null);
+                      setImportResult(null);
+                    }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                  >
+                    <UploadOutlined /> Nhập từ Excel
+                  </button>
                   <button
                     className="primary-button"
                     type="button"
@@ -1072,6 +1164,164 @@ export function MeteringProgressClient() {
                     </div>
                   </form>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Modal Nhập chỉ số từ Excel */}
+          {importModalOpen && activeProperty ? (
+            <div
+              className="admin-modal-backdrop"
+              onClick={() => {
+                if (!importingExcel) setImportModalOpen(false);
+              }}
+            >
+              <div
+                className="admin-modal"
+                style={{ maxWidth: 560 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="admin-modal__header">
+                  <div>
+                    <span className="eyebrow">BULK IMPORT · EXCEL CHECKLIST</span>
+                    <h3>Nhập chỉ số điện nước từ Excel</h3>
+                    <p style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 2 }}>
+                      Cơ sở: <strong>{activeProperty.name}</strong> · Ngày chốt: <strong>{readingDate}</strong>
+                    </p>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setImportModalOpen(false)}
+                    disabled={importingExcel}
+                  >
+                    <CloseOutlined />
+                  </button>
+                </div>
+
+                <div style={{ padding: "16px 20px", display: "grid", gap: 16 }}>
+                  {importResult ? (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <div
+                        style={{
+                          padding: 12,
+                          background: "#ecfdf5",
+                          border: "1px solid #a7f3d0",
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10
+                        }}
+                      >
+                        <CheckCircleOutlined style={{ color: "#059669", fontSize: 20 }} />
+                        <div>
+                          <strong style={{ color: "#065f46" }}>Hoàn tất xử lý file Excel!</strong>
+                          <div style={{ fontSize: 13, color: "#047857", marginTop: 2 }}>
+                            Đã nhập thành công: <strong>{importResult.importedCount}</strong> / {importResult.totalRows} dòng (Bỏ qua {importResult.skippedCount} dòng trống).
+                          </div>
+                        </div>
+                      </div>
+
+                      {importResult.errors.length > 0 ? (
+                        <div
+                          style={{
+                            padding: 12,
+                            background: "#fffbeb",
+                            border: "1px solid #fde68a",
+                            borderRadius: 8
+                          }}
+                        >
+                          <strong style={{ color: "#92400e", fontSize: 13 }}>
+                            Cảnh báo ({importResult.errors.length}):
+                          </strong>
+                          <ul style={{ margin: "6px 0 0 16px", padding: 0, fontSize: 12, color: "#78350f" }}>
+                            {importResult.errors.map((err, idx) => (
+                              <li key={idx}>
+                                Dòng {err.row} {err.room ? `(${err.room})` : ""}: {err.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          className="primary-button"
+                          type="button"
+                          onClick={() => setImportModalOpen(false)}
+                        >
+                          Đóng & Xem danh sách
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <p style={{ fontSize: 13, margin: 0, lineHeight: 1.5 }}>
+                        Tải file mẫu Excel về máy, điền số mới vào cột <strong>&quot;Chỉ số mới&quot;</strong>, sau đó chọn file để tải lên hệ thống.
+                      </p>
+
+                      <div
+                        style={{
+                          border: "2px dashed var(--color-border)",
+                          borderRadius: 8,
+                          padding: "24px 16px",
+                          textAlign: "center",
+                          background: "#f9fafb"
+                        }}
+                      >
+                        <FileExcelOutlined style={{ fontSize: 32, color: "#16a34a", marginBottom: 8 }} />
+                        <div>
+                          <input
+                            type="file"
+                            id="excel-file-picker"
+                            accept=".xlsx, .xls"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) setImportFile(f);
+                            }}
+                          />
+                          <label
+                            htmlFor="excel-file-picker"
+                            className="secondary-button"
+                            style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                          >
+                            <UploadOutlined /> {importFile ? "Chọn file khác" : "Chọn file Excel từ máy"}
+                          </label>
+                        </div>
+                        {importFile ? (
+                          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: "#1f2937" }}>
+                            Đã chọn: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 6, fontSize: 12, color: "var(--color-text-muted)" }}>
+                            Định dạng hỗ trợ: .xlsx, .xls
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => setImportModalOpen(false)}
+                          disabled={importingExcel}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          className="primary-button"
+                          type="button"
+                          disabled={!importFile || importingExcel}
+                          onClick={() => handleImportExcel(activeProperty)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                        >
+                          <UploadOutlined /> {importingExcel ? "Đang xử lý…" : "Tiến hành nhập dữ liệu"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}

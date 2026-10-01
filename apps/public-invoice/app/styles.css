@@ -478,6 +478,38 @@ body {
   color: #334155;
 }
 
+.signature-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 10px;
+}
+
+.signature-canvas-wrap {
+  background: white;
+  border: 1px dashed #94a3b8;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.ticket-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.ticket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 @media print {
   body {
     background: white !important;

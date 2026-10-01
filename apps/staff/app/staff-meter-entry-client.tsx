@@ -15,9 +15,12 @@ import {
   MinusOutlined,
   QuestionOutlined,
   RightOutlined,
+  ThunderboltOutlined,
+  ToolOutlined,
   WarningOutlined
 } from "@ant-design/icons";
 import { ProgressBar, StatusBadge } from "@propops/ui";
+import { StaffMaintenanceClient } from "./staff-maintenance-client";
 import {
   StaffMeteringApiError,
   staffMeteringApi,
@@ -221,6 +224,7 @@ export function StaffMeterEntryClient() {
     auth.selectedMembership?.organizationId ?? "";
 
   const [readingDate, setReadingDate] = useState(todayIso);
+  const [activeTab, setActiveTab] = useState<"METERING" | "MAINTENANCE">("METERING");
   const [checklist, setChecklist] =
     useState<StaffMeteringChecklistResponse | null>(null);
   const [localReadings, setLocalReadings] = useState<LocalMeterReading[]>([]);
@@ -730,7 +734,29 @@ export function StaffMeterEntryClient() {
           </div>
         ) : null}
 
-        <section className="staff-toolbar">
+        {/* Tab Navigation Segmented Control */}
+        <nav className="staff-app-nav" aria-label="Chuyển chế độ tác vụ">
+          <button
+            type="button"
+            className={activeTab === "METERING" ? "active" : ""}
+            onClick={() => setActiveTab("METERING")}
+          >
+            <ThunderboltOutlined /> Chốt chỉ số
+          </button>
+          <button
+            type="button"
+            className={activeTab === "MAINTENANCE" ? "active" : ""}
+            onClick={() => setActiveTab("MAINTENANCE")}
+          >
+            <ToolOutlined /> Sự cố & Báo hỏng
+          </button>
+        </nav>
+
+        {activeTab === "MAINTENANCE" ? (
+          <StaffMaintenanceClient />
+        ) : (
+          <>
+            <section className="staff-toolbar">
           <label>
             <span>Ngày chốt</span>
             <DateInput
@@ -1041,6 +1067,8 @@ export function StaffMeterEntryClient() {
             </p>
           </div>
         </aside>
+          </>
+        )}
       </div>
     </main>
   );

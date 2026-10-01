@@ -1,7 +1,18 @@
 import * as XLSX from "xlsx";
 
+export type PropertyImportTemplateContext = {
+  propertyCode?: string;
+  propertyName?: string;
+  propertyType?: string;
+  addressText?: string;
+  floors?: Array<{ code: string; name: string }>;
+};
+
 export type PropertyImportPayload = {
-  property: {
+  mode?: "CREATE_NEW" | "EXISTING_PROPERTY";
+  targetPropertyId?: string;
+  autoCreateMeters?: boolean;
+  property?: {
     code: string;
     name: string;
     propertyType: "BOARDING_HOUSE" | "MINI_APARTMENT" | "APARTMENT" | "OTHER";
@@ -10,7 +21,7 @@ export type PropertyImportPayload = {
     districtName?: string;
     wardName?: string;
   };
-  floors: Array<{
+  floors?: Array<{
     code: string;
     name: string;
     sortOrder?: number;
@@ -21,7 +32,7 @@ export type PropertyImportPayload = {
     name: string;
     sortOrder?: number;
   }>;
-  equipments: Array<{
+  equipments?: Array<{
     roomCode: string;
     name: string;
     brand?: string;
@@ -60,8 +71,12 @@ export function normalizeConditionStatus(
   return "GOOD";
 }
 
-export function generatePropertyImportTemplateWorkbook(): Buffer {
+export function generatePropertyImportTemplateWorkbook(
+  context?: PropertyImportTemplateContext
+): Buffer {
   const wb = XLSX.utils.book_new();
+
+  const isExisting = Boolean(context?.propertyCode);
 
   // Sheet 1: THONG_TIN_CO_SO
   const wsPropertyData = [
@@ -75,36 +90,43 @@ export function generatePropertyImportTemplateWorkbook(): Buffer {
       "Địa chỉ chi tiết"
     ],
     [
-      "HM-01",
-      "Nhà trọ Hoàng Mai 1",
-      "Nhà trọ",
-      "Hà Nội",
-      "Quận Hoàng Mai",
-      "Phường Tương Mai",
-      "Số 279 Hoàng Mai"
+      context?.propertyCode || "HM-01",
+      context?.propertyName || "Nhà trọ Hoàng Mai 1",
+      context?.propertyType || "Nhà trọ",
+      isExisting ? "(Cơ sở hiện có)" : "Hà Nội",
+      isExisting ? "(Cơ sở hiện có)" : "Quận Hoàng Mai",
+      isExisting ? "(Cơ sở hiện có)" : "Phường Tương Mai",
+      context?.addressText || "Số 279 Hoàng Mai"
     ]
   ];
   const wsProperty = XLSX.utils.aoa_to_sheet(wsPropertyData);
   XLSX.utils.book_append_sheet(wb, wsProperty, "THONG_TIN_CO_SO");
 
   // Sheet 2: DANH_SACH_TANG
-  const wsFloorsData = [
-    ["Mã tầng (*)", "Tên tầng (*)", "Thứ tự"],
-    ["T1", "Tầng 1", 1],
-    ["T2", "Tầng 2", 2],
-    ["T3", "Tầng 3", 3]
+  const floorRows: Array<(string | number)[]> = [
+    ["Mã tầng (*)", "Tên tầng (*)", "Thứ tự"]
   ];
-  const wsFloors = XLSX.utils.aoa_to_sheet(wsFloorsData);
+  if (context?.floors && context.floors.length > 0) {
+    context.floors.forEach((f, idx) => {
+      floorRows.push([f.code, f.name, idx + 1]);
+    });
+  } else {
+    floorRows.push(["T1", "Tầng 1", 1], ["T2", "Tầng 2", 2], ["T3", "Tầng 3", 3]);
+  }
+  const wsFloors = XLSX.utils.aoa_to_sheet(floorRows);
   XLSX.utils.book_append_sheet(wb, wsFloors, "DANH_SACH_TANG");
 
   // Sheet 3: DANH_SACH_PHONG
+  const sampleFloor = context?.floors?.[0]?.code || "T1";
+  const sampleFloor2 = context?.floors?.[1]?.code || "T2";
+  const sampleFloor3 = context?.floors?.[2]?.code || "T3";
   const wsRoomsData = [
     ["Mã phòng (*)", "Tên phòng (*)", "Mã tầng", "Thứ tự"],
-    ["101", "Phòng 101", "T1", 1],
-    ["102", "Phòng 102", "T1", 2],
-    ["201", "Phòng 201", "T2", 3],
-    ["202", "Phòng 202", "T2", 4],
-    ["301", "Phòng 301", "T3", 5]
+    ["101", "Phòng 101", sampleFloor, 1],
+    ["102", "Phòng 102", sampleFloor, 2],
+    ["201", "Phòng 201", sampleFloor2, 3],
+    ["202", "Phòng 202", sampleFloor2, 4],
+    ["301", "Phòng 301", sampleFloor3, 5]
   ];
   const wsRooms = XLSX.utils.aoa_to_sheet(wsRoomsData);
   XLSX.utils.book_append_sheet(wb, wsRooms, "DANH_SACH_PHONG");
@@ -121,11 +143,11 @@ export function generatePropertyImportTemplateWorkbook(): Buffer {
       "Giá trị đền bù (VNĐ)",
       "Ghi chú"
     ],
-    ["101", "Điều hòa", "Daikin", "FTKC25UAVMV", 1, "Tốt", 8000000, "Kèm remote"],
+    ["101", "Điều hòa", "Daikin", "Inverter 9000BTU", 1, "Tốt", 8000000, "Kèm remote"],
     ["101", "Bình nóng lạnh", "Ariston", "20L", 1, "Tốt", 2500000, ""],
     ["101", "Tủ lạnh", "Aqua", "130L", 1, "Tốt", 3000000, ""],
     ["102", "Điều hòa", "Panasonic", "Inverter", 1, "Hoàn hảo", 8500000, "Mới 100%"],
-    ["102", "Bình nóng lạnh", "Ferroli", "15L", 1, "Tốt", 2200000, ""]
+    ["102", "Bình nóng lạnh", "Picenza", "15L", 1, "Tốt", 2000000, ""]
   ];
   const wsEquipments = XLSX.utils.aoa_to_sheet(wsEquipmentsData);
   XLSX.utils.book_append_sheet(wb, wsEquipments, "TRANG_THIET_BI");

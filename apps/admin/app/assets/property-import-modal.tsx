@@ -17,7 +17,8 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   ToolOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  ThunderboltOutlined
 } from "@ant-design/icons";
 import {
   adminAssetsApi,
@@ -27,21 +28,36 @@ import {
 
 export function PropertyImportModal({
   onClose,
-  onSuccess
+  onSuccess,
+  targetProperty
 }: {
   onClose: () => void;
   onSuccess: (propertyId: string) => void;
+  targetProperty?: { id: string; code: string; name: string };
 }) {
   const [step, setStep] = useState<"SELECT" | "VALIDATING" | "PREVIEW" | "IMPORTING" | "SUCCESS">("SELECT");
   const [parsedPayload, setParsedPayload] = useState<PropertyImportPayload | null>(null);
   const [report, setReport] = useState<PropertyImportValidationReport | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successInfo, setSuccessInfo] = useState<{ propertyId: string; propertyName: string } | null>(null);
+  const [autoCreateMeters, setAutoCreateMeters] = useState<boolean>(true);
+  const [successInfo, setSuccessInfo] = useState<{
+    propertyId: string;
+    propertyName: string;
+    newRoomCount?: number;
+    metersCreatedCount?: number;
+  } | null>(null);
 
-  // 1. Download standard template
+  // 1. Download template
   function handleDownloadTemplate() {
-    window.open("/api/admin/assets/import/template", "_blank");
+    if (targetProperty) {
+      window.open(
+        `/api/admin/assets/import/template?propertyId=${encodeURIComponent(targetProperty.id)}`,
+        "_blank"
+      );
+    } else {
+      window.open("/api/admin/assets/import/template", "_blank");
+    }
   }
 
   // 2. File upload & client-side parse
@@ -57,6 +73,13 @@ export function PropertyImportModal({
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: "array" });
       const payload = parseWorkbookClient(wb);
+
+      if (targetProperty) {
+        payload.mode = "EXISTING_PROPERTY";
+        payload.targetPropertyId = targetProperty.id;
+      }
+      payload.autoCreateMeters = autoCreateMeters;
+
       setParsedPayload(payload);
 
       // Call dry-run validation API
@@ -78,15 +101,24 @@ export function PropertyImportModal({
     setErrorMessage(null);
 
     try {
-      const result = await adminAssetsApi.executeImport(parsedPayload);
+      const executionPayload = {
+        ...parsedPayload,
+        targetPropertyId: targetProperty?.id ?? parsedPayload.targetPropertyId,
+        mode: targetProperty ? ("EXISTING_PROPERTY" as const) : parsedPayload.mode,
+        autoCreateMeters
+      };
+
+      const result = await adminAssetsApi.executeImport(executionPayload);
       setSuccessInfo({
         propertyId: result.propertyId,
-        propertyName: result.propertyName
+        propertyName: result.propertyName,
+        newRoomCount: result.newRoomCount,
+        metersCreatedCount: result.metersCreatedCount
       });
       setStep("SUCCESS");
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : "Đã xảy ra lỗi khi lưu cơ sở vào cơ sở dữ liệu."
+        err instanceof Error ? err.message : "Đã xảy ra lỗi khi lưu dữ liệu vào cơ sở dữ liệu."
       );
       setStep("PREVIEW");
     }
@@ -120,15 +152,15 @@ export function PropertyImportModal({
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
-                width: "40px",
-                height: "40px",
+                width: "42px",
+                height: "42px",
                 borderRadius: "10px",
                 background: "#f0fdf4",
                 color: "#16a34a",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "22px",
                 border: "1px solid #bbf7d0"
               }}
             >
@@ -136,10 +168,14 @@ export function PropertyImportModal({
             </div>
             <div>
               <h3 className="modal-title" style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
-                Nhập cơ sở, phòng & tài sản từ Excel
+                {targetProperty
+                  ? `Nhập phòng & thiết bị: ${targetProperty.name}`
+                  : "Nhập cơ sở, phòng & tài sản từ Excel"}
               </h3>
               <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: "13px" }}>
-                Import đồng bộ toàn bộ nhà trọ, danh sách tầng, danh mục phòng và trang thiết bị
+                {targetProperty
+                  ? `Thêm phòng và nội thất hàng loạt trực tiếp vào cơ sở ${targetProperty.code}`
+                  : "Import đồng bộ toàn bộ nhà trọ, danh sách tầng, danh mục phòng và trang thiết bị"}
               </p>
             </div>
           </div>
@@ -159,6 +195,39 @@ export function PropertyImportModal({
             <CloseOutlined />
           </button>
         </div>
+
+        {targetProperty && (
+          <div
+            style={{
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              marginBottom: "16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "13px",
+              color: "#1e40af"
+            }}
+          >
+            <span>
+              Cơ sở đích: <strong>{targetProperty.name}</strong> ({targetProperty.code})
+            </span>
+            <span
+              style={{
+                background: "#dbeafe",
+                color: "#1d4ed8",
+                fontWeight: 600,
+                fontSize: "11px",
+                padding: "2px 8px",
+                borderRadius: "4px"
+              }}
+            >
+              Cơ sở hiện có
+            </span>
+          </div>
+        )}
 
         {errorMessage ? (
           <div className="admin-state admin-state--error" style={{ marginBottom: "18px" }}>
@@ -187,10 +256,16 @@ export function PropertyImportModal({
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                   <FileExcelOutlined style={{ color: "#0284c7" }} />
-                  <strong style={{ fontSize: "14px", color: "#1e293b" }}>File mẫu chuẩn hệ thống</strong>
+                  <strong style={{ fontSize: "14px", color: "#1e293b" }}>
+                    {targetProperty
+                      ? `File mẫu điền sẵn cho ${targetProperty.code}`
+                      : "File mẫu chuẩn hệ thống"}
+                  </strong>
                 </div>
                 <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                  File mẫu gồm 4 Sheet chuẩn hóa: Thông tin cơ sở, Danh sách tầng, Danh sách phòng và Trang thiết bị nội thất.
+                  {targetProperty
+                    ? "File mẫu đã được thiết lập sẵn thông tin cơ sở và các tầng hiện có, bạn chỉ cần điền danh sách phòng và nội thất."
+                    : "File mẫu gồm 4 Sheet chuẩn hóa: Thông tin cơ sở, Danh sách tầng, Danh sách phòng và Trang thiết bị nội thất."}
                 </p>
               </div>
               <button
@@ -208,6 +283,35 @@ export function PropertyImportModal({
               >
                 <DownloadOutlined /> Tải file mẫu (.xlsx)
               </button>
+            </div>
+
+            {/* Smart Meter Provisioning Option */}
+            <div
+              style={{
+                background: "#fdf4ff",
+                border: "1px solid #f0abfc",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "12px"
+              }}
+            >
+              <input
+                type="checkbox"
+                id="autoCreateMetersCheck"
+                checked={autoCreateMeters}
+                onChange={(e) => setAutoCreateMeters(e.target.checked)}
+                style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer" }}
+              />
+              <label htmlFor="autoCreateMetersCheck" style={{ cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 650, color: "#86198f", fontSize: "13px" }}>
+                  <ThunderboltOutlined /> Tự động khởi tạo đồng hồ Điện (KWH) & Nước (M3)
+                </div>
+                <p style={{ margin: "2px 0 0", color: "#701a75", fontSize: "12px" }}>
+                  Tự động cấp phát 2 đồng hồ hoạt động cho mỗi phòng mới tạo để sẵn sàng ghi chỉ số và tính tiền ngay lập tức, không cần tạo thủ công từng phòng.
+                </p>
+              </label>
             </div>
 
             {/* Upload Zone */}
@@ -241,7 +345,7 @@ export function PropertyImportModal({
                 Kéo thả file Excel vào đây hoặc bấm để chọn tệp
               </h4>
               <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
-                Định dạng hỗ trợ: Microsoft Excel (.xlsx, .xls) hoặc CSV. Hệ thống hỗ trợ xử lý 1 cơ sở / lần import.
+                Định dạng hỗ trợ: Microsoft Excel (.xlsx, .xls) hoặc CSV.
               </p>
             </div>
           </div>
@@ -253,7 +357,7 @@ export function PropertyImportModal({
             <LoadingOutlined style={{ fontSize: "36px", color: "#0284c7", marginBottom: "16px" }} />
             <h4 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>Đang kiểm tra dữ liệu file...</h4>
             <span style={{ color: "#64748b", fontSize: "13px" }}>
-              Hệ thống đang rà soát cấu trúc cột, đối chiếu mã tầng/phòng và xác thực địa bàn hành chính.
+              Hệ thống đang rà soát cấu trúc cột, đối chiếu mã tầng/phòng và kiểm tra hạn mức gói đăng ký.
             </span>
           </div>
         )}
@@ -313,21 +417,15 @@ export function PropertyImportModal({
                     </span>
                     <span
                       style={{
-                        background: "#f1f5f9",
-                        color: "#475569",
+                        background: report.summary.isExistingProperty ? "#f0fdf4" : "#f1f5f9",
+                        color: report.summary.isExistingProperty ? "#166534" : "#475569",
                         fontSize: "11px",
                         fontWeight: 600,
                         padding: "2px 8px",
                         borderRadius: "4px"
                       }}
                     >
-                      {report.summary.propertyType === "BOARDING_HOUSE"
-                        ? "Nhà trọ"
-                        : report.summary.propertyType === "MINI_APARTMENT"
-                        ? "Chung cư mini"
-                        : report.summary.propertyType === "APARTMENT"
-                        ? "Căn hộ"
-                        : "Khác"}
+                      {report.summary.isExistingProperty ? "Cơ sở hiện có" : "Tạo cơ sở mới"}
                     </span>
                   </div>
                   <h4 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
@@ -359,7 +457,7 @@ export function PropertyImportModal({
                   <ApartmentOutlined />
                 </div>
                 <div>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TỔNG SỐ TẦNG</small>
+                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TẦNG TRONG FILE</small>
                   <strong style={{ fontSize: "18px", color: "#0f172a" }}>{report.summary.floorCount}</strong>
                 </div>
               </div>
@@ -379,8 +477,15 @@ export function PropertyImportModal({
                   <AppstoreOutlined />
                 </div>
                 <div>
-                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TỔNG SỐ PHÒNG</small>
-                  <strong style={{ fontSize: "18px", color: "#0f172a" }}>{report.summary.roomCount}</strong>
+                  <small style={{ color: "#64748b", fontSize: "11px", display: "block" }}>TỔNG PHÒNG TRONG FILE</small>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                    <strong style={{ fontSize: "18px", color: "#0f172a" }}>{report.summary.roomCount}</strong>
+                    {report.summary.newRoomCount !== undefined && (
+                      <span style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600 }}>
+                        (+{report.summary.newRoomCount} mới)
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -405,6 +510,28 @@ export function PropertyImportModal({
               </div>
             </div>
 
+            {/* Smart Meter Notification Banner in Preview */}
+            {autoCreateMeters && (
+              <div
+                style={{
+                  background: "#faf5ff",
+                  border: "1px solid #e9d5ff",
+                  borderRadius: "8px",
+                  padding: "10px 14px",
+                  fontSize: "12px",
+                  color: "#6b21a8",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}
+              >
+                <ThunderboltOutlined style={{ fontSize: "16px", color: "#9333ea" }} />
+                <span>
+                  Sẽ tự động khởi tạo <strong>{(report.summary.newRoomCount ?? report.summary.roomCount) * 2} đồng hồ</strong> (Điện KWH và Nước M3) cho các phòng mới tạo.
+                </span>
+              </div>
+            )}
+
             {/* Error Table if invalid */}
             {report.errors.length > 0 && (
               <div
@@ -420,33 +547,33 @@ export function PropertyImportModal({
                     padding: "10px 14px",
                     background: "#fef2f2",
                     borderBottom: "1px solid #fecaca",
+                    color: "#991b1b",
+                    fontSize: "13px",
+                    fontWeight: 650,
                     display: "flex",
                     alignItems: "center",
                     gap: "6px"
                   }}
                 >
-                  <CloseCircleOutlined style={{ color: "#dc2626" }} />
-                  <strong style={{ color: "#991b1b", fontSize: "13px" }}>
-                    Chi tiết lỗi phát hiện ({report.errors.length} lỗi)
-                  </strong>
+                  <CloseCircleOutlined /> Danh sách lỗi cần sửa ({report.errors.length}):
                 </div>
-                <div style={{ maxHeight: "180px", overflowY: "auto" }}>
+                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                     <thead>
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569" }}>
-                        <th style={{ padding: "8px 12px", textAlign: "left", width: "120px" }}>Phần</th>
-                        <th style={{ padding: "8px 12px", textAlign: "left", width: "80px" }}>Dòng</th>
-                        <th style={{ padding: "8px 12px", textAlign: "left", width: "100px" }}>Mã</th>
-                        <th style={{ padding: "8px 12px", textAlign: "left" }}>Nội dung lỗi</th>
+                      <tr style={{ background: "#f8fafc", textAlign: "left", color: "#64748b" }}>
+                        <th style={{ padding: "8px 12px", width: "90px" }}>Phần</th>
+                        <th style={{ padding: "8px 12px", width: "70px" }}>Dòng</th>
+                        <th style={{ padding: "8px 12px", width: "100px" }}>Mã mục</th>
+                        <th style={{ padding: "8px 12px" }}>Nội dung lỗi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {report.errors.map((err, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "8px 12px", fontWeight: 600, color: "#64748b" }}>{err.section}</td>
-                          <td style={{ padding: "8px 12px", color: "#64748b" }}>{err.row ? `Dòng ${err.row}` : "-"}</td>
-                          <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#dc2626" }}>{err.itemCode || "-"}</td>
-                          <td style={{ padding: "8px 12px", color: "#991b1b" }}>{err.message}</td>
+                        <tr key={idx} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "8px 12px", fontWeight: 600 }}>{err.section}</td>
+                          <td style={{ padding: "8px 12px", color: "#64748b" }}>{err.row ?? "-"}</td>
+                          <td style={{ padding: "8px 12px", color: "#0369a1" }}>{err.itemCode ?? "-"}</td>
+                          <td style={{ padding: "8px 12px", color: "#b91c1c" }}>{err.message}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -528,7 +655,7 @@ export function PropertyImportModal({
             <LoadingOutlined style={{ fontSize: "36px", color: "#0284c7", marginBottom: "16px" }} />
             <h4 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>Đang lưu dữ liệu vào hệ thống...</h4>
             <span style={{ color: "#64748b", fontSize: "13px" }}>
-              Toàn bộ cơ sở, tầng, phòng và tài sản đang được tạo an toàn trong một giao dịch cơ sở dữ liệu.
+              Toàn bộ phòng, tầng, trang thiết bị và đồng hồ điện nước đang được khởi tạo an toàn trong một giao dịch cơ sở dữ liệu.
             </span>
           </div>
         )}
@@ -541,7 +668,8 @@ export function PropertyImportModal({
               Nhập dữ liệu thành công
             </h3>
             <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: "13px" }}>
-              Cơ sở <strong>{successInfo.propertyName}</strong> đã sẵn sàng để quản lý số điện nước và lập hợp đồng thuê.
+              Cơ sở <strong>{successInfo.propertyName}</strong> đã sẵn sàng hoạt động
+              {successInfo.metersCreatedCount ? `, bao gồm ${successInfo.metersCreatedCount} đồng hồ điện nước tự động được cấp phát` : ""}.
             </p>
 
             <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>

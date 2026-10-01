@@ -196,7 +196,7 @@ export class MaintenanceService {
     principal: TenantPrincipal,
     input: CreateMaintenanceTicketInput
   ): Promise<MaintenanceTicket> {
-    if (!roleHasPermission(principal.role, "property.manage")) {
+    if (!roleHasPermission(principal.role, "property.manage") && principal.role !== "STAFF") {
       throw new ForbiddenException("Không có quyền tạo yêu cầu báo hỏng.");
     }
 
@@ -276,7 +276,7 @@ export class MaintenanceService {
     ticketId: string,
     input: UpdateMaintenanceTicketInput
   ): Promise<MaintenanceTicket> {
-    if (!roleHasPermission(principal.role, "property.manage")) {
+    if (!roleHasPermission(principal.role, "property.manage") && principal.role !== "STAFF") {
       throw new ForbiddenException("Không có quyền cập nhật yêu cầu báo hỏng.");
     }
 
@@ -584,6 +584,99 @@ export class MaintenanceService {
       status: "OPEN",
       message: "Yêu cầu báo hỏng đã được ghi nhận. Chủ trọ / Ban quản lý sẽ xử lý sớm nhất có thể."
     };
+  }
+
+  async listForPublicInvoice(token: string): Promise<MaintenanceTicket[]> {
+    const normalizedToken = token.trim();
+    if (!/^habi_inv_[A-Za-z0-9_-]{32}$/.test(normalizedToken)) {
+      throw new NotFoundException(
+        "Đường link hoá đơn không hợp lệ hoặc đã hết hạn."
+      );
+    }
+    const tokenHash = createHash("sha256").update(normalizedToken).digest("hex");
+
+    const invoiceResult = await this.db.query<{
+      organization_id: string;
+      property_id: string;
+      room_id: string | null;
+      lease_id: string | null;
+    }>(
+      `SELECT
+         i.organization_id::text,
+         i.property_id::text,
+         i.room_id::text,
+         i.lease_id::text
+       FROM renter_invoice_public_links link
+       JOIN renter_invoices i
+         ON i.organization_id = link.organization_id
+        AND i.id = link.invoice_id
+       WHERE link.token_hash = $1
+         AND link.status = 'ACTIVE'
+         AND (link.expires_at IS NULL OR link.expires_at > now())
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    const inv = invoiceResult.rows[0];
+    if (!inv) {
+      throw new NotFoundException("Đường link hoá đơn không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const conditions: string[] = ["t.organization_id = $1::uuid"];
+    const values: unknown[] = [inv.organization_id];
+
+    if (inv.room_id) {
+      conditions.push("t.room_id = $2::uuid");
+      values.push(inv.room_id);
+    } else if (inv.lease_id) {
+      conditions.push("t.lease_id = $2::uuid");
+      values.push(inv.lease_id);
+    } else {
+      conditions.push("t.property_id = $2::uuid");
+      values.push(inv.property_id);
+    }
+
+    const result = await this.db.query<TicketRow>(
+      `SELECT
+         t.id::text,
+         t.organization_id::text,
+         t.property_id::text,
+         p.name AS property_name,
+         p.code AS property_code,
+         t.room_id::text,
+         rm.code AS room_code,
+         rm.name AS room_name,
+         t.lease_id::text,
+         t.title,
+         t.category,
+         t.priority,
+         t.status,
+         t.description,
+         t.resident_name,
+         t.resident_phone,
+         t.images,
+         t.reported_at,
+         t.resolved_at,
+         t.resolution_note,
+         t.repair_cost_vnd::text,
+         t.linked_expense_id::text,
+         t.created_by_user_id::text,
+         t.created_at,
+         t.updated_at
+       FROM maintenance_tickets t
+       JOIN properties p
+         ON p.organization_id = t.organization_id
+        AND p.id = t.property_id
+       LEFT JOIN rooms rm
+         ON rm.organization_id = t.organization_id
+        AND rm.id = t.room_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY t.reported_at DESC
+       LIMIT 50`,
+      values
+    );
+
+    return result.rows.map((row) => this.mapTicket(row));
   }
 
   private mapTicket(row: TicketRow): MaintenanceTicket {

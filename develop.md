@@ -331,12 +331,9 @@ Implemented live operational slice:
 - transactional re-verification of final invoices and debt in termination finalization;
 - renewal workflow: idempotent draft lease creation linked to active lease via renewed_from_lease_id with party preservation and deposit rollover;
 - replacement lease creation directly from terminated lease / vacant room with query parameter prefill;
-- standardized Vietnamese residential lease agreement printable view at /leases/[leaseId]/print with @media print support.
-
-Still required:
-
-- attachments;
-- amendment workflow.
+- standardized Vietnamese residential lease agreement printable view at /leases/[leaseId]/print with @media print support;
+- contractual amendment workflow with adjusted base rent, deposit, planned end date, and audit trail;
+- resident online e-signature on the public invoice portal with touch/mouse canvas pad, audit logs, and digital signature rendering in print preview.
 
 Important invariant:
 
@@ -344,14 +341,32 @@ Important invariant:
 A room must not silently have multiple conflicting active leases.
 ```
 
-### Expansion
+---
 
-Later:
+## 3.2.1 Maintenance & Incident Operations (Completed)
 
-- e-signature;
-- contract templates;
-- document versioning;
-- resident portal acknowledgment.
+- Resident portal public incident reporting with photo upload references;
+- Resident past ticket history tracking with status badges (OPEN, IN_PROGRESS, RESOLVED);
+- Staff PWA maintenance tab for field technicians to view tickets for their assigned properties;
+- Technician quick actions to take responsibility (`IN_PROGRESS`), record resolution notes and repair costs (`RESOLVED`);
+- On-site new issue reporting by staff with category, priority, and property scope validation.
+
+---
+
+## 3.2.2 Bulk Meter Reading Excel Import & Export (Completed)
+
+- Dynamic property-specific Excel checklist template download prefilled with rooms, active meters, previous readings, and dates;
+- Bulk Excel file upload with automatic schema parsing, meter ownership verification, and previous reading validation;
+- Consumption anomaly warning (> 2.5x baseline) and safe batch recording with audit events;
+- Full UI integration on Admin Metering Progress board with preview modal and error reporting.
+
+---
+
+## 3.2.3 Storage & File Service (Completed)
+
+- Local & extensible storage service (`POST /api/storage/upload`, `GET /api/storage/files/:fileId`);
+- MIME type verification (images: PNG, JPEG, WEBP, PDF), maximum size limits, path traversal protection, and file metadata tracking;
+- Scoped to organization with zero external cloud vendor lock-in.
 
 ---
 

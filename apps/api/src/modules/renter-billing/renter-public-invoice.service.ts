@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -454,6 +455,9 @@ export class RenterPublicInvoiceService {
       billing_day: number;
       resident_name: string | null;
       resident_phone: string | null;
+      signature_data_url: string | null;
+      signed_at: Date | string | null;
+      signed_by_name: string | null;
     }>(
       `SELECT
          l.lease_code,
@@ -463,6 +467,9 @@ export class RenterPublicInvoiceService {
          l.base_rent_vnd::text,
          l.deposit_required_vnd::text,
          l.billing_day,
+         l.signature_data_url,
+         l.signed_at,
+         l.signed_by_name,
          r.full_name AS resident_name,
          r.phone AS resident_phone
        FROM leases l
@@ -548,7 +555,10 @@ export class RenterPublicInvoiceService {
             plannedEndDate: leaseRow.planned_end_date ? this.dateOnly(leaseRow.planned_end_date) : null,
             baseRentVnd: Number(leaseRow.base_rent_vnd),
             depositVnd: Number(leaseRow.deposit_required_vnd),
-            billingDay: leaseRow.billing_day
+            billingDay: leaseRow.billing_day,
+            signatureDataUrl: leaseRow.signature_data_url || null,
+            signedAt: leaseRow.signed_at ? this.timestamp(leaseRow.signed_at) : null,
+            signedByName: leaseRow.signed_by_name || null
           }
         : null,
       primaryResident: {
@@ -576,6 +586,91 @@ export class RenterPublicInvoiceService {
         conditionStatus: row.condition_status,
         note: row.note
       }))
+    };
+  }
+
+  async signLease(
+    token: string,
+    input: {
+      signatureDataUrl: string;
+      signedByName: string;
+      clientIp?: string;
+    }
+  ): Promise<{ success: boolean; signedAt: string; message: string }> {
+    const tokenHash = this.hashToken(this.requireToken(token));
+    const invoiceRes = await this.db.query<{
+      organization_id: string;
+      lease_id: string;
+    }>(
+      `SELECT
+         i.organization_id::text,
+         i.lease_id::text
+       FROM renter_invoice_public_links link
+       JOIN renter_invoices i
+         ON i.organization_id = link.organization_id
+        AND i.id = link.invoice_id
+       WHERE link.token_hash = $1
+         AND link.status = 'ACTIVE'
+         AND (link.expires_at IS NULL OR link.expires_at > now())
+         AND i.status = 'ISSUED'
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    const inv = invoiceRes.rows[0];
+    if (!inv || !inv.lease_id) {
+      throw new NotFoundException("Đường link hoá đơn không hợp lệ hoặc không có hợp đồng gắn kèm.");
+    }
+
+    const signature = input.signatureDataUrl?.trim();
+    if (!signature || !signature.startsWith("data:image/")) {
+      throw new BadRequestException("Chữ ký điện tử không hợp lệ.");
+    }
+
+    const signedByName = input.signedByName?.trim();
+    if (!signedByName || signedByName.length < 2 || signedByName.length > 100) {
+      throw new BadRequestException("Vui lòng nhập họ và tên người ký (2 - 100 ký tự).");
+    }
+
+    const signedAt = new Date();
+    await this.db.query(
+      `UPDATE leases
+       SET signature_data_url = $1,
+           signed_at = $2,
+           signed_by_name = $3,
+           signed_ip = $4,
+           updated_at = now()
+       WHERE organization_id = $5::uuid
+         AND id = $6::uuid`,
+      [signature, signedAt, signedByName, input.clientIp || null, inv.organization_id, inv.lease_id]
+    );
+
+    await this.db.query(
+      `INSERT INTO audit_events (
+         organization_id,
+         actor_user_id,
+         action,
+         resource_type,
+         resource_id,
+         metadata
+       )
+       VALUES ($1::uuid, NULL, $2, 'LEASE', $3::uuid, $4::jsonb)`,
+      [
+        inv.organization_id,
+        "LEASE_E_SIGNED",
+        inv.lease_id,
+        JSON.stringify({
+          signedByName,
+          signedAt: signedAt.toISOString(),
+          clientIp: input.clientIp || null
+        })
+      ]
+    );
+
+    return {
+      success: true,
+      signedAt: signedAt.toISOString(),
+      message: "Ký xác nhận hợp đồng điện tử thành công."
     };
   }
 
