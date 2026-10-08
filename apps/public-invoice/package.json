@@ -3,6 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {"dev": "next dev -p 3002", "build": "next build", "start": "next start -p 3002", "typecheck": "tsc --noEmit"},
-  "dependencies": {"@ant-design/icons": "^6.3.4", "@propops/ui": "workspace:*", "next": "16.3.5", "react": "19.3.0", "react-dom": "19.3.0"},
+  "dependencies": {"@ant-design/icons": "^6.3.4", "@propops/ui": "workspace:*", "next": "16.3.8", "react": "19.3.0", "react-dom": "19.3.0"},
   "devDependencies": {"@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "typescript": "5.9.3"}
 }
