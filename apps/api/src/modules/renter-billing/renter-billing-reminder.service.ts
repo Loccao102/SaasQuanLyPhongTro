@@ -172,7 +172,7 @@ export class RenterBillingReminderService {
          WHERE organization_id = $1::uuid
            AND invoice_id = $2::uuid
            AND reminder_tier = $3
-           AND created_at::date = CURRENT_DATE
+           AND reminder_date = CURRENT_DATE
          LIMIT 1`,
         [row.organization_id, row.invoice_id, tier]
       );
@@ -222,7 +222,7 @@ export class RenterBillingReminderService {
            message_text
          )
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::date, 'ZALO', 'QUEUED', $8)
-         ON CONFLICT (organization_id, invoice_id, reminder_tier, (created_at::date))
+         ON CONFLICT (organization_id, invoice_id, reminder_tier, reminder_date)
          DO NOTHING`,
         [
           row.organization_id,

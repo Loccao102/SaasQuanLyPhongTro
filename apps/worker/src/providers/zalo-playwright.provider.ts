@@ -1,6 +1,7 @@
 import {
   chromium,
   errors,
+  type Browser,
   type BrowserContext,
   type BrowserContextOptions,
   type Locator,
@@ -117,11 +118,40 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
   readonly name = "PLAYWRIGHT_ZALO";
   readonly claimAliases = ["ZALO_PLAYWRIGHT"] as const;
 
+  private browser: Browser | null = null;
+
   private constructor(
     private readonly config: ZaloPlaywrightConfig,
     private readonly sessionStore: EncryptedStorageStateStore,
     private readonly sessionLock: ExclusiveSessionFileLock
   ) {}
+
+  private async getBrowser(): Promise<Browser> {
+    if (!this.browser || !this.browser.isConnected()) {
+      const channel =
+        process.env.PLAYWRIGHT_CHANNEL ||
+        (process.platform === "win32" ? "chrome" : undefined);
+      this.browser = await chromium.launch({
+        headless: this.config.headless,
+        channel
+      });
+    }
+    return this.browser;
+  }
+
+  async close(): Promise<void> {
+    if (this.browser) {
+      try {
+        if (this.browser.isConnected()) {
+          await this.browser.close();
+        }
+      } catch {
+        // Suppress cleanup error on shutdown
+      } finally {
+        this.browser = null;
+      }
+    }
+  }
 
   static fromEnvironment(
     env: NodeJS.ProcessEnv = process.env
@@ -188,9 +218,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         };
       }
 
-      const browser = await chromium.launch({
-        headless: this.config.headless
-      });
+      const browser = await this.getBrowser();
 
       try {
         context = await browser.newContext(
@@ -367,10 +395,17 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
             // Do not convert a verified send into failure because session refresh persistence failed.
             // The next attempt will surface SESSION_STORAGE_ERROR if the stored state becomes unusable.
           }
+          try {
+            await context.close();
+          } catch {
+            // Best-effort context close.
+          }
         }
-        await browser.close();
       }
     } catch (error) {
+      if (this.browser && !this.browser.isConnected()) {
+        this.browser = null;
+      }
       if (error instanceof errors.TimeoutError) {
         if (sendActionAttempted) {
           return {

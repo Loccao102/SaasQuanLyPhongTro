@@ -53,6 +53,15 @@ type ChecklistRow = QueryResultRow & {
     | null;
 };
 
+export type StaffPropertyBillingCycle = {
+  id: string;
+  cycleCode: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  status: "OPEN" | "LOCKED" | "CLOSED";
+};
+
 type MeterChecklist = {
   id: string;
   meterType: MeterType;
@@ -377,6 +386,44 @@ export class StaffMeteringService {
       });
     }
 
+    const billingCyclesResult = await this.db.query<{
+      id: string;
+      property_id: string;
+      cycle_code: string;
+      period_start: string;
+      period_end: string;
+      due_date: string;
+      status: string;
+    }>(
+      `SELECT
+         id::text,
+         property_id::text,
+         cycle_code,
+         period_start::text,
+         period_end::text,
+         due_date::text,
+         status
+       FROM renter_billing_cycles
+       WHERE organization_id = $1::uuid
+         AND status = 'OPEN'
+       ORDER BY period_end DESC`,
+      [principal.organizationId]
+    );
+
+    const activeCycleByProperty = new Map<string, StaffPropertyBillingCycle>();
+    for (const cycle of billingCyclesResult.rows) {
+      if (!activeCycleByProperty.has(cycle.property_id)) {
+        activeCycleByProperty.set(cycle.property_id, {
+          id: cycle.id,
+          cycleCode: cycle.cycle_code,
+          periodStart: cycle.period_start,
+          periodEnd: cycle.period_end,
+          dueDate: cycle.due_date,
+          status: cycle.status as "OPEN" | "LOCKED" | "CLOSED"
+        });
+      }
+    }
+
     const mapped = [...properties.values()].map((property) => {
       const completedRoomCount = property.rooms.filter((room) => room.complete).length;
       const missingMeterRoomCount = property.rooms.filter(
@@ -384,6 +431,7 @@ export class StaffMeteringService {
       ).length;
       return {
         ...property,
+        activeBillingCycle: activeCycleByProperty.get(property.id) ?? null,
         roomCount: property.rooms.length,
         completedRoomCount,
         pendingRoomCount: property.rooms.length - completedRoomCount,

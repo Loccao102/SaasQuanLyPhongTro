@@ -150,7 +150,7 @@ export class TenantSubscriptionService {
       // 3. Count current staff
       const staffCountResult = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count
-         FROM memberships m
+         FROM organization_memberships m
          WHERE m.organization_id = $1
            AND m.status = 'ACTIVE'
            AND m.role IN ('ADMIN', 'STAFF')`,

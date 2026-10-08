@@ -79,7 +79,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops}@postgres:5432/${POSTGRES_DB:-propops}
       DB_SETUP_CONNECT_RETRIES: ${DB_SETUP_CONNECT_RETRIES:-30}
       DB_SETUP_CONNECT_DELAY_MS: ${DB_SETUP_CONNECT_DELAY_MS:-1000}
-    command: [ "pnpm", "--filter", "@propops/api", "db:setup" ]
+    command: [ "sh", "-c", "pnpm --filter @propops/api db:setup && pnpm --filter @propops/api seed:demo" ]
     depends_on:
       postgres:
         condition: service_healthy

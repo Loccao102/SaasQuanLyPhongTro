@@ -11,13 +11,19 @@ import {
   type FormEvent
 } from "react";
 import {
+  CalendarOutlined,
   CheckOutlined,
+  DisconnectOutlined,
+  HomeOutlined,
+  LogoutOutlined,
   MinusOutlined,
   QuestionOutlined,
   RightOutlined,
+  SyncOutlined,
   ThunderboltOutlined,
   ToolOutlined,
-  WarningOutlined
+  WarningOutlined,
+  WifiOutlined
 } from "@ant-design/icons";
 import { ProgressBar, StatusBadge } from "@propops/ui";
 import { StaffMaintenanceClient } from "./staff-maintenance-client";
@@ -172,48 +178,88 @@ function MeterInput({
   const serverLocked = meter.currentReading !== null && local === null;
   const meta = local ? statusMeta(local.status) : null;
 
+  const isElectricity = meter.meterType === "ELECTRICITY";
+  const delta =
+    normalized !== null && previous !== null
+      ? Number(normalized) - Number(previous)
+      : null;
+
   return (
-    <label className="meter-field">
-      <span>
-        <strong>{meterLabel(meter)}</strong>
-        <small>
+    <div className="meter-field">
+      <div className="meter-field-top">
+        <div className="meter-field-label">
+          <span
+            className={
+              isElectricity
+                ? "meter-field-icon meter-field-icon--electricity"
+                : "meter-field-icon"
+            }
+          >
+            {isElectricity ? <ThunderboltOutlined /> : <ToolOutlined />}
+          </span>
+          <span>{meterLabel(meter)}</span>
+        </div>
+        <span className="meter-prev-badge">
           {meter.previousReading
-            ? "Cũ: " +
+            ? "Số cũ: " +
               formatMeterValue(meter.previousReading.readingValue) +
               " " +
               unitLabel(meter)
-            : "Chưa có chỉ số cũ"}
-        </small>
-      </span>
-      <input
-        ref={inputRef}
-        inputMode="decimal"
-        aria-label={meterLabel(meter)}
-        value={value}
-        readOnly={serverLocked}
-        placeholder="Nhập chỉ số"
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            onEnter();
-          }
-        }}
-      />
+            : "Chưa có số cũ"}
+        </span>
+      </div>
+
+      <div className="meter-input-row">
+        <input
+          ref={inputRef}
+          className="meter-input"
+          inputMode="decimal"
+          aria-label={meterLabel(meter)}
+          value={value}
+          readOnly={serverLocked}
+          placeholder="0.0"
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onEnter();
+            }
+          }}
+        />
+        <span className="meter-unit-tag">{unitLabel(meter)}</span>
+      </div>
+
+      {delta !== null && delta >= 0 && !validation ? (
+        <div className="meter-delta-chip meter-delta-chip--positive">
+          <span>Tiêu thụ kỳ này:</span>
+          <strong>
+            +{delta.toLocaleString("vi-VN")} {unitLabel(meter)}
+          </strong>
+        </div>
+      ) : null}
+
       {serverLocked ? (
         <span className="meter-help meter-help--success">
-          Đã có số server cho ngày chốt này.
+          ✓ Đã có chỉ số server cho ngày chốt này.
         </span>
       ) : null}
       {meta ? (
-        <span className={"meter-help meter-help--" + meta.tone}>{meta.label}</span>
+        <span className={"meter-help meter-help--" + meta.tone}>
+          {meta.label}
+        </span>
       ) : null}
       {validation ? (
-        <span className="meter-help meter-help--danger">{validation}</span>
+        <div className="meter-delta-chip meter-delta-chip--error">
+          <WarningOutlined />
+          <span>{validation}</span>
+        </div>
       ) : warning ? (
-        <span className="meter-help meter-help--warning">{warning}</span>
+        <div className="meter-delta-chip meter-delta-chip--anomaly">
+          <WarningOutlined />
+          <span>{warning}</span>
+        </div>
       ) : null}
-    </label>
+    </div>
   );
 }
 
@@ -674,20 +720,59 @@ export function StaffMeterEntryClient() {
   return (
     <main className="staff-page">
       <div className="staff-phone">
-        <header className="staff-header">
-          <div>
-            <span className="staff-kicker">HABI STAFF · METERING</span>
-            <h1>Chốt chỉ số</h1>
+        <header className="staff-header-card">
+          <div className="staff-header-top">
+            <div className="staff-user-meta">
+              <div className="staff-avatar-circle">
+                {(auth.session?.user.displayName ||
+                  auth.session?.user.email ||
+                  "NV")
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+              <div className="staff-user-info">
+                <span className="staff-user-name">
+                  {auth.session?.user.displayName || auth.session?.user.email}
+                </span>
+                <div
+                  className={
+                    online
+                      ? "staff-status-pill staff-status-pill--online"
+                      : "staff-status-pill staff-status-pill--offline"
+                  }
+                >
+                  <span className="staff-status-dot" />
+                  <span>{online ? "Trực tuyến" : "Ngoại tuyến (Offline)"}</span>
+                  <span style={{ color: "var(--staff-text-light)" }}>·</span>
+                  <span style={{ textTransform: "uppercase" }}>
+                    {auth.selectedMembership?.role ?? "STAFF"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="staff-header-actions">
+              <button
+                className="staff-logout-btn"
+                type="button"
+                disabled={!auth.online}
+                title={
+                  auth.online
+                    ? "Đăng xuất ca trực"
+                    : "Cần có mạng để thu hồi phiên"
+                }
+                onClick={() => void auth.logout()}
+              >
+                <LogoutOutlined />
+                <span>Thoát</span>
+              </button>
+            </div>
           </div>
-          <StatusBadge tone={online ? "success" : "warning"}>
-            {online ? "ONLINE" : "OFFLINE"}
-          </StatusBadge>
-        </header>
 
-        <section className="staff-session-strip">
-          <div>
-            <span className="staff-kicker">WORKSPACE</span>
+          <div className="staff-workspace-bar">
+            <label htmlFor="staff-workspace-picker">Cơ sở / Tổ chức</label>
             <select
+              id="staff-workspace-picker"
+              className="staff-workspace-select"
               aria-label="Chọn workspace Staff"
               value={auth.selectedMembership?.organizationId ?? ""}
               onChange={(event) =>
@@ -703,33 +788,14 @@ export function StaffMeterEntryClient() {
                 </option>
               ))}
             </select>
-            <small>
-              {auth.session?.user.displayName ||
-                auth.session?.user.email}
-              {" · "}
-              {auth.selectedMembership?.role}
-            </small>
           </div>
-          <button
-            type="button"
-            disabled={!auth.online}
-            title={
-              auth.online
-                ? "Đăng xuất khỏi thiết bị"
-                : "Cần có mạng để thu hồi phiên đăng nhập"
-            }
-            onClick={() => void auth.logout()}
-          >
-            Đăng xuất
-          </button>
-        </section>
+        </header>
 
         {auth.status === "offline-authenticated" ? (
           <div className="staff-state staff-state--warning">
             <strong>Phiên offline đang được dùng.</strong>
             <span>
-              Có thể tiếp tục nhập. Hàng chờ chỉ sync sau khi mạng và phiên
-              server được xác thực lại.
+              Có thể tiếp tục nhập số bình thường. Dữ liệu sẽ tự động đồng bộ khi có kết nối mạng trở lại.
             </span>
           </div>
         ) : null}
@@ -756,22 +822,78 @@ export function StaffMeterEntryClient() {
           <StaffMaintenanceClient />
         ) : (
           <>
-            <section className="staff-toolbar">
-          <label>
-            <span>Ngày chốt</span>
-            <DateInput
-              value={readingDate}
-              onChange={(event) => {
-                setReadingDate(event.target.value);
-                setActiveRoomId("");
-              }}
-             />
-          </label>
-          <div className="staff-sync-summary">
-            <strong>{pendingCount}</strong>
-            <span>đang chờ sync</span>
-          </div>
-        </section>
+            <section className="staff-toolbar-card">
+              <div className="staff-date-picker-wrap">
+                <span>Ngày chốt số</span>
+                <DateInput
+                  value={readingDate}
+                  onChange={(event) => {
+                    setReadingDate(event.target.value);
+                    setActiveRoomId("");
+                  }}
+                />
+              </div>
+              <div className="staff-sync-badge-action">
+                <div className="staff-sync-count-chip">
+                  <strong>{pendingCount}</strong>
+                  <span>chờ sync</span>
+                </div>
+                <button
+                  type="button"
+                  className="staff-sync-button"
+                  disabled={!online || syncing || pendingCount === 0}
+                  onClick={() => void syncQueue()}
+                >
+                  <SyncOutlined spin={syncing} />
+                  <span>{syncing ? "Đang gửi…" : "Sync"}</span>
+                </button>
+              </div>
+            </section>
+
+            {selectedProperty?.activeBillingCycle ? (
+              <div className="staff-cycle-banner">
+                <div className="staff-cycle-info">
+                  <span className="staff-cycle-kicker">Kỳ tính tiền đang mở</span>
+                  <div className="staff-cycle-title">
+                    {selectedProperty.activeBillingCycle.cycleCode}
+                  </div>
+                  <div className="staff-cycle-period">
+                    {selectedProperty.activeBillingCycle.periodStart} → {selectedProperty.activeBillingCycle.periodEnd} (Hạn: {selectedProperty.activeBillingCycle.dueDate})
+                  </div>
+                </div>
+                {readingDate !== selectedProperty.activeBillingCycle.periodEnd ? (
+                  <button
+                    type="button"
+                    className="staff-cycle-set-btn"
+                    onClick={() => {
+                      setReadingDate(selectedProperty.activeBillingCycle!.periodEnd);
+                      setActiveRoomId("");
+                    }}
+                  >
+                    Đặt ngày này
+                  </button>
+                ) : (
+                  <StatusBadge tone="success">Khớp kỳ</StatusBadge>
+                )}
+              </div>
+            ) : selectedProperty ? (
+              <div
+                style={{
+                  padding: "12px 16px",
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: "14px",
+                  fontSize: "12px",
+                  color: "#92400e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px"
+                }}
+              >
+                <WarningOutlined style={{ fontSize: "18px", flexShrink: 0 }} />
+                <span>Cơ sở này chưa mở kỳ thu tiền. Số ghi nhận vẫn được lưu an toàn trên máy và tự động liên kết khi chủ nhà mở kỳ.</span>
+              </div>
+            ) : null}
 
         {error ? (
           <div className="staff-state staff-state--error">
@@ -828,6 +950,14 @@ export function StaffMeterEntryClient() {
                     <div>
                       <span className="staff-kicker">{selectedProperty.code}</span>
                       <h3>{selectedProperty.name}</h3>
+                      {selectedProperty.activeBillingCycle ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                          <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                            Kỳ: <strong>{selectedProperty.activeBillingCycle.cycleCode}</strong>
+                          </span>
+                          <StatusBadge tone="success">ĐANG MỞ</StatusBadge>
+                        </div>
+                      ) : null}
                     </div>
                     <strong>{selectedProperty.roomCount} phòng</strong>
                   </div>
@@ -944,7 +1074,7 @@ export function StaffMeterEntryClient() {
 
                       {activeRoom.requiredMeterTypes.length > 0 ? (
                         <button
-                          className="primary-action"
+                          className="meter-submit-action"
                           type="submit"
                           disabled={!selectedProperty.writeAllowed}
                         >

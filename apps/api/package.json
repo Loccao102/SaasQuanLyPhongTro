@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "db:setup": "tsx scripts/db-setup.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "auth:bootstrap-owner": "tsx scripts/bootstrap-owner.ts",
     "sepay:preflight": "tsx scripts/sepay-production-preflight.ts",
     "typecheck": "tsc --noEmit",

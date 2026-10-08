@@ -37,11 +37,21 @@ export type StaffRoomChecklist = {
   missingMeter: boolean;
 };
 
+export type StaffPropertyBillingCycle = {
+  id: string;
+  cycleCode: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  status: "OPEN" | "LOCKED" | "CLOSED";
+};
+
 export type StaffPropertyChecklist = {
   id: string;
   code: string;
   name: string;
   writeAllowed: boolean;
+  activeBillingCycle?: StaffPropertyBillingCycle | null;
   rooms: StaffRoomChecklist[];
   roomCount: number;
   completedRoomCount: number;

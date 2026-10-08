@@ -1,9 +1,16 @@
 name: habi-prod
 
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-propops}
       POSTGRES_USER: ${POSTGRES_USER:-propops}
@@ -11,17 +18,17 @@ services:
     command:
       - "postgres"
       - "-c"
-      - "shared_buffers=256MB"
+      - "shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}"
       - "-c"
-      - "effective_cache_size=768MB"
+      - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-768MB}"
       - "-c"
-      - "maintenance_work_mem=64MB"
+      - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}"
       - "-c"
       - "checkpoint_completion_target=0.9"
       - "-c"
       - "wal_buffers=16MB"
       - "-c"
-      - "work_mem=8MB"
+      - "work_mem=${POSTGRES_WORK_MEM:-8MB}"
     volumes:
       - propops_postgres_prod:/var/lib/postgresql/data
     healthcheck:
@@ -37,6 +44,7 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - propops_redis_prod:/data
@@ -52,6 +60,7 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: api
     restart: "no"
+    logging: *default-logging
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops_secure_password}@postgres:5432/${POSTGRES_DB:-propops}
@@ -68,8 +77,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: api
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${API_NODE_OPTIONS:-"--max-old-space-size=512"}
       API_PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER:-propops}:${POSTGRES_PASSWORD:-propops_secure_password}@postgres:5432/${POSTGRES_DB:-propops}
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
@@ -144,8 +155,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: worker
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${WORKER_NODE_OPTIONS:-"--max-old-space-size=512"}
       INTERNAL_API_BASE_URL: http://api:4000/api
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN}
       WORKER_PROVIDER: ${WORKER_PROVIDER:-DEV_MANUAL_REVIEW}
@@ -169,8 +182,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: admin
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:-"--max-old-space-size=256"}
       PORT: 3000
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
     depends_on:
@@ -183,8 +198,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: cms
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:-"--max-old-space-size=256"}
       PORT: 3003
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
       NEXT_PUBLIC_AUTH_CSRF_COOKIE_NAME: ${NEXT_PUBLIC_AUTH_CSRF_COOKIE_NAME:-}
@@ -198,8 +215,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: public-invoice
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:-"--max-old-space-size=256"}
       PORT: 3002
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
     depends_on:
@@ -212,8 +231,10 @@ services:
       dockerfile: infra/Dockerfile.prod
       target: staff
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:-"--max-old-space-size=256"}
       PORT: 3001
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
     depends_on:
@@ -223,6 +244,7 @@ services:
   nginx:
     image: nginx:alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"

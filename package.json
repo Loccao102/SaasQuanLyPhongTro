@@ -15,6 +15,7 @@
     "dev:api": "node scripts/run-with-env.mjs pnpm --filter @propops/api dev",
     "dev:worker": "node scripts/run-with-env.mjs pnpm --filter @propops/worker dev",
     "db:setup": "node scripts/run-with-env.mjs pnpm --filter @propops/api db:setup",
+    "db:seed": "node scripts/run-with-env.mjs pnpm --filter @propops/api seed:demo",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d postgres redis",
     "docker:up": "docker compose -f infra/docker-compose.yml up --build",
     "docker:down": "docker compose -f infra/docker-compose.yml down --remove-orphans",

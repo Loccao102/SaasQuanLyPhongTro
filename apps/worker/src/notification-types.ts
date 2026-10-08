@@ -44,4 +44,5 @@ export interface NotificationProvider {
   readonly claimAliases?: readonly string[];
 
   send(job: ClaimedNotificationJob): Promise<NotificationProviderResult>;
+  close?(): Promise<void>;
 }

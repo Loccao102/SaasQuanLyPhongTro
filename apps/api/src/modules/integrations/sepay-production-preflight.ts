@@ -1,12 +1,7 @@
 import type { Pool, QueryResultRow } from "pg";
 
 export const REQUIRED_SEPAY_PRODUCTION_MIGRATIONS = [
-  "0011_system_worker_observability.sql",
-  "0014_renter_payment_allocation.sql",
-  "0015_renter_payment_provider_inbox.sql",
-  "0016_public_invoice_vietqr.sql",
-  "0019_renter_provider_transaction_identity.sql",
-  "0020_renter_payment_reconciliation_cursor.sql"
+  "0001_init.sql"
 ] as const;
 
 export const REQUIRED_SEPAY_PRODUCTION_TABLES = [

@@ -16,40 +16,53 @@ EXPOSE 4000
 CMD ["node", "apps/api/dist/main.js"]
 
 # Target: Worker Service
-FROM base AS worker
+FROM mcr.microsoft.com/playwright:v1.63.0-noble AS worker
 WORKDIR /app
 COPY --from=builder /app ./
 ENV NODE_ENV=production
 CMD ["node", "apps/worker/dist/main.js"]
 
 # Target: Admin Web
-FROM base AS admin
+FROM node:22-alpine AS admin
 WORKDIR /app
-COPY --from=builder /app ./
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@propops/admin", "start", "-p", "3000"]
+CMD ["node", "apps/admin/server.js"]
 
 # Target: CMS Control Plane
-FROM base AS cms
+FROM node:22-alpine AS cms
 WORKDIR /app
-COPY --from=builder /app ./
+COPY --from=builder /app/apps/cms/.next/standalone ./
+COPY --from=builder /app/apps/cms/.next/static ./apps/cms/.next/static
 ENV NODE_ENV=production
+ENV PORT=3003
+ENV HOSTNAME="0.0.0.0"
 EXPOSE 3003
-CMD ["pnpm", "--filter", "@propops/cms", "start", "-p", "3003"]
+CMD ["node", "apps/cms/server.js"]
 
 # Target: Public Invoice Web
-FROM base AS public-invoice
+FROM node:22-alpine AS public-invoice
 WORKDIR /app
-COPY --from=builder /app ./
+COPY --from=builder /app/apps/public-invoice/.next/standalone ./
+COPY --from=builder /app/apps/public-invoice/.next/static ./apps/public-invoice/.next/static
 ENV NODE_ENV=production
+ENV PORT=3002
+ENV HOSTNAME="0.0.0.0"
 EXPOSE 3002
-CMD ["pnpm", "--filter", "@propops/public-invoice", "start", "-p", "3002"]
+CMD ["node", "apps/public-invoice/server.js"]
 
 # Target: Staff PWA
-FROM base AS staff
+FROM node:22-alpine AS staff
 WORKDIR /app
-COPY --from=builder /app ./
+COPY --from=builder /app/apps/staff/.next/standalone ./
+COPY --from=builder /app/apps/staff/.next/static ./apps/staff/.next/static
+COPY --from=builder /app/apps/staff/public ./apps/staff/public
 ENV NODE_ENV=production
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
 EXPOSE 3001
-CMD ["pnpm", "--filter", "@propops/staff", "start", "-p", "3001"]
+CMD ["node", "apps/staff/server.js"]

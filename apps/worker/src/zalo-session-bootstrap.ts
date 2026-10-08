@@ -12,7 +12,10 @@ async function main(): Promise<void> {
   );
   const existing = await store.load();
 
-  const browser = await chromium.launch({ headless: false });
+  const channel =
+    process.env.PLAYWRIGHT_CHANNEL ||
+    (process.platform === "win32" ? "chrome" : undefined);
+  const browser = await chromium.launch({ headless: false, channel });
   const context = await browser.newContext(
     existing
       ? {

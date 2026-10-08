@@ -9,7 +9,8 @@
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "zalo:bootstrap-session": "tsx src/zalo-session-bootstrap.ts"
+    "zalo:bootstrap-session": "tsx src/zalo-session-bootstrap.ts",
+    "zalo:send-test": "tsx src/zalo-send-test.ts"
   },
   "dependencies": {
     "playwright": "1.63.0"

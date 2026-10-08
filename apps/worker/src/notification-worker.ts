@@ -197,5 +197,12 @@ export async function runNotificationWorker(): Promise<void> {
   } catch {
     // Best-effort provider-specific shutdown heartbeat.
   }
+
+  try {
+    await provider.close?.();
+  } catch {
+    // Best-effort provider cleanup.
+  }
+
   await reportOperationalHeartbeat("STOPPING");
 }

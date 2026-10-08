@@ -60,7 +60,7 @@ test("production preflight fails unsafe financial cutover conditions", () => {
   const database = healthyDatabase();
   database.appliedMigrations = database.appliedMigrations.filter(
     (migration) =>
-      migration !== "0019_renter_provider_transaction_identity.sql"
+      migration !== "0001_init.sql"
   );
   database.outstandingOrganizationsWithoutActivePaymentProfile = 2;
 
@@ -84,7 +84,7 @@ test("production preflight fails unsafe financial cutover conditions", () => {
   );
   assert.ok(
     report.checks.some(
-      (check) => check.id === "migration-0019" && check.status === "FAIL"
+      (check) => check.id === "migration-0001" && check.status === "FAIL"
     )
   );
 });
