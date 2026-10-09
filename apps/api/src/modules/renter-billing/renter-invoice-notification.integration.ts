@@ -238,6 +238,13 @@ test("finalized billing cycle creates idempotent personalized invoice jobs with 
     );
     assert.deepEqual(linksAfter.rows, linksBefore.rows);
 
+    // The tenant must link Zalo before a notification job is eligible.
+    assert.equal(await worker.claimNext("PLAYWRIGHT_ZALO"), null);
+    await pool.query(
+      `INSERT INTO zalo_personal_accounts (organization_id, status, encrypted_session)
+       VALUES ($1, 'CONNECTED', 'integration-test-encrypted-session')`,
+      [org]
+    );
     const job = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(job);
     assert.equal(job.recipientKey, "0901234567");
