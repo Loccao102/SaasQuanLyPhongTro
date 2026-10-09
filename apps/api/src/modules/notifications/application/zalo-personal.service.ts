@@ -275,6 +275,24 @@ export class ZaloPersonalService {
     return { ok: result.rowCount === 1 };
   }
 
+  async invalidateSessionForJob(jobId: string, reason: string) {
+    if (!["AUTH_REQUIRED","SESSION_EXPIRED","SESSION_STORAGE_ERROR","CAPTCHA"].includes(reason)) {
+      throw new BadRequestException("Invalid per-account Zalo invalidation reason.");
+    }
+    const result = await this.db.query(
+      `UPDATE zalo_personal_accounts a
+       SET status = 'DISCONNECTED', encrypted_session = NULL,
+           connected_at = NULL, updated_at = now()
+       FROM notification_jobs j
+       WHERE j.id = $1::uuid AND j.organization_id = a.organization_id
+         AND j.status = 'RUNNING'
+         AND j.provider IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+         AND a.status = 'CONNECTED'`,
+      [jobId]
+    );
+    return { ok: result.rowCount === 1 };
+  }
+
   private checkEncrypted(value: unknown): asserts value is string {
     // The worker performs authenticated AES-GCM encryption; browser callers never see the ciphertext.
     if (typeof value !== "string" || value.length > 900_000 ||
