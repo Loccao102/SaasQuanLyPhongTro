@@ -32,6 +32,12 @@ export class ZaloPersonalService {
     }
   }
 
+  private authorizeManage(principal: TenantPrincipal) {
+    if (principal.role !== "OWNER" && principal.role !== "ADMIN") {
+      throw new ForbiddenException("Only owners and admins may link Zalo accounts.");
+    }
+  }
+
   async status(principal: TenantPrincipal) {
     this.authorize(principal);
     await this.expireOldRequests(principal.organizationId);
@@ -48,11 +54,13 @@ export class ZaloPersonalService {
         [principal.organizationId]
       )
     ]);
+    const canManage = principal.role === "OWNER" || principal.role === "ADMIN";
     const row = login.rows[0];
     return {
+      canManage,
       status: account.rows[0]?.status ?? "DISCONNECTED",
       connectedAt: account.rows[0]?.connected_at?.toISOString() ?? null,
-      login: row ? {
+      login: row && canManage ? {
         id: row.id,
         status: row.status,
         qrImage: row.status === "RUNNING" && row.expires_at > new Date()
@@ -65,6 +73,7 @@ export class ZaloPersonalService {
 
   async begin(principal: TenantPrincipal) {
     this.authorize(principal);
+    this.authorizeManage(principal);
     return this.db.withTransaction(async (client) => {
       // Serialize connect/disconnect even when the account row does not yet exist.
       await client.query("SELECT id FROM organizations WHERE id = $1::uuid FOR UPDATE", [
@@ -79,6 +88,16 @@ export class ZaloPersonalService {
       );
       if (current.rows[0]) {
         return { requestId: current.rows[0].id, expiresAt: current.rows[0].expires_at.toISOString() };
+      }
+
+      const recent = await client.query<QueryResultRow & { count: number }>(
+        `SELECT count(*)::int AS count FROM zalo_personal_login_requests
+         WHERE organization_id = $1::uuid
+           AND created_at > now() - interval '15 minutes'`,
+        [principal.organizationId]
+      );
+      if ((recent.rows[0]?.count ?? 0) >= 3) {
+        throw new ConflictException("Too many Zalo login attempts. Try again later.");
       }
 
       const requestId = randomUUID();
@@ -110,6 +129,7 @@ export class ZaloPersonalService {
 
   async disconnect(principal: TenantPrincipal) {
     this.authorize(principal);
+    this.authorizeManage(principal);
     await this.db.withTransaction(async (client) => {
       await client.query("SELECT id FROM organizations WHERE id = $1::uuid FOR UPDATE", [
         principal.organizationId
