@@ -87,13 +87,13 @@ export default function ZaloPersonalPage() {
             </h2>
           </div>
           <div className="button-row">
-            {!connecting && (
+            {connection?.canManage && !connecting && (
               <button type="button" className="primary-button" disabled={busy || loading}
                 onClick={() => void connect()}>
                 {connected ? "Liên kết lại" : "Kết nối Zalo"}
               </button>
             )}
-            {(connected || connecting) && (
+            {connection?.canManage && (connected || connecting) && (
               <button type="button" className="danger-button" disabled={busy}
                 onClick={() => void disconnect()}>
                 Ngắt kết nối
@@ -109,7 +109,7 @@ export default function ZaloPersonalPage() {
           </div>
         )}
 
-        {connecting && (
+        {connecting && connection?.canManage && (
           <div style={{ display: "grid", justifyItems: "center", gap: 14, padding: 18 }}>
             {login?.qrImage ? (
               <img src={login.qrImage} alt="Ảnh màn hình đăng nhập Zalo để quét QR bằng điện thoại"
@@ -135,6 +135,9 @@ export default function ZaloPersonalPage() {
             </div>
           )}
 
+        {connection && !connection.canManage && (
+          <div className="admin-state">Chỉ OWNER hoặc ADMIN mới có thể liên kết hoặc ngắt Zalo của tổ chức.</div>
+        )}
         <p style={{ marginTop: 18, fontSize: 13, opacity: 0.82 }}>
           Đây là tích hợp Zalo cá nhân qua giao diện web, không phải API chính thức.
           Zalo có thể yêu cầu xác minh hoặc thay đổi giao diện khiến gửi tin bị gián đoạn.
