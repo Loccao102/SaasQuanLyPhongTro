@@ -203,6 +203,7 @@ services:
   # Separate browser process for tenant QR login; never shares browser contexts
   # or an authenticated session between tenants.
   worker-zalo-login:
+    profiles: [ "zalo-personal" ]
     <<: *playwright-worker-service
     environment:
       <<: *worker-environment
