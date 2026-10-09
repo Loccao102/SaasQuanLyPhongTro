@@ -186,9 +186,9 @@ export class ZaloPersonalService {
 
   async progress(requestId: string, qrImage: unknown) {
     if (typeof qrImage !== "string" ||
-      !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(qrImage) ||
+      !/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(qrImage) ||
       qrImage.length > 250_000) {
-      throw new BadRequestException("A bounded JPEG QR image is required.");
+      throw new BadRequestException("A bounded JPEG/PNG QR image is required.");
     }
     const result = await this.db.query(
       `UPDATE zalo_personal_login_requests SET qr_image = $2, updated_at = now()
