@@ -148,12 +148,31 @@ export class NotificationWorkerService {
              )
            )
            AND c.status IN ('QUEUED', 'RUNNING')
+           AND (
+             j.provider NOT IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+             OR EXISTS (
+               SELECT 1 FROM zalo_personal_accounts z
+               WHERE z.organization_id = j.organization_id
+                 AND z.status = 'CONNECTED'
+                 AND z.encrypted_session IS NOT NULL
+             )
+           )
+           AND (
+             j.provider NOT IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+             OR NOT EXISTS (
+               SELECT 1 FROM notification_jobs active_job
+               WHERE active_job.organization_id = j.organization_id
+                 AND active_job.provider IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+                 AND active_job.status = 'RUNNING'
+                 AND active_job.id <> j.id
+             )
+           )
          ORDER BY
            CASE WHEN j.status = 'RUNNING' THEN 0 ELSE 1 END,
            COALESCE(j.next_attempt_at, latest_attempt.started_at, j.created_at),
            j.created_at,
            j.id
-         FOR UPDATE OF j SKIP LOCKED
+         FOR UPDATE OF j, o SKIP LOCKED
          LIMIT 1`,
         [normalizedProvider, runningTimeoutSeconds]
       );
