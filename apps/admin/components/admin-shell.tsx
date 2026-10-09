@@ -57,6 +57,7 @@ const navItems: Array<{
   { label: "Báo cáo", href: "/reports", icon: <BarChartOutlined />, feature: "reports" },
   { label: "Báo hỏng & Sửa chữa", href: "/maintenance", icon: <ToolOutlined />, feature: "maintenance" },
   { label: "Thông báo", href: "/notifications", icon: <BellOutlined />, feature: "notifications" },
+  { label: "Zalo 1 Chạm", href: "/zalo-personal", icon: <ThunderboltOutlined />, feature: "notifications" },
   { label: "Đội ngũ", href: "/team", icon: <TeamOutlined />, feature: "team_management" },
   { label: "Gói dịch vụ", href: "/subscription", icon: <CrownOutlined /> }
 ];
