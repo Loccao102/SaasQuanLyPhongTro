@@ -66,12 +66,30 @@ export async function runZaloLoginWorker(): Promise<void> {
           // Authentication challenges require the user to act in their own
           // Zalo mobile app. Never try to bypass CAPTCHA or 2FA.
           if (Date.now() >= nextScreenshotAt) {
-            const imageBytes = await page.screenshot({
-              type: "jpeg",
-              quality: 38,
-              animations: "disabled"
-            });
-            const qrImage = "data:image/jpeg;base64," + imageBytes.toString("base64");
+            // Prefer a lossless QR-only image for reliable phone scanning.
+            // Zalo UI selectors can change; fallback to the compact login page.
+            let qrImage = "";
+            for (const selector of [
+              '[class*="qr"] canvas',
+              '[class*="qr"] img',
+              'img[alt*="QR"]'
+            ]) {
+              const candidate = page.locator(selector).first();
+              if (await candidate.isVisible().catch(() => false)) {
+                const png = await candidate.screenshot({ type: "png" });
+                const encoded = "data:image/png;base64," + png.toString("base64");
+                if (encoded.length <= 90_000) {
+                  qrImage = encoded;
+                  break;
+                }
+              }
+            }
+            if (!qrImage) {
+              const imageBytes = await page.screenshot({
+                type: "jpeg", quality: 38, animations: "disabled"
+              });
+              qrImage = "data:image/jpeg;base64," + imageBytes.toString("base64");
+            }
             if (qrImage.length <= 90_000) {
               const result = await api.zaloLoginProgress(request.id, qrImage);
               if (!result.ok) break; // User disconnected or request expired.
