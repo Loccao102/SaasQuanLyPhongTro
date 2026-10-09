@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { StatusBadge } from "@propops/ui";
+import Link from "next/link";
+import { adminZaloPersonalApi } from "../../lib/admin-zalo-personal-api";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminNotificationsApi,
@@ -88,6 +90,7 @@ export function NotificationsClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterTab, setFilterTab] = useState<"ALL" | "MANUAL_REVIEW" | "SENT" | "PENDING" | "FAILED">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [zaloConnected, setZaloConnected] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +98,7 @@ export function NotificationsClient() {
     try {
       const next = await adminNotificationsApi.list();
       setData(next);
+      setZaloConnected((await adminZaloPersonalApi.status().catch(() => null))?.status === "CONNECTED");
       if (selected) {
         const detail = await adminNotificationsApi.detail(selected.id);
         setSelected(detail.campaign);
@@ -188,13 +192,21 @@ export function NotificationsClient() {
         </div>
       ) : null}
 
+      {!zaloConnected && !loading && (
+        <section className="admin-state" role="status">
+          Bạn cần liên kết Zalo của tổ chức trước khi gửi tin.
+          <Link href="/zalo-personal" className="text-link" style={{ marginLeft: 12 }}>
+            Kết nối Zalo 1 Chạm
+          </Link>
+        </section>
+      )}
       <section className="asset-context">
         <div>
           <span className="eyebrow">ZALO / NOTIFICATION QUEUE</span>
           <h2>{data?.organization.name ?? "Workspace hiện tại"}</h2>
           <p>Mỗi người nhận là một nhiệm vụ độc lập (durable job); trạng thái UNKNOWN/MANUAL_REVIEW không bao giờ bị coi là gửi thành công.</p>
         </div>
-        <button className="primary-button" type="button" onClick={() => setShowCreate((value) => !value)}>
+        <button className="primary-button" type="button" disabled={!zaloConnected} onClick={() => setShowCreate((value) => !value)}>
           + Tạo chiến dịch
         </button>
       </section>
