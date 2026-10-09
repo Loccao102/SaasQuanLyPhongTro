@@ -39,6 +39,17 @@ export class ZaloPersonalInternalController {
     return this.zalo.sessionForJob(jobId);
   }
 
+  @Post("session/:jobId/invalidate")
+  invalidate(
+    @Param("jobId", new ParseUUIDPipe({ version: "4" })) jobId: string,
+    @Body() body: { reason?: unknown }
+  ) {
+    if (typeof body?.reason !== "string") {
+      throw new BadRequestException("Invalid Zalo session invalidation reason.");
+    }
+    return this.zalo.invalidateSessionForJob(jobId, body.reason);
+  }
+
   @Post("session/:jobId/save")
   save(
     @Param("jobId", new ParseUUIDPipe({ version: "4" })) jobId: string,
