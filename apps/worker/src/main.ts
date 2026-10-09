@@ -4,9 +4,15 @@ import { runDunningWorker } from "./dunning-worker.js";
 import { runNotificationWorker } from "./notification-worker.js";
 import { runRenterPaymentWebhookWorker } from "./renter-payment-webhook-worker.js";
 import { resolveWorkerRole } from "./worker-config.js";
+import { runZaloLoginWorker } from "./zalo-login-worker.js";
 
 async function main(): Promise<void> {
   const role = resolveWorkerRole(process.env.WORKER_ROLE);
+
+  if (role === "ZALO_LOGIN") {
+    await runZaloLoginWorker();
+    return;
+  }
 
   if (role === "BILLING") {
     await runBillingWorker();
