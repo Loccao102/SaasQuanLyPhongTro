@@ -8,6 +8,7 @@ x-logging: &log
     max-file: "3"
 
 x-worker: &worker
+  image: habi-staging-zalo-worker:local
   build:
     context: ..
     dockerfile: infra/Dockerfile.staging-worker
