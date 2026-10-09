@@ -250,6 +250,37 @@ export class InternalWorkerApiClient {
     );
   }
 
+  zaloLoginClaim(): Promise<{
+    id: string; organizationId: string; expiresAt: string;
+  } | null> {
+    return this.request("/internal/zalo-personal/claim", {});
+  }
+
+  zaloLoginProgress(requestId: string, qrImage: string): Promise<{ ok: boolean }> {
+    return this.request("/internal/zalo-personal/" + encodeURIComponent(requestId) + "/progress", { qrImage });
+  }
+
+  zaloLoginFinish(requestId: string, input: {
+    status: "CONNECTED" | "FAILED";
+    encryptedSession?: string;
+    errorMessage?: string;
+  }): Promise<{ ok: boolean }> {
+    return this.request("/internal/zalo-personal/" + encodeURIComponent(requestId) + "/finish", input);
+  }
+
+  zaloPersonalSession(jobId: string): Promise<{
+    organizationId: string; encryptedSession: string;
+  } | null> {
+    return this.request("/internal/zalo-personal/session/" + encodeURIComponent(jobId), {});
+  }
+
+  zaloPersonalSaveSession(jobId: string, encryptedSession: string): Promise<{ ok: boolean }> {
+    return this.request(
+      "/internal/zalo-personal/session/" + encodeURIComponent(jobId) + "/save",
+      { encryptedSession }
+    );
+  }
+
   private async request<T>(path: string, body: unknown): Promise<T> {
     const response = await fetch(this.apiBase + path, {
       method: "POST",
