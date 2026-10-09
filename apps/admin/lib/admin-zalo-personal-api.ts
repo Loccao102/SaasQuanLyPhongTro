@@ -2,6 +2,7 @@ import { adminApiRequest } from "./admin-api-client";
 
 export type ZaloPersonalStatus = {
   status: "DISCONNECTED" | "CONNECTING" | "CONNECTED";
+  canManage: boolean;
   connectedAt: string | null;
   login: {
     id: string;
