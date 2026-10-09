@@ -281,6 +281,13 @@ export class InternalWorkerApiClient {
     );
   }
 
+  zaloPersonalInvalidateSession(jobId: string, reason: string): Promise<{ ok: boolean }> {
+    return this.request(
+      "/internal/zalo-personal/session/" + encodeURIComponent(jobId) + "/invalidate",
+      { reason }
+    );
+  }
+
   private async request<T>(path: string, body: unknown): Promise<T> {
     const response = await fetch(this.apiBase + path, {
       method: "POST",
