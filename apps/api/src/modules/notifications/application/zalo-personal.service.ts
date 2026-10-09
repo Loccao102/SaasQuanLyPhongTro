@@ -302,10 +302,8 @@ export class ZaloPersonalService {
   }
 
   private async expireOldRequests(organizationId?: string, client?: PoolClient) {
-    const query = client ?? this.db;
     const parameters = organizationId ? [organizationId] : [];
-    await query.query(
-      `WITH expired AS (
+    const sql = `WITH expired AS (
          UPDATE zalo_personal_login_requests
          SET status = 'EXPIRED', qr_image = NULL, updated_at = now()
          WHERE status IN ('PENDING','RUNNING') AND expires_at <= now()
@@ -316,8 +314,11 @@ export class ZaloPersonalService {
        SET status = 'DISCONNECTED', encrypted_session = NULL, connected_at = NULL,
            updated_at = now()
        WHERE a.organization_id IN (SELECT organization_id FROM expired)
-         AND a.status = 'CONNECTING'`,
-      parameters
-    );
+         AND a.status = 'CONNECTING'`;
+    if (client) {
+      await client.query(sql, parameters);
+    } else {
+      await this.db.query(sql, parameters);
+    }
   }
 }
