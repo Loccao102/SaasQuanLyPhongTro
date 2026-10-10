@@ -3,15 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { InternalWorkerApiClient } from "./internal-api-client.js";
 import { loadZaloPlaywrightConfig } from "./providers/zalo-playwright.config.js";
 import { ZaloTenantVault } from "./providers/zalo-tenant-vault.js";
-
-async function isChatReady(page: import("playwright").Page, selectors: readonly string[]) {
-  for (const selector of selectors) {
-    try {
-      if (await page.locator(selector).first().isVisible()) return true;
-    } catch { /* UI may be navigating. */ }
-  }
-  return false;
-}
+import { isAuthenticatedZaloChat } from "./zalo-login-detection.js";
 
 export async function runZaloLoginWorker(): Promise<void> {
   const api = new InternalWorkerApiClient();
@@ -50,7 +42,7 @@ export async function runZaloLoginWorker(): Promise<void> {
         let nextScreenshotAt = 0;
         let connected = false;
         while (!stopping && Date.now() < new Date(request.expiresAt).getTime()) {
-          const chatReady = await isChatReady(page, config.selectors.searchInputs);
+          const chatReady = await isAuthenticatedZaloChat(page, config.selectors.searchInputs);
           if (chatReady) {
             // Persist only AFTER a verifiable authenticated chat UI appears.
             const encryptedSession = vault.encrypt(
