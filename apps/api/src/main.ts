@@ -15,6 +15,16 @@ async function bootstrap() {
     rawBody: true
   });
 
+  // Zalo Web storageState is encrypted and base64-encoded before POSTing to
+  // /api/internal/zalo-personal/:requestId/finish and /session/:jobId/save.
+  // Nest/Express defaults to 100 KB, rejecting valid ~100-700 KB envelopes
+  // with 413 before InternalServiceGuard or the strict Zalo payload validator.
+  // Keep the parser capped at 1 MiB; the Zalo service additionally bounds
+  // encryptedSession to 900,000 characters and requires an authenticated
+  // internal worker token on both endpoints.
+  // Using Nest's parser helper preserves rawBody for webhook signature checks.
+  app.useBodyParser("json", { limit: "1mb" });
+
   const express = app.getHttpAdapter().getInstance();
   express.disable("x-powered-by");
 
