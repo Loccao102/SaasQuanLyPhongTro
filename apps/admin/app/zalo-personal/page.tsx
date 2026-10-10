@@ -83,7 +83,7 @@ export default function ZaloPersonalPage() {
             <h2>
               {loading ? "Đang kiểm tra..." :
                 connected ? "Đã kết nối" :
-                  connecting ? "Đang chờ quét mã" : "Chưa kết nối"}
+                  connecting ? "Đang xác minh kết nối Zalo" : "Chưa kết nối"}
             </h2>
           </div>
           <div className="button-row">
@@ -112,14 +112,15 @@ export default function ZaloPersonalPage() {
         {connecting && connection?.canManage && (
           <div style={{ display: "grid", justifyItems: "center", gap: 14, padding: 18 }}>
             {login?.qrImage ? (
-              <img src={login.qrImage} alt="Ảnh màn hình đăng nhập Zalo để quét QR bằng điện thoại"
+              <img src={login.qrImage} alt="Ảnh trạng thái Zalo Web từ worker: có thể là mã QR hoặc giao diện chat đang xác minh"
                 style={{ width: "100%", maxWidth: 480, borderRadius: 12, border: "1px solid #ddd" }} />
             ) : (
-              <div className="admin-state">Server đang khởi tạo phiên Zalo, chuẩn bị mã QR...</div>
+              <div className="admin-state">Server đang mở Zalo Web để xác minh phiên hoặc lấy mã QR...</div>
             )}
             <p style={{ maxWidth: 500, textAlign: "center" }}>
-              Mở Zalo trên điện thoại, chọn quét mã QR đăng nhập và xác nhận trên
-              điện thoại của bạn. Trạng thái sẽ tự cập nhật khi đăng nhập thành công.
+              Nếu hình là mã QR, mở Zalo điện thoại để quét và xác nhận. Nếu hình đã là
+              màn hình chat, worker đang kiểm tra đăng nhập và lưu phiên an toàn.
+              Chỉ có thể gửi tin khi trạng thái chuyển thành “Đã kết nối”.
             </p>
             <small>
               Hạn kết nối: {login?.expiresAt
