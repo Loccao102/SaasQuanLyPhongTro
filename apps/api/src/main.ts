@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { allowedBrowserOrigins } from "./modules/identity/auth/auth-http.js";
 import { applyHttpSecurityHeaders } from "./security/http-security.js";
@@ -11,7 +12,7 @@ import {
 async function bootstrap() {
   assertSecurityConfiguration();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true
   });
 
