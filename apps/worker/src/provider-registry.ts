@@ -1,6 +1,6 @@
 import type { NotificationProvider } from "./notification-types.js";
 import { DevManualReviewProvider } from "./providers/dev-manual-review.provider.js";
-import { ZaloPlaywrightProvider } from "./providers/zalo-playwright.provider.js";
+import { ZaloTenantProvider } from "./zalo-tenant-provider.js";
 
 export function loadProvider(): NotificationProvider {
   const provider = process.env.WORKER_PROVIDER?.trim();
@@ -9,7 +9,7 @@ export function loadProvider(): NotificationProvider {
     provider === "ZALO_PLAYWRIGHT" ||
     provider === "PLAYWRIGHT_ZALO"
   ) {
-    return ZaloPlaywrightProvider.fromEnvironment();
+    return new ZaloTenantProvider();
   }
 
   if (provider === "DEV_MANUAL_REVIEW") {

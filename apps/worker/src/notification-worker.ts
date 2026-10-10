@@ -118,6 +118,19 @@ export async function runNotificationWorker(): Promise<void> {
       }
 
       const result = await executeProviderSafely(provider, job);
+      // An account-specific login problem must revoke only that tenant's
+      // stored session, never pause the shared Playwright provider.
+      const accountError = "errorCode" in result ? result.errorCode ?? "" : "";
+      if (provider.name === "PLAYWRIGHT_ZALO" &&
+          ["AUTH_REQUIRED", "SESSION_EXPIRED", "SESSION_STORAGE_ERROR", "CAPTCHA"]
+            .includes(accountError)) {
+        try {
+          await api.zaloPersonalInvalidateSession(job.id, accountError);
+        } catch (error) {
+          process.stderr.write("[notification-worker] Cannot invalidate tenant Zalo session: " +
+            (error instanceof Error ? error.message : String(error)) + "\n");
+        }
+      }
       const completion = await api.complete(job, result);
       const pauseProviderReason = fatalProviderPauseReason(result);
 

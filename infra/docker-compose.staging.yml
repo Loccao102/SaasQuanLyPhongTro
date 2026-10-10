@@ -1,0 +1,119 @@
+# Single-GCP-VM staging topology. Data lives on Neon, not in a second local PostgreSQL.
+name: habi-staging
+
+x-logging: &log
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-worker: &worker
+  image: habi-staging-zalo-worker:local
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile.staging-worker
+  restart: unless-stopped
+  init: true
+  shm_size: "1gb"
+  logging: *log
+  depends_on:
+    api:
+      condition: service_healthy
+
+x-worker-env: &worker-env
+  NODE_ENV: production
+  INTERNAL_API_BASE_URL: http://api:4000/api
+  INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:?Set INTERNAL_WORKER_TOKEN}
+  ZALO_SESSION_MASTER_KEY_BASE64: ${ZALO_SESSION_MASTER_KEY_BASE64:?Set ZALO_SESSION_MASTER_KEY_BASE64}
+  WORKER_PROVIDER: PLAYWRIGHT_ZALO
+  ZALO_BASE_URL: https://chat.zalo.me/
+  ZALO_HEADLESS: "true"
+  ZALO_SESSION_LOCK_DIR: /tmp/habi-zalo-locks
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    logging: *log
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.staging-api
+    restart: unless-stopped
+    init: true
+    logging: *log
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to Neon staging pooled connection}
+      DATABASE_POOL_MAX: "5"
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN}
+      AUTH_PUBLIC_APP_URL: ${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN}
+      AUTH_SECURITY_HMAC_KEY: ${AUTH_SECURITY_HMAC_KEY:?Set AUTH_SECURITY_HMAC_KEY}
+      INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:?Set INTERNAL_WORKER_TOKEN}
+      OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:?Set OBSERVABILITY_METRICS_TOKEN}
+      AUTH_TOTP_ENCRYPTION_KEY: ${AUTH_TOTP_ENCRYPTION_KEY:-}
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      TRUST_PROXY_HOPS: "1"
+      NOTIFICATION_RUNNING_TIMEOUT_SECONDS: "600"
+    expose:
+      - "4000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker-zalo-login:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLE: ZALO_LOGIN
+      WORKER_ID: habi-staging-zalo-login
+
+  worker-notification:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_ROLE: NOTIFICATION
+      WORKER_ID: habi-staging-notification
+      WORKER_POLL_INTERVAL_MS: "3000"
+      WORKER_HEARTBEAT_INTERVAL_MS: "30000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *log
+    environment:
+      HABI_API_DOMAIN: ${HABI_API_DOMAIN:?Set HABI_API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

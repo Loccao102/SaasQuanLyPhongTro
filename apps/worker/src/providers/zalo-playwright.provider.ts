@@ -114,6 +114,16 @@ async function editorText(locator: Locator): Promise<string> {
   return (await locator.textContent()) ?? "";
 }
 
+export interface ZaloStorageStatePort {
+  load(): Promise<unknown | undefined>;
+  save(value: unknown): Promise<void>;
+}
+
+export interface ZaloSessionLockPort {
+  acquire(): Promise<boolean>;
+  release(): Promise<void>;
+}
+
 export class ZaloPlaywrightProvider implements NotificationProvider {
   readonly name = "PLAYWRIGHT_ZALO";
   readonly claimAliases = ["ZALO_PLAYWRIGHT"] as const;
@@ -122,8 +132,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
 
   private constructor(
     private readonly config: ZaloPlaywrightConfig,
-    private readonly sessionStore: EncryptedStorageStateStore,
-    private readonly sessionLock: ExclusiveSessionFileLock
+    private readonly sessionStore: ZaloStorageStatePort,
+    private readonly sessionLock: ZaloSessionLockPort
   ) {}
 
   private async getBrowser(): Promise<Browser> {
@@ -165,6 +175,14 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
       ),
       new ExclusiveSessionFileLock(config.lockPath)
     );
+  }
+
+  static withStorage(
+    config: ZaloPlaywrightConfig,
+    store: ZaloStorageStatePort,
+    lock: ZaloSessionLockPort
+  ): ZaloPlaywrightProvider {
+    return new ZaloPlaywrightProvider(config, store, lock);
   }
 
   async send(
@@ -215,6 +233,15 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
               ? error.message
               : "Encrypted Zalo session could not be loaded.",
           evidence: evidence(job, "load-session")
+        };
+      }
+
+      if (!storageState) {
+        return {
+          kind: "MANUAL_REVIEW",
+          errorCode: "ZALO_SESSION_NOT_CONNECTED",
+          errorMessage: "This tenant has no connected Zalo Personal session.",
+          evidence: evidence(job, "tenant-session-required")
         };
       }
 

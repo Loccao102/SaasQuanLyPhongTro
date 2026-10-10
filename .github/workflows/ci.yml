@@ -45,6 +45,7 @@ jobs:
 
 
       - name: Lint
+        if: always()
         run: pnpm lint
 
       - name: Typecheck
@@ -65,6 +66,7 @@ jobs:
           DATABASE_URL=postgresql://propops:propops@127.0.0.1:5432/propops_runtime             pnpm --filter @propops/api db:setup
 
       - name: SePay production preflight smoke test
+        if: always()
         env:
           DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops_runtime
           SEPAY_RENTER_WEBHOOK_SECRET: ci-sepay-webhook-secret-0123456789
@@ -113,6 +115,7 @@ jobs:
           done
 
       - name: Integration tests
+        if: always()
         env:
           DATABASE_URL: postgresql://propops:propops@127.0.0.1:5432/propops
           DATABASE_POOL_MAX: 4

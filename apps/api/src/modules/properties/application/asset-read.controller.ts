@@ -29,6 +29,11 @@ export class AssetReadController {
     return this.assets.overview(this.principal(request));
   }
 
+  @Get("dashboard")
+  dashboard(@Req() request: TenantRequest) {
+    return this.assets.dashboard(this.principal(request));
+  }
+
   @Get("properties/:propertyId")
   property(
     @Req() request: TenantRequest,
