@@ -82,12 +82,14 @@ export function AdminShell({
   title,
   eyebrow = "HABI ADMIN",
   activeNav,
-  children
+  children,
+  notificationCount
 }: {
   title: string;
   eyebrow?: string;
   activeNav: string;
   children: ReactNode;
+  notificationCount?: number | null;
 }) {
   const auth = useAdminAuth();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -613,10 +615,21 @@ export function AdminShell({
             <h1>{title}</h1>
           </div>
           <div className="topbar__actions">
-            <button className="icon-button icon-button--notification" aria-label="3 thông báo">
+            <Link
+              href="/notifications"
+              className="icon-button icon-button--notification"
+              aria-label={notificationCount != null && notificationCount > 0
+                ? String(notificationCount) + " thông báo cần xử lý"
+                : "Xem thông báo"}
+              title="Xem thông báo"
+            >
               <BellOutlined aria-hidden="true" />
-              <span className="notification-count">3</span>
-            </button>
+              {notificationCount != null && notificationCount > 0 ? (
+                <span className="notification-count">
+                  {notificationCount > 99 ? "99+" : notificationCount}
+                </span>
+              ) : null}
+            </Link>
             <button
               className="avatar-button"
               type="button"
