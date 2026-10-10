@@ -181,7 +181,7 @@ export default function AdminDashboardPage() {
                       ? "KHÔNG CÓ QUYỀN XEM"
                       : cycle?.totalOccupiedRooms === 0
                         ? "CHƯA CÓ PHÒNG ĐANG THUÊ"
-                        : (cycle?.billedRooms ?? 0) >= cycle.totalOccupiedRooms
+                        : (cycle?.billedRooms ?? 0) >= (cycle?.totalOccupiedRooms ?? 0)
                           ? "ĐÃ HOÀN THÀNH"
                           : "ĐANG THỰC HIỆN"}
                   </StatusBadge>
