@@ -86,13 +86,13 @@ async function downloadExcel(
   const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
     header: 1, raw: true, defval: ""
   });
-  const headers = (rows[0] ?? []).map(value => String(value ?? "").trim());
-  if (!headers.length || headers.every(value => !value)) {
+  const columnLabels = (rows[0] ?? []).map(value => String(value ?? "").trim());
+  if (!columnLabels.length || columnLabels.every(value => !value)) {
     throw new Error("Không tìm thấy tên cột của báo cáo.");
   }
   const records = rows.slice(1).filter(row => row.some(value => String(value ?? "").trim()));
   const book = buildStyledReportExcel({
-    title, headers, records,
+    title, headers: columnLabels, records,
     fromDate: params?.fromDate,
     toDate: params?.toDate,
     propertyName: params?.propertyName
