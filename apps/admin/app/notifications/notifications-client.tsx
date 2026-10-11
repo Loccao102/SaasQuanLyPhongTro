@@ -71,7 +71,7 @@ function explainError(code: string | null, message: string | null): string | nul
     case "SESSION_BUSY":
       return "⏳ Phiên Zalo đang bận: Đang gửi tin nhắn trước đó, sẽ tự động xử lý tiếp.";
     case "PROVIDER_UI_BROKEN":
-      return "⚠️ Giao diện Zalo Web thay đổi hoặc không mở được khung soạn thảo tin nhắn.";
+      return "⚠️ Không tìm thấy ô tìm kiếm người nhận hoặc khung chat trên Zalo Web. Cần kiểm tra giao diện worker.";
     case "POST_SEND_TIMEOUT":
     case "UNKNOWN":
       return "⚠️ Chưa xác nhận được tin nhắn sau khi bấm gửi. Vui lòng mở Zalo kiểm tra trực tiếp.";
@@ -222,8 +222,8 @@ export function NotificationsClient() {
               <textarea name="messageBody" rows={5} maxLength={4000} required placeholder="Nội dung tin nhắn..." />
             </label>
             <label>
-              <span>Người nhận · mỗi dòng: recipientKey | Tên hiển thị</span>
-              <textarea name="recipients" rows={8} required placeholder={"0901234567 | Nguyễn Văn A\n0909999999 | Trần B"} />
+              <span>Người nhận · mỗi dòng: Số điện thoại (tùy chọn thêm | Tên Zalo)</span>
+              <textarea name="recipients" rows={8} required placeholder={"0901234567\n0909999999 | Trần B"} />
             </label>
             <div className="button-row">
               <button className="primary-button" type="submit" disabled={saving}>Xếp hàng gửi</button>
