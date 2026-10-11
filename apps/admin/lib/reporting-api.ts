@@ -1,3 +1,4 @@
+import { buildStyledReportExcel } from "./report-excel-export";
 import { adminApiRequest } from "./admin-api-client";
 
 // ── Types ────────────────────────────────────────────────────
@@ -18,12 +19,14 @@ export interface ReportFilters {
   propertyId?: string;
   fromDate?: string;
   toDate?: string;
+  propertyName?: string;
 }
 
-// ── CSV download helper ──────────────────────────────────────
+// ── Styled .xlsx export, sourced from authorized report CSV endpoint ──
 
-async function downloadCsv(
+async function downloadExcel(
   path: string,
+  title: string,
   params?: ReportFilters
 ): Promise<void> {
   const apiBase =
@@ -73,21 +76,42 @@ async function downloadCsv(
     throw new Error("Tải xuống báo cáo thất bại: " + response.status);
   }
 
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition") ?? "";
-  const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
-  const filename = (filenameMatch && filenameMatch[1])
-    ? filenameMatch[1]
-    : "report_" + new Date().toISOString().slice(0, 10) + ".csv";
-
-  // Trigger browser download
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename as string;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
+  // Parse the CSV payload as text with Excel's parser. Keep values raw to
+  // preserve leading zeros for phone numbers, tenant IDs and room codes.
+  const csvText = (await response.text()).replace(/^\uFEFF/, "");
+  const XLSX = await import("xlsx");
+  const csv = XLSX.read(csvText, { type: "string", raw: true });
+  const sheet = csv.Sheets[csv.SheetNames[0] ?? ""];
+  if (!sheet) throw new Error("Báo cáo trả về không có dữ liệu hợp lệ.");
+  const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
+    header: 1, raw: true, defval: ""
+  });
+  const headers = (rows[0] ?? []).map(value => String(value ?? "").trim());
+  if (!headers.length || headers.every(value => !value)) {
+    throw new Error("Không tìm thấy tên cột của báo cáo.");
+  }
+  const records = rows.slice(1).filter(row => row.some(value => String(value ?? "").trim()));
+  const book = buildStyledReportExcel({
+    title, headers, records,
+    fromDate: params?.fromDate,
+    toDate: params?.toDate,
+    propertyName: params?.propertyName
+  });
+  const fileName = "Habi_" + title.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "") +
+    "_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+  const blob = new Blob([new Uint8Array(book)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 5000);
 }
 
 // ── API Client ───────────────────────────────────────────────
@@ -104,16 +128,16 @@ export const reportingApi = {
     );
   },
 
-  // CSV download endpoints
+  // Styled Excel exports with Vietnamese Unicode and numeric/date formats.
   downloadMeterReadings: (params?: ReportFilters) =>
-    downloadCsv("/admin/reports/meter-readings/export", params),
+    downloadExcel("/admin/reports/meter-readings/export", "Chỉ số điện nước", params),
 
   downloadRevenueDebt: (params?: ReportFilters) =>
-    downloadCsv("/admin/reports/revenue-debt/export", params),
+    downloadExcel("/admin/reports/revenue-debt/export", "Doanh thu và công nợ", params),
 
   downloadCashflow: (params?: ReportFilters) =>
-    downloadCsv("/admin/reports/cashflow/export", params),
+    downloadExcel("/admin/reports/cashflow/export", "Dòng tiền thu chi", params),
 
-  downloadPropertySummary: (params?: { fromDate?: string; toDate?: string }) =>
-    downloadCsv("/admin/reports/property-summary/export", params)
+  downloadPropertySummary: (params?: ReportFilters) =>
+    downloadExcel("/admin/reports/property-summary/export", "Tổng hợp cơ sở", params)
 };
