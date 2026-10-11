@@ -100,8 +100,12 @@ export class NotificationMonitorService {
       this.frames.delete(key);
       return { watching: false };
     }
-    // Bound memory even if viewers abandon sessions without an explicit stop.
+    // Bound memory and discard expired screenshot frames after disconnects.
     for (const k of this.viewers.keys()) this.activeViewer(k);
+    for (const [k, frame] of this.frames) {
+      if (frame.expiresAt <= Date.now()) this.frames.delete(k);
+    }
+    if (!this.activeViewer(key)) this.frames.delete(key);
     if (this.viewers.size >= 25 && !this.viewers.has(key)) {
       throw new ForbiddenException("Too many concurrent Zalo debug viewers.");
     }
@@ -201,7 +205,7 @@ export class NotificationMonitorService {
     this.frames.set(key, {
       stage: input.stage,
       errorCode: input.errorCode || null,
-      image: image || previous?.image || null,
+      image: image || (previous?.attemptNumber === input.attemptNumber ? previous.image : null) || null,
       attemptNumber: input.attemptNumber,
       capturedAt: new Date().toISOString(),
       expiresAt: Date.now() + this.frameTtlMs
