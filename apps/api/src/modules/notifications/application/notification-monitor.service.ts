@@ -194,7 +194,7 @@ export class NotificationMonitorService {
     const image = input.image ?? null;
     if (image && (
       image.length > 200_000 ||
-      !/^data:image\\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image)
+      !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image)
     )) return { ok: false };
 
     const previous = this.frames.get(key);
