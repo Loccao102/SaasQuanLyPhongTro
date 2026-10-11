@@ -28,6 +28,10 @@ export type ZaloMonitorState = {
     attemptNumber: number;
   } | null;
   provider: { status: string; reason: string | null };
+  diagnostics: {
+    pageHost: string | null;
+    inputHints: Array<Record<string, string>>;
+  };
   job: {
     status: string;
     lastErrorCode: string | null;
