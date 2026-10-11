@@ -57,7 +57,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to Neon staging pooled connection}
       DATABASE_POOL_MAX: "5"
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: ${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN}
+      # Allow exactly the known admin origin and an optional staging preview;
+      # never wildcard *.vercel.app (CSRF origin validation relies on this list).
+      CORS_ORIGINS: "${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN},${HABI_PREVIEW_ADMIN_ORIGIN:-}"
       AUTH_PUBLIC_APP_URL: ${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN}
       AUTH_SECURITY_HMAC_KEY: ${AUTH_SECURITY_HMAC_KEY:?Set AUTH_SECURITY_HMAC_KEY}
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:?Set INTERNAL_WORKER_TOKEN}
