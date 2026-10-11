@@ -3,12 +3,19 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { InternalWorkerApiClient } from "./internal-api-client.js";
 import { fatalProviderPauseReason } from "./provider-health.js";
 import { executeProviderSafely } from "./provider-execution.js";
+import { ZaloPlaywrightProvider } from "./providers/zalo-playwright.provider.js";
 import { loadProvider } from "./provider-registry.js";
 import { positiveInteger } from "./worker-config.js";
 
 export async function runNotificationWorker(): Promise<void> {
   const provider = loadProvider();
   const api = new InternalWorkerApiClient();
+  if (provider instanceof ZaloPlaywrightProvider) {
+    provider.setMonitorPort({
+      enabled: (job) => api.monitorActive(job),
+      publish: (job, frame) => api.monitorFrame(job, frame)
+    });
+  }
   const pollIntervalMs = positiveInteger(
     process.env.WORKER_POLL_INTERVAL_MS,
     1500,
