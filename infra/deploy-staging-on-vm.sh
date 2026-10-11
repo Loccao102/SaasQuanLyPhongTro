@@ -37,6 +37,40 @@ echo "Deploying reviewed main commit: ${GITHUB_SHA:?}"
 # Bring up the API first and abort before replacing workers on healthcheck failure.
 "${compose[@]}" up -d --no-deps --wait --wait-timeout 180 api
 
+# A healthy /api/health does not prove browser login works. Confirm that
+# login's CSRF/Origin guard accepts every explicit admin origin and rejects
+# an unrelated origin. Empty login payloads stop at validation (no real login
+# credentials, sessions, messages, or database writes).
+"${compose[@]}" exec -T api node -e '
+(async () => {
+  const origins = [...new Set((process.env.CORS_ORIGINS ?? "")
+    .split(",").map(x => x.trim()).filter(Boolean))];
+  const appOrigin = process.env.AUTH_PUBLIC_APP_URL;
+  if (!appOrigin || !origins.includes(appOrigin)) {
+    throw new Error("AUTH_PUBLIC_APP_URL must be present in CORS_ORIGINS");
+  }
+  const endpoint = "http://127.0.0.1:4000/api/auth/login";
+  async function assertOrigin(origin, expectedStatus) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Origin": origin, "Content-Type": "application/json" },
+      body: "{}"
+    });
+    if (response.status !== expectedStatus) {
+      throw new Error("Origin smoke test failed for " + origin +
+        ": expected HTTP " + expectedStatus +
+        ", got HTTP " + response.status);
+    }
+  }
+  for (const origin of origins) {
+    await assertOrigin(origin, 400);
+  }
+  await assertOrigin("https://untrusted.example", 403);
+  process.stdout.write("Auth origin smoke test passed for " + origins.length +
+    " allowed origins; unknown origin blocked.\\n");
+})().catch(error => { console.error(error); process.exit(1); });
+'
+
 # The existing paused-provider setting in Neon is intentionally unchanged.
 # This step does not retry queued messages or unpause PLAYWRIGHT_ZALO.
 "${compose[@]}" up -d --no-deps --no-build worker-notification worker-zalo-login
