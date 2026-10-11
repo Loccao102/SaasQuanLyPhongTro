@@ -223,11 +223,59 @@ export interface ZaloSessionLockPort {
   release(): Promise<void>;
 }
 
+export interface ZaloMonitorPort {
+  enabled(job: ClaimedNotificationJob): Promise<{ watching: boolean }>;
+  publish(
+    job: ClaimedNotificationJob,
+    input: { stage: string; image: string | null; errorCode?: string | null }
+  ): Promise<{ ok: boolean }>;
+}
+
 export class ZaloPlaywrightProvider implements NotificationProvider {
   readonly name = "PLAYWRIGHT_ZALO";
   readonly claimAliases = ["ZALO_PLAYWRIGHT"] as const;
 
   private browser: Browser | null = null;
+  private monitorPort: ZaloMonitorPort | null = null;
+
+  setMonitorPort(monitor: ZaloMonitorPort): void {
+    this.monitorPort = monitor;
+  }
+
+  private async captureForMonitor(
+    job: ClaimedNotificationJob,
+    stage: string,
+    page: Page | null,
+    errorCode?: string
+  ): Promise<void> {
+    if (!this.monitorPort) return;
+    try {
+      const { watching } = await this.monitorPort.enabled(job);
+      if (!watching) return;
+      let image: string | null = null;
+      if (page && !page.isClosed()) {
+        // Short-lived read-only debug frames. Never log, save to disk, or
+        // attach to durable notification evidence.
+        try {
+          const jpeg = await page.screenshot({
+            type: "jpeg",
+            quality: 35,
+            animations: "disabled",
+            timeout: 1800
+          });
+          const base64 = jpeg.toString("base64");
+          if (base64.length <= 199_950) {
+            image = "data:image/jpeg;base64," + base64;
+          }
+        } catch {
+          // The page may be navigating; stage/error info is still useful.
+        }
+      }
+      await this.monitorPort.publish(job, { stage, image, errorCode });
+    } catch {
+      // Diagnostic transport must never block or change a delivery outcome.
+    }
+  }
 
   private constructor(
     private readonly config: ZaloPlaywrightConfig,
@@ -320,6 +368,17 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
 
     let context: BrowserContext | null = null;
     let sendActionAttempted = false;
+    let monitorPage: Page | null = null;
+    let monitorStage = "INITIALIZING";
+    let monitorTimer: ReturnType<typeof setInterval> | null = null;
+    let monitorBusy = false;
+    let monitorChain: Promise<void> = Promise.resolve();
+    const monitorCapture = (stage = monitorStage, errorCode?: string): Promise<void> => {
+      monitorChain = monitorChain
+        .catch(() => {})
+        .then(() => this.captureForMonitor(job, stage, monitorPage, errorCode));
+      return monitorChain;
+    };
     try {
       let storageState: unknown | undefined;
       try {
@@ -354,6 +413,15 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
             : undefined
         );
         const page = await context.newPage();
+        monitorPage = page;
+        monitorStage = "OPENING_ZALO";
+        // Periodic screenshots only when an authenticated admin opted in.
+        monitorTimer = setInterval(() => {
+          if (monitorBusy) return;
+          monitorBusy = true;
+          void monitorCapture().finally(() => { monitorBusy = false; });
+        }, 2500);
+        void monitorCapture();
         page.setDefaultTimeout(this.config.selectorTimeoutMs);
         page.setDefaultNavigationTimeout(this.config.navigationTimeoutMs);
 
@@ -362,6 +430,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           timeout: this.config.navigationTimeoutMs
         });
 
+        monitorStage = "WAITING_FOR_SEARCH";
         const blocker = await this.detectBlocker(page, job);
         if (blocker) return blocker;
 
@@ -371,6 +440,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           Math.min(15000, this.config.navigationTimeoutMs)
         );
         if (!searchInput) {
+          monitorStage = "SEARCH_INPUT_NOT_FOUND";
+          await monitorCapture(monitorStage, "PROVIDER_UI_BROKEN");
           const lateBlocker = await this.detectBlocker(page, job);
           if (lateBlocker) return lateBlocker;
           return {
@@ -381,6 +452,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
+        monitorStage = "SEARCHING_PHONE";
         await searchInput.fill(recipientPhone);
         let recipientMatches = await findRecipientCandidate(page, recipientName, recipientPhone);
         for (let i = 0; i < 5 && recipientMatches.count === 0; i += 1) {
@@ -397,6 +469,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         }
 
         if (recipientMatches.count > 1) {
+          monitorStage = "RECIPIENT_AMBIGUOUS";
+          await monitorCapture(monitorStage, "RECIPIENT_AMBIGUOUS");
           return {
             kind: "MANUAL_REVIEW",
             errorCode: "RECIPIENT_AMBIGUOUS",
@@ -407,6 +481,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
         if (!recipientMatches.first || recipientMatches.count !== 1) {
+          monitorStage = "RECIPIENT_NOT_FOUND";
+          await monitorCapture(monitorStage, "RECIPIENT_NOT_FOUND");
           return {
             kind: "MANUAL_REVIEW",
             errorCode: "RECIPIENT_NOT_FOUND",
@@ -417,6 +493,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
             })
           };
         }
+        monitorStage = "OPENING_CHAT";
         await recipientMatches.first.click();
 
         const editor = await firstVisible(
@@ -425,6 +502,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           this.config.selectorTimeoutMs
         );
         if (!editor) {
+          monitorStage = "MESSAGE_EDITOR_NOT_FOUND";
+          await monitorCapture(monitorStage, "PROVIDER_UI_BROKEN");
           const postClickBlocker = await this.detectBlocker(page, job);
           if (postClickBlocker) return postClickBlocker;
 
@@ -466,6 +545,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           }
         }
 
+        monitorStage = "PREPARING_MESSAGE";
         await editor.fill(job.messageBody);
 
         const sendButton = await firstVisible(
@@ -473,6 +553,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           this.config.selectors.sendButtons,
           Math.min(1500, this.config.selectorTimeoutMs)
         );
+        monitorStage = "SENDING_MESSAGE";
         sendActionAttempted = true;
         if (sendButton) {
           await sendButton.click();
@@ -480,6 +561,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           await editor.press("Enter");
         }
 
+        monitorStage = "VERIFYING_DELIVERY";
         const postSendBlocker = await this.detectBlocker(page, job);
         if (postSendBlocker) return postSendBlocker;
 
@@ -510,6 +592,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
+        monitorStage = "SENT_CONFIRMED";
+        await monitorCapture();
         return {
           kind: "SENT_CONFIRMED",
           recipientVerified: true,
@@ -521,6 +605,11 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           })
         };
       } finally {
+        if (monitorTimer) {
+          clearInterval(monitorTimer);
+          monitorTimer = null;
+        }
+        await monitorChain.catch(() => {});
         if (context) {
           try {
             await this.sessionStore.save(await context.storageState());
@@ -566,6 +655,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         evidence: evidence(job, "playwright-exception")
       };
     } finally {
+      if (monitorTimer) clearInterval(monitorTimer);
       await this.sessionLock.release();
     }
   }
