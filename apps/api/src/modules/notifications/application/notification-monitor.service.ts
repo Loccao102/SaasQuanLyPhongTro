@@ -42,16 +42,34 @@ export class NotificationMonitorService {
     principal: TenantPrincipal,
     campaignId: string,
     jobId: string
-  ): Promise<void> {
-    const match = await this.db.query<QueryResultRow>(
-      `SELECT id FROM notification_jobs
-       WHERE organization_id = $1::uuid
-         AND campaign_id = $2::uuid
-         AND id = $3::uuid
+  ): Promise<{
+    status: string;
+    last_error_code: string | null;
+    last_error_message: string | null;
+    provider_status: string;
+    provider_reason: string | null;
+  }> {
+    const match = await this.db.query<QueryResultRow & {
+      status: string;
+      last_error_code: string | null;
+      last_error_message: string | null;
+      provider_status: string;
+      provider_reason: string | null;
+    }>(
+      `SELECT j.status, j.last_error_code, j.last_error_message,
+              COALESCE(pc.status, 'ACTIVE') AS provider_status,
+              pc.reason AS provider_reason
+       FROM notification_jobs j
+       LEFT JOIN notification_provider_controls pc ON pc.provider = j.provider
+       WHERE j.organization_id = $1::uuid
+         AND j.campaign_id = $2::uuid
+         AND j.id = $3::uuid
        LIMIT 1`,
       [principal.organizationId, campaignId, jobId]
     );
-    if (!match.rowCount) throw new NotFoundException("Notification job was not found.");
+    const row = match.rows[0];
+    if (!row) throw new NotFoundException("Notification job was not found.");
+    return row;
   }
 
   private key(organizationId: string, jobId: string): string {
@@ -99,9 +117,14 @@ export class NotificationMonitorService {
     principal: TenantPrincipal,
     campaignId: string,
     jobId: string
-  ): Promise<{ watching: boolean; frame: MonitorFrame | null }> {
+  ): Promise<{
+    watching: boolean;
+    frame: MonitorFrame | null;
+    provider: { status: string; reason: string | null };
+    job: { status: string; lastErrorCode: string | null; lastErrorMessage: string | null };
+  }> {
     this.requireAdmin(principal);
-    await this.assertTenantJob(principal, campaignId, jobId);
+    const job = await this.assertTenantJob(principal, campaignId, jobId);
     const key = this.key(principal.organizationId, jobId);
     const watcher = this.activeViewer(key);
     const current = this.frames.get(key);
@@ -115,7 +138,16 @@ export class NotificationMonitorService {
       }
       : null;
     if (current && !frame) this.frames.delete(key);
-    return { watching: watcher !== null, frame };
+    return {
+      watching: watcher !== null,
+      frame,
+      provider: { status: job.provider_status, reason: job.provider_reason },
+      job: {
+        status: job.status,
+        lastErrorCode: job.last_error_code,
+        lastErrorMessage: job.last_error_message
+      }
+    };
   }
 
   active(
