@@ -99,6 +99,9 @@ export function ReportsClient() {
       const toIso = toDate ? new Date(toDate + "T23:59:59").toISOString() : undefined;
       const params = {
         propertyId: selectedPropertyId || undefined,
+        propertyName: selectedPropertyId
+          ? properties.find(p => p.id === selectedPropertyId)?.name
+          : "Tất cả cơ sở",
         fromDate: fromIso,
         toDate: toIso
       };
@@ -114,10 +117,10 @@ export function ReportsClient() {
           await reportingApi.downloadCashflow(params);
           break;
         case "property-summary":
-          await reportingApi.downloadPropertySummary({ fromDate: fromIso, toDate: toIso });
+          await reportingApi.downloadPropertySummary({ fromDate: fromIso, toDate: toIso, propertyName: "Tất cả cơ sở" });
           break;
       }
-      setExportSuccess("Đã tải xuống thành công!");
+      setExportSuccess("Đã xuất tệp Excel thành công!");
       setTimeout(() => setExportSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi khi tải xuống báo cáo.");
@@ -223,7 +226,7 @@ export function ReportsClient() {
 
             {/* Export actions */}
             <div className="report-export-section" style={{ marginTop: 28 }}>
-              <h3 className="section-title">Xuất báo cáo CSV</h3>
+              <h3 className="section-title">Xuất báo cáo Excel (.xlsx)</h3>
               <div className="export-card-grid">
                 <div className="export-card">
                   <div className="export-card__icon" style={{ fontSize: "24px", color: "#0284c7" }}>
@@ -239,7 +242,7 @@ export function ReportsClient() {
                     disabled={!!exporting}
                     style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    <DownloadOutlined /> {exporting === "meter-readings" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "meter-readings" ? "Đang tải…" : "Tải Excel"}
                   </button>
                 </div>
 
@@ -257,7 +260,7 @@ export function ReportsClient() {
                     disabled={!!exporting}
                     style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    <DownloadOutlined /> {exporting === "revenue-debt" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "revenue-debt" ? "Đang tải…" : "Tải Excel"}
                   </button>
                 </div>
 
@@ -275,7 +278,7 @@ export function ReportsClient() {
                     disabled={!!exporting}
                     style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    <DownloadOutlined /> {exporting === "cashflow" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "cashflow" ? "Đang tải…" : "Tải Excel"}
                   </button>
                 </div>
 
@@ -293,7 +296,7 @@ export function ReportsClient() {
                     disabled={!!exporting}
                     style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    <DownloadOutlined /> {exporting === "property-summary" ? "Đang tải…" : "Tải CSV"}
+                    <DownloadOutlined /> {exporting === "property-summary" ? "Đang tải…" : "Tải Excel"}
                   </button>
                 </div>
               </div>
