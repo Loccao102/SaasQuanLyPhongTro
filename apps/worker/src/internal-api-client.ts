@@ -250,6 +250,26 @@ export class InternalWorkerApiClient {
     );
   }
 
+  monitorActive(job: ClaimedNotificationJob): Promise<{ watching: boolean }> {
+    return this.request(
+      "/internal/notifications/" + encodeURIComponent(job.id) + "/monitor/active",
+      { organizationId: job.organizationId, attemptNumber: job.attemptNumber }
+    );
+  }
+
+  monitorFrame(job: ClaimedNotificationJob, input: {
+    stage: string; image: string | null; errorCode?: string | null;
+  }): Promise<{ ok: boolean }> {
+    return this.request(
+      "/internal/notifications/" + encodeURIComponent(job.id) + "/monitor/frame",
+      {
+        organizationId: job.organizationId,
+        attemptNumber: job.attemptNumber,
+        ...input
+      }
+    );
+  }
+
   zaloLoginClaim(): Promise<{
     id: string; organizationId: string; expiresAt: string;
   } | null> {

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClaimedNotificationJob } from "../notification-types.js";
+import { loadZaloPlaywrightConfig } from "./zalo-playwright.config.js";
 import {
   existingDeliveryReplayResult,
+  normalizeZaloRecipientPhone,
   ZaloPlaywrightProvider
 } from "./zalo-playwright.provider.js";
 
@@ -55,4 +57,37 @@ test("replay detection confirms an existing exact message without exposing messa
 test("replay detection never auto-confirms a normal first delivery or absent message", () => {
   assert.equal(existingDeliveryReplayResult(job(false), 1), null);
   assert.equal(existingDeliveryReplayResult(job(true), 0), null);
+});
+
+test("Zalo phone-only recipients normalize local and international formats", () => {
+  assert.equal(normalizeZaloRecipientPhone("0359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("+84359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("84359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("035 922 4828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("invalid"), null);
+  assert.equal(normalizeZaloRecipientPhone("123"), null);
+});
+
+test("phone-only job proceeds past validation to Zalo session lookup", async () => {
+  let released = false;
+  const provider = ZaloPlaywrightProvider.withStorage(
+    loadZaloPlaywrightConfig({
+      ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 7).toString("base64")
+    }),
+    { load: async () => undefined, save: async () => {} },
+    {
+      acquire: async () => true,
+      release: async () => { released = true; }
+    }
+  );
+  const result = await provider.send({
+    ...job(false),
+    recipientDisplayName: null,
+    attemptNumber: 1
+  });
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") {
+    assert.equal(result.errorCode, "ZALO_SESSION_NOT_CONNECTED");
+  }
+  assert.equal(released, true);
 });

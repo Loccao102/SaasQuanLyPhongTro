@@ -65,16 +65,115 @@ async function firstVisible(
   selectors: readonly string[],
   timeoutMs: number
 ): Promise<Locator | null> {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    try {
-      await locator.waitFor({ state: "visible", timeout: timeoutMs });
-      return locator;
-    } catch {
-      // Try the next configured selector.
+  // Poll selectors together rather than spending the entire timeout on
+  // a hidden or obsolete element while the Zalo SPA is still rendering.
+  const deadline = Date.now() + timeoutMs;
+  do {
+    for (const selector of selectors) {
+      try {
+        const locator = page.locator(selector);
+        for (let index = 0, n = Math.min(await locator.count(), 12); index < n; index += 1) {
+          const candidate = locator.nth(index);
+          if (await candidate.isVisible()) return candidate;
+        }
+      } catch {
+        // The DOM can change during navigation.
+      }
     }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await page.waitForTimeout(Math.min(250, remaining));
+  } while (Date.now() < deadline);
+  return null;
+}
+
+export function normalizeZaloRecipientPhone(value: string): string | null {
+  const input = value.replace(/[\s().-]/g, "");
+  if (/^0[35789]\d{8}$/.test(input)) return input;
+  if (/^(?:\+84|84)[35789]\d{8}$/.test(input)) {
+    return "0" + input.replace(/^\+?84/, "");
   }
   return null;
+}
+
+type RecipientCandidate = {
+  first: Locator | null;
+  count: number;
+  verification: "display-name-exact" | "phone-text-exact" | "phone-search-unique";
+  expectedName: string | null;
+};
+
+async function findRecipientCandidate(
+  page: Page,
+  name: string | null,
+  phone: string
+): Promise<RecipientCandidate> {
+  if (name) {
+    const found = await visibleExactTextCount(page, name);
+    return { ...found, verification: "display-name-exact", expectedName: name };
+  }
+
+  // Exact phone displayed in the search result is preferred.
+  for (const value of [phone, "84" + phone.slice(1), "+84" + phone.slice(1)]) {
+    const found = await visibleExactTextCount(page, value);
+    if (found.count) {
+      return { ...found, verification: "phone-text-exact", expectedName: null };
+    }
+  }
+
+  // Some Zalo versions expose a contact card without showing its phone.
+  // Select only ONE visible card in the phone-search results, never the
+  // first arbitrary conversation or free-text suggestion.
+  const selectors = [
+    '[data-testid="contact-search-result"]',
+    '[data-testid="user-search-result"]',
+    '[role="listbox"] [role="option"]',
+    '.search-result .friend-item',
+    '.search-result .user-item',
+    '.search-result__item',
+    '.search-result-item',
+    '.list-search-result .item'
+  ];
+  for (const selector of selectors) {
+    const entries = page.locator(selector);
+    const visible: Locator[] = [];
+    for (let i = 0, n = Math.min(await entries.count(), 20); i < n; i += 1) {
+      const entry = entries.nth(i);
+      if (await entry.isVisible()) visible.push(entry);
+    }
+    if (!visible.length) continue;
+    const displayName = visible.length === 1
+      ? (await visible[0]!.innerText()).split("\n")
+          .map((part) => part.trim())
+          .find((part) => part.length > 1 && part.length <= 100 &&
+            part !== phone && !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(part)) ?? null
+      : null;
+    return {
+      first: displayName && visible.length === 1 ? visible[0]! : null,
+      count: visible.length,
+      verification: "phone-search-unique",
+      expectedName: displayName
+    };
+  }
+  return { first: null, count: 0, verification: "phone-search-unique", expectedName: null };
+}
+
+async function searchInputDiagnostics(page: Page): Promise<Record<string, unknown>> {
+  // Field metadata only: do not log input values, phone numbers or message bodies.
+  try {
+    const inputHints = await page.locator("input, [role='searchbox']").evaluateAll(
+      (elements) => elements.slice(0, 16).map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        type: element.getAttribute("type"),
+        id: (element.id || "").slice(0, 60),
+        placeholder: (element.getAttribute("placeholder") || "").slice(0, 80),
+        ariaLabel: (element.getAttribute("aria-label") || "").slice(0, 80)
+      }))
+    );
+    return { pageHost: new URL(page.url()).hostname, inputHints };
+  } catch {
+    return { inputDiagnosticUnavailable: true };
+  }
 }
 
 async function anyVisible(
@@ -124,11 +223,64 @@ export interface ZaloSessionLockPort {
   release(): Promise<void>;
 }
 
+export interface ZaloMonitorPort {
+  enabled(job: ClaimedNotificationJob): Promise<{ watching: boolean }>;
+  publish(
+    job: ClaimedNotificationJob,
+    input: { stage: string; image: string | null; errorCode?: string | null }
+  ): Promise<{ ok: boolean }>;
+}
+
 export class ZaloPlaywrightProvider implements NotificationProvider {
   readonly name = "PLAYWRIGHT_ZALO";
   readonly claimAliases = ["ZALO_PLAYWRIGHT"] as const;
 
   private browser: Browser | null = null;
+  private monitorPort: ZaloMonitorPort | null = null;
+
+  setMonitorPort(monitor: ZaloMonitorPort): void {
+    this.monitorPort = monitor;
+  }
+
+  private async captureForMonitor(
+    job: ClaimedNotificationJob,
+    stage: string,
+    page: Page | null,
+    errorCode?: string
+  ): Promise<void> {
+    if (!this.monitorPort) return;
+    try {
+      const { watching } = await this.monitorPort.enabled(job);
+      if (!watching) return;
+      let image: string | null = null;
+      if (page && !page.isClosed()) {
+        // Short-lived read-only debug frames. Never log, save to disk, or
+        // attach to durable notification evidence.
+        try {
+          let jpeg = await page.screenshot({
+            type: "jpeg",
+            quality: 35,
+            animations: "disabled",
+            timeout: 1800
+          });
+          if (jpeg.length > 135_000) {
+            jpeg = await page.screenshot({
+              type: "jpeg", quality: 18, animations: "disabled", timeout: 1800
+            });
+          }
+          const base64 = jpeg.toString("base64");
+          if (base64.length <= 199_950) {
+            image = "data:image/jpeg;base64," + base64;
+          }
+        } catch {
+          // The page may be navigating; stage/error info is still useful.
+        }
+      }
+      await this.monitorPort.publish(job, { stage, image, errorCode });
+    } catch {
+      // Diagnostic transport must never block or change a delivery outcome.
+    }
+  }
 
   private constructor(
     private readonly config: ZaloPlaywrightConfig,
@@ -197,13 +349,14 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
       };
     }
 
-    if (!job.recipientDisplayName?.trim()) {
+    const recipientName = job.recipientDisplayName?.trim() || null;
+    const recipientPhone = normalizeZaloRecipientPhone(job.recipientKey);
+    if (!recipientPhone) {
       return {
         kind: "MANUAL_REVIEW",
-        errorCode: "RECIPIENT_DISPLAY_NAME_REQUIRED",
-        errorMessage:
-          "A recipient display name is required for safe Zalo recipient verification.",
-        evidence: evidence(job, "validate-recipient")
+        errorCode: "RECIPIENT_PHONE_INVALID",
+        errorMessage: "A valid Vietnamese recipient phone is required for Zalo lookup.",
+        evidence: evidence(job, "validate-recipient-phone")
       };
     }
 
@@ -220,6 +373,17 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
 
     let context: BrowserContext | null = null;
     let sendActionAttempted = false;
+    let monitorPage: Page | null = null;
+    let monitorStage = "INITIALIZING";
+    let monitorTimer: ReturnType<typeof setInterval> | null = null;
+    let monitorBusy = false;
+    let monitorChain: Promise<void> = Promise.resolve();
+    const monitorCapture = (stage = monitorStage, errorCode?: string): Promise<void> => {
+      monitorChain = monitorChain
+        .catch(() => {})
+        .then(() => this.captureForMonitor(job, stage, monitorPage, errorCode));
+      return monitorChain;
+    };
     try {
       let storageState: unknown | undefined;
       try {
@@ -254,6 +418,15 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
             : undefined
         );
         const page = await context.newPage();
+        monitorPage = page;
+        monitorStage = "OPENING_ZALO";
+        // Periodic screenshots only when an authenticated admin opted in.
+        monitorTimer = setInterval(() => {
+          if (monitorBusy) return;
+          monitorBusy = true;
+          void monitorCapture().finally(() => { monitorBusy = false; });
+        }, 2500);
+        void monitorCapture();
         page.setDefaultTimeout(this.config.selectorTimeoutMs);
         page.setDefaultNavigationTimeout(this.config.navigationTimeoutMs);
 
@@ -262,56 +435,70 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           timeout: this.config.navigationTimeoutMs
         });
 
+        monitorStage = "WAITING_FOR_SEARCH";
         const blocker = await this.detectBlocker(page, job);
         if (blocker) return blocker;
 
         const searchInput = await firstVisible(
           page,
           this.config.selectors.searchInputs,
-          this.config.selectorTimeoutMs
+          Math.min(15000, this.config.navigationTimeoutMs)
         );
         if (!searchInput) {
+          monitorStage = "SEARCH_INPUT_NOT_FOUND";
+          await monitorCapture(monitorStage, "PROVIDER_UI_BROKEN");
+          const lateBlocker = await this.detectBlocker(page, job);
+          if (lateBlocker) return lateBlocker;
           return {
             kind: "UNKNOWN",
             errorCode: "PROVIDER_UI_BROKEN",
             errorMessage: "Zalo recipient search input was not found.",
-            evidence: evidence(job, "find-search-input")
+            evidence: evidence(job, "find-search-input", await searchInputDiagnostics(page))
           };
         }
 
-        await searchInput.fill(job.recipientKey);
-        await page.waitForTimeout(600);
-
-        const displayName = job.recipientDisplayName.trim();
-        const recipientMatches = await visibleExactTextCount(
-          page,
-          displayName
-        );
-
-        if (recipientMatches.count === 0 || !recipientMatches.first) {
-          return {
-            kind: "MANUAL_REVIEW",
-            errorCode: "RECIPIENT_NOT_FOUND",
-            errorMessage:
-              "No uniquely verifiable Zalo recipient matched the expected display name.",
-            evidence: evidence(job, "verify-recipient-search", {
-              visibleExactMatches: 0
-            })
-          };
+        monitorStage = "SEARCHING_PHONE";
+        await searchInput.fill(recipientPhone);
+        let recipientMatches = await findRecipientCandidate(page, recipientName, recipientPhone);
+        for (let i = 0; i < 5 && recipientMatches.count === 0; i += 1) {
+          await page.waitForTimeout(700);
+          recipientMatches = await findRecipientCandidate(page, recipientName, recipientPhone);
+        }
+        if (recipientMatches.count === 0) {
+          // Certain Zalo builds only search by phone after pressing Enter.
+          await searchInput.press("Enter");
+          for (let i = 0; i < 4 && recipientMatches.count === 0; i += 1) {
+            await page.waitForTimeout(700);
+            recipientMatches = await findRecipientCandidate(page, recipientName, recipientPhone);
+          }
         }
 
-        if (recipientMatches.count !== 1) {
+        if (recipientMatches.count > 1) {
+          monitorStage = "RECIPIENT_AMBIGUOUS";
+          await monitorCapture(monitorStage, "RECIPIENT_AMBIGUOUS");
           return {
             kind: "MANUAL_REVIEW",
             errorCode: "RECIPIENT_AMBIGUOUS",
-            errorMessage:
-              "Multiple visible Zalo results matched the expected display name.",
+            errorMessage: "Multiple results were found for this phone. Refusing to pick one.",
             evidence: evidence(job, "verify-recipient-search", {
-              visibleExactMatches: recipientMatches.count
+              visibleMatches: recipientMatches.count
             })
           };
         }
-
+        if (!recipientMatches.first || recipientMatches.count !== 1) {
+          monitorStage = "RECIPIENT_NOT_FOUND";
+          await monitorCapture(monitorStage, "RECIPIENT_NOT_FOUND");
+          return {
+            kind: "MANUAL_REVIEW",
+            errorCode: "RECIPIENT_NOT_FOUND",
+            errorMessage: "A uniquely verifiable Zalo recipient could not be found by phone.",
+            evidence: evidence(job, "verify-recipient-search", {
+              visibleMatches: recipientMatches.count,
+              verificationMode: recipientMatches.verification
+            })
+          };
+        }
+        monitorStage = "OPENING_CHAT";
         await recipientMatches.first.click();
 
         const editor = await firstVisible(
@@ -320,6 +507,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           this.config.selectorTimeoutMs
         );
         if (!editor) {
+          monitorStage = "MESSAGE_EDITOR_NOT_FOUND";
+          await monitorCapture(monitorStage, "PROVIDER_UI_BROKEN");
           const postClickBlocker = await this.detectBlocker(page, job);
           if (postClickBlocker) return postClickBlocker;
 
@@ -332,18 +521,19 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
-        const conversationMatches = await visibleExactTextCount(
-          page,
-          displayName
-        );
-        if (conversationMatches.count < 1) {
-          return {
-            kind: "MANUAL_REVIEW",
-            errorCode: "RECIPIENT_VERIFICATION_FAILED",
-            errorMessage:
-              "Conversation header could not be verified against the expected recipient.",
-            evidence: evidence(job, "verify-open-conversation")
-          };
+        if (recipientMatches.expectedName) {
+          const conversationMatches = await visibleExactTextCount(
+            page,
+            recipientMatches.expectedName
+          );
+          if (conversationMatches.count < 1) {
+            return {
+              kind: "MANUAL_REVIEW",
+              errorCode: "RECIPIENT_VERIFICATION_FAILED",
+              errorMessage: "Conversation did not match the selected search result.",
+              evidence: evidence(job, "verify-open-conversation")
+            };
+          }
         }
 
         if (job.deliveryReplayCheckRequired) {
@@ -360,6 +550,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           }
         }
 
+        monitorStage = "PREPARING_MESSAGE";
         await editor.fill(job.messageBody);
 
         const sendButton = await firstVisible(
@@ -367,6 +558,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           this.config.selectors.sendButtons,
           Math.min(1500, this.config.selectorTimeoutMs)
         );
+        monitorStage = "SENDING_MESSAGE";
         sendActionAttempted = true;
         if (sendButton) {
           await sendButton.click();
@@ -374,6 +566,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           await editor.press("Enter");
         }
 
+        monitorStage = "VERIFYING_DELIVERY";
         const postSendBlocker = await this.detectBlocker(page, job);
         if (postSendBlocker) return postSendBlocker;
 
@@ -404,17 +597,24 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
+        monitorStage = "SENT_CONFIRMED";
+        await monitorCapture();
         return {
           kind: "SENT_CONFIRMED",
           recipientVerified: true,
           sendVerified: true,
           providerReference: null,
           evidence: evidence(job, "sent-confirmed", {
-            recipientVerification: "display-name-exact",
+            recipientVerification: recipientMatches.verification,
             postSendVerification: "message-bubble-exact"
           })
         };
       } finally {
+        if (monitorTimer) {
+          clearInterval(monitorTimer);
+          monitorTimer = null;
+        }
+        await monitorChain.catch(() => {});
         if (context) {
           try {
             await this.sessionStore.save(await context.storageState());
@@ -460,6 +660,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         evidence: evidence(job, "playwright-exception")
       };
     } finally {
+      if (monitorTimer) clearInterval(monitorTimer);
       await this.sessionLock.release();
     }
   }

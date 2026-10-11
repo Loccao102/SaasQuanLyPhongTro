@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Post,
@@ -12,6 +13,7 @@ import {
 import { TenantPrincipalGuard } from "../../identity/tenant-principal.guard.js";
 import { RequireTenantFeature } from "../../identity/tenant-feature.js";
 import type { TenantRequest } from "../../identity/tenant-principal.js";
+import { NotificationMonitorService } from "./notification-monitor.service.js";
 import { NotificationCampaignService } from "./notification-campaign.service.js";
 import { NotificationAdminService } from "./notification-admin.service.js";
 
@@ -23,7 +25,8 @@ type BodyInput = Record<string, unknown>;
 export class NotificationAdminController {
   constructor(
     private readonly admin: NotificationAdminService,
-    private readonly campaigns: NotificationCampaignService
+    private readonly campaigns: NotificationCampaignService,
+    private readonly monitor: NotificationMonitorService
   ) {}
 
   @Get()
@@ -37,6 +40,29 @@ export class NotificationAdminController {
     @Param("campaignId", new ParseUUIDPipe({ version: "4" })) campaignId: string
   ) {
     return this.admin.detail(this.principal(request), campaignId);
+  }
+
+  @Get(":campaignId/jobs/:jobId/monitor")
+  @Header("Cache-Control", "no-store")
+  getMonitor(
+    @Req() request: TenantRequest,
+    @Param("campaignId", new ParseUUIDPipe({ version: "4" })) campaignId: string,
+    @Param("jobId", new ParseUUIDPipe({ version: "4" })) jobId: string
+  ) {
+    return this.monitor.get(this.principal(request), campaignId, jobId);
+  }
+
+  @Post(":campaignId/jobs/:jobId/monitor")
+  watchMonitor(
+    @Req() request: TenantRequest,
+    @Param("campaignId", new ParseUUIDPipe({ version: "4" })) campaignId: string,
+    @Param("jobId", new ParseUUIDPipe({ version: "4" })) jobId: string,
+    @Body() input: BodyInput
+  ) {
+    if (typeof input.enabled !== "boolean") {
+      throw new BadRequestException("enabled must be a boolean.");
+    }
+    return this.monitor.setWatching(this.principal(request), campaignId, jobId, input.enabled);
   }
 
   @Post()
