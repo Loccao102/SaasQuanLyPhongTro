@@ -184,6 +184,19 @@ export function ZaloLiveMonitor({
         </div>
       ) : null}
 
+      {errorCode === "PROVIDER_UI_BROKEN" &&
+        (state?.diagnostics.inputHints.length ?? 0) > 0 ? (
+        <details style={{ marginTop: 12 }}>
+          <summary>Thông tin ô nhập Zalo (để sửa selector)</summary>
+          <div style={{ fontSize: 13, marginTop: 8 }}>
+            Trang: {state?.diagnostics.pageHost ?? "Không rõ"}
+          </div>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere" }}>
+            {JSON.stringify(state?.diagnostics.inputHints, null, 2)}
+          </pre>
+        </details>
+      ) : null}
+
       {history.length > 0 ? (
         <div style={{ marginTop: 16 }}>
           <strong>Các bước gần đây</strong>
