@@ -34,6 +34,12 @@ export class NotificationAdminController {
     return this.admin.list(this.principal(request));
   }
 
+  @Get("eligible-residents")
+  @Header("Cache-Control", "private, no-store")
+  eligibleResidents(@Req() request: TenantRequest) {
+    return this.admin.eligibleResidents(this.principal(request));
+  }
+
   @Get(":campaignId")
   detail(
     @Req() request: TenantRequest,
