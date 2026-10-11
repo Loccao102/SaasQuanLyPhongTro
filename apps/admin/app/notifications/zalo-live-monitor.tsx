@@ -112,7 +112,7 @@ export function ZaloLiveMonitor({
   const frame = state?.frame;
   const errorCode = state?.job.lastErrorCode ?? frame?.errorCode;
   const errorMessage = state?.job.lastErrorMessage;
-  const paused = state?.provider.status === "PAUSED";
+  const paused = state?.provider?.status === "PAUSED";
 
   return (
     <section className="panel" style={{ marginTop: 18 }} aria-label="Trực quan Zalo Playwright">
@@ -138,7 +138,7 @@ export function ZaloLiveMonitor({
       {paused ? (
         <div className="admin-state admin-state--error" role="alert">
           <strong>Provider Zalo đang tạm dừng</strong>
-          <span>{state?.provider.reason || "Cần kiểm tra lỗi trước khi tiếp tục gửi."}</span>
+          <span>{state?.provider?.reason || "Cần kiểm tra lỗi trước khi tiếp tục gửi."}</span>
         </div>
       ) : null}
 
@@ -185,14 +185,14 @@ export function ZaloLiveMonitor({
       ) : null}
 
       {errorCode === "PROVIDER_UI_BROKEN" &&
-        (state?.diagnostics.inputHints.length ?? 0) > 0 ? (
+        (state?.diagnostics?.inputHints?.length ?? 0) > 0 ? (
         <details style={{ marginTop: 12 }}>
           <summary>Thông tin ô nhập Zalo (để sửa selector)</summary>
           <div style={{ fontSize: 13, marginTop: 8 }}>
-            Trang: {state?.diagnostics.pageHost ?? "Không rõ"}
+            Trang: {state?.diagnostics?.pageHost ?? "Không rõ"}
           </div>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere" }}>
-            {JSON.stringify(state?.diagnostics.inputHints, null, 2)}
+            {JSON.stringify(state?.diagnostics?.inputHints, null, 2)}
           </pre>
         </details>
       ) : null}
