@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { StatusBadge } from "@propops/ui";
 import Link from "next/link";
 import { ZaloLiveMonitor } from "./zalo-live-monitor";
+import { TenantNotificationRecipientsPicker, normalizeTenantPhone, type SelectedTenantRecipient } from "./tenant-recipients-picker";
 import { adminZaloPersonalApi } from "../../lib/admin-zalo-personal-api";
 import { AdminShell } from "../../components/admin-shell";
 import {
@@ -89,6 +90,8 @@ export function NotificationsClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [recipientMode, setRecipientMode] = useState<"MANUAL" | "TENANTS">("TENANTS");
+  const [tenantRecipients, setTenantRecipients] = useState<SelectedTenantRecipient[]>([]);
   const [filterTab, setFilterTab] = useState<"ALL" | "MANUAL_REVIEW" | "SENT" | "PENDING" | "FAILED">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [monitorJobId, setMonitorJobId] = useState<string | null>(null);
@@ -140,8 +143,10 @@ export function NotificationsClient() {
       const detail = await adminNotificationsApi.detail(campaign.id);
       setJobs(detail.jobs);
       setData(await adminNotificationsApi.list());
+      return true;
     } catch (mutation) {
       setError(mutation instanceof Error ? mutation.message : "Không thể cập nhật campaign.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -151,26 +156,46 @@ export function NotificationsClient() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const recipientsText = String(form.get("recipients") ?? "");
-    const recipients = recipientsText
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [recipientKey, ...nameParts] = line.split("|");
-        return {
-          recipientKey: recipientKey!.trim(),
-          recipientDisplayName: nameParts.join("|").trim() || null
-        };
-      });
+    const recipients = recipientMode === "TENANTS" ? tenantRecipients :
+      recipientsText.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+        .map(line => {
+          const [phone, ...nameParts] = line.split("|");
+          return {
+            recipientKey: normalizeTenantPhone(phone?.trim() ?? "") ?? "",
+            recipientDisplayName: nameParts.join("|").trim() || null
+          };
+        });
 
-    await mutate(() =>
+    if (!recipients.length) {
+      setError("Hãy chọn ít nhất một khách thuê hoặc nhập một số điện thoại hợp lệ.");
+      return;
+    }
+    if (recipients.some(r => !r.recipientKey)) {
+      setError("Danh sách có số điện thoại không hợp lệ. Vui lòng kiểm tra lại.");
+      return;
+    }
+    if (new Set(recipients.map(r => r.recipientKey)).size !== recipients.length) {
+      setError("Danh sách có số điện thoại trùng. Mỗi số chỉ được nhận một lần.");
+      return;
+    }
+    if (recipients.length > 5000) {
+      setError("Một chiến dịch tối đa 5.000 số điện thoại.");
+      return;
+    }
+    if (!window.confirm(`Tạo chiến dịch Zalo cho ${recipients.length} số điện thoại? Các tin được đưa vào hàng đợi và chỉ gửi khi provider hoạt động.`)) {
+      return;
+    }
+    const succeeded = await mutate(() =>
       adminNotificationsApi.create({
         idempotencyKey: crypto.randomUUID(),
         messageBody: String(form.get("messageBody") ?? ""),
         recipients
       })
     );
-    setShowCreate(false);
+    if (succeeded) {
+      setShowCreate(false);
+      setTenantRecipients([]);
+    }
   }
 
   const reviewCount = jobs.filter((j) => j.status === "MANUAL_REVIEW").length;
@@ -224,10 +249,27 @@ export function NotificationsClient() {
               <span>Nội dung</span>
               <textarea name="messageBody" rows={5} maxLength={4000} required placeholder="Nội dung tin nhắn..." />
             </label>
-            <label>
-              <span>Người nhận · mỗi dòng: Số điện thoại (tùy chọn thêm | Tên Zalo)</span>
-              <textarea name="recipients" rows={8} required placeholder={"0901234567\n0909999999 | Trần B"} />
-            </label>
+            <fieldset style={{ border: "1px solid #dbe4ef", borderRadius: 12, padding: 16 }}>
+              <legend style={{ padding: "0 8px", fontWeight: 600 }}>Chọn nguồn người nhận</legend>
+              <div className="button-row" style={{ marginBottom: 14 }}>
+                <button type="button" className={recipientMode === "TENANTS" ? "primary-button" : "secondary-button"}
+                  onClick={() => setRecipientMode("TENANTS")}>Khách đang thuê phòng</button>
+                <button type="button" className={recipientMode === "MANUAL" ? "primary-button" : "secondary-button"}
+                  onClick={() => setRecipientMode("MANUAL")}>Nhập số điện thoại</button>
+              </div>
+              {recipientMode === "TENANTS" ? (
+                <TenantNotificationRecipientsPicker onChange={setTenantRecipients} />
+              ) : (
+                <label>
+                  <span>Người nhận · mỗi dòng: Số điện thoại (tùy chọn thêm | Tên Zalo)</span>
+                  <textarea name="recipients" rows={8} required
+                    placeholder={"0901234567\n0909999999 | Tên hiển thị Zalo"} />
+                </label>
+              )}
+            </fieldset>
+            <p style={{ fontSize: 13, color: "#64748b" }}>
+              Hãy kiểm tra danh sách trước khi xếp hàng. Nhà cung cấp Zalo đang tạm dừng sẽ không tự gửi cho đến khi được kích hoạt.
+            </p>
             <div className="button-row">
               <button className="primary-button" type="submit" disabled={saving}>Xếp hàng gửi</button>
             </div>
