@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   adminNotificationsApi,
   type ZaloMonitorState
@@ -159,7 +160,10 @@ export function ZaloLiveMonitor({
         overflow: "hidden", color: "#e5e7eb", textAlign: "center"
       }}>
         {watching && frame?.image ? (
-          <img
+          <Image
+            unoptimized
+            width={1280}
+            height={720}
             src={frame.image}
             alt="Ảnh màn hình Zalo Web do Playwright đang thao tác"
             style={{ display: "block", width: "100%", maxHeight: 540, objectFit: "contain" }}
