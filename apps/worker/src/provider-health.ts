@@ -1,10 +1,8 @@
 import type { NotificationProviderResult } from "./notification-types.js";
 
 const fatalProviderCodes = new Set([
-  "AUTH_REQUIRED",
-  "SESSION_EXPIRED",
-  "SESSION_STORAGE_ERROR",
-  "CAPTCHA",
+  // Only shared integration breakage pauses all tenants.
+  // Per-account logout, CAPTCHA or bad ciphertext must not affect another tenant.
   "PROVIDER_UI_BROKEN"
 ]);
 

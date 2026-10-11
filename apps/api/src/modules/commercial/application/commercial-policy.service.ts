@@ -106,9 +106,9 @@ function featureBoolean(
 }
 
 export type PolicyQueryClient = {
-  query<R extends QueryResultRow = any>(
+  query<R extends QueryResultRow = QueryResultRow>(
     text: string,
-    values?: any[]
+    values?: unknown[]
   ): Promise<{ rows: R[] }>;
 };
 

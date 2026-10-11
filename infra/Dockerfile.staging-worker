@@ -1,0 +1,12 @@
+# Playwright browser dependencies + Chromium are provided by the official image.
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
+RUN corepack enable && corepack prepare pnpm@12.4.1 --activate \
+    && mkdir -p /app \
+    && chown pwuser:pwuser /app
+WORKDIR /app
+COPY --chown=pwuser:pwuser . .
+USER pwuser
+RUN pnpm install --frozen-lockfile \
+    && pnpm --filter @propops/worker build
+ENV NODE_ENV=production
+CMD ["node", "apps/worker/dist/main.js"]

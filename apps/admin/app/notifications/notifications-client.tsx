@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { StatusBadge } from "@propops/ui";
+import Link from "next/link";
+import { ZaloLiveMonitor } from "./zalo-live-monitor";
+import { adminZaloPersonalApi } from "../../lib/admin-zalo-personal-api";
 import { AdminShell } from "../../components/admin-shell";
 import {
   adminNotificationsApi,
@@ -69,7 +72,7 @@ function explainError(code: string | null, message: string | null): string | nul
     case "SESSION_BUSY":
       return "⏳ Phiên Zalo đang bận: Đang gửi tin nhắn trước đó, sẽ tự động xử lý tiếp.";
     case "PROVIDER_UI_BROKEN":
-      return "⚠️ Giao diện Zalo Web thay đổi hoặc không mở được khung soạn thảo tin nhắn.";
+      return "⚠️ Không tìm thấy ô tìm kiếm người nhận hoặc khung chat trên Zalo Web. Cần kiểm tra giao diện worker.";
     case "POST_SEND_TIMEOUT":
     case "UNKNOWN":
       return "⚠️ Chưa xác nhận được tin nhắn sau khi bấm gửi. Vui lòng mở Zalo kiểm tra trực tiếp.";
@@ -88,6 +91,8 @@ export function NotificationsClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterTab, setFilterTab] = useState<"ALL" | "MANUAL_REVIEW" | "SENT" | "PENDING" | "FAILED">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [monitorJobId, setMonitorJobId] = useState<string | null>(null);
+  const [zaloConnected, setZaloConnected] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +100,7 @@ export function NotificationsClient() {
     try {
       const next = await adminNotificationsApi.list();
       setData(next);
+      setZaloConnected((await adminZaloPersonalApi.status().catch(() => null))?.status === "CONNECTED");
       if (selected) {
         const detail = await adminNotificationsApi.detail(selected.id);
         setSelected(detail.campaign);
@@ -112,6 +118,7 @@ export function NotificationsClient() {
   }, [load]);
 
   async function openCampaign(campaign: NotificationCampaignSummary) {
+    setMonitorJobId(null);
     setSelected(campaign);
     setError(null);
     setFilterTab("ALL");
@@ -188,13 +195,21 @@ export function NotificationsClient() {
         </div>
       ) : null}
 
+      {!zaloConnected && !loading && (
+        <section className="admin-state" role="status">
+          Bạn cần liên kết Zalo của tổ chức trước khi gửi tin.
+          <Link href="/zalo-personal" className="text-link" style={{ marginLeft: 12 }}>
+            Kết nối Zalo 1 Chạm
+          </Link>
+        </section>
+      )}
       <section className="asset-context">
         <div>
           <span className="eyebrow">ZALO / NOTIFICATION QUEUE</span>
           <h2>{data?.organization.name ?? "Workspace hiện tại"}</h2>
           <p>Mỗi người nhận là một nhiệm vụ độc lập (durable job); trạng thái UNKNOWN/MANUAL_REVIEW không bao giờ bị coi là gửi thành công.</p>
         </div>
-        <button className="primary-button" type="button" onClick={() => setShowCreate((value) => !value)}>
+        <button className="primary-button" type="button" disabled={!zaloConnected} onClick={() => setShowCreate((value) => !value)}>
           + Tạo chiến dịch
         </button>
       </section>
@@ -210,8 +225,8 @@ export function NotificationsClient() {
               <textarea name="messageBody" rows={5} maxLength={4000} required placeholder="Nội dung tin nhắn..." />
             </label>
             <label>
-              <span>Người nhận · mỗi dòng: recipientKey | Tên hiển thị</span>
-              <textarea name="recipients" rows={8} required placeholder={"0901234567 | Nguyễn Văn A\n0909999999 | Trần B"} />
+              <span>Người nhận · mỗi dòng: Số điện thoại (tùy chọn thêm | Tên Zalo)</span>
+              <textarea name="recipients" rows={8} required placeholder={"0901234567\n0909999999 | Trần B"} />
             </label>
             <div className="button-row">
               <button className="primary-button" type="submit" disabled={saving}>Xếp hàng gửi</button>
@@ -346,6 +361,10 @@ export function NotificationsClient() {
                         <strong>{job.recipientDisplayName ?? job.recipientKey}</strong>
                         <span>{job.recipientKey}</span>
                         <div className="notification-job-actions">
+                          <button type="button" className="notification-copy-btn"
+                            onClick={() => setMonitorJobId((current) => current === job.id ? null : job.id)}>
+                            {monitorJobId === job.id ? "Ẩn màn hình" : "👁 Xem thao tác"}
+                          </button>
                           <button
                             type="button"
                             className="notification-copy-btn"
@@ -373,6 +392,13 @@ export function NotificationsClient() {
                   ))
                 )}
               </div>
+              {monitorJobId && jobs.some((job) => job.id === monitorJobId) ? (
+                <ZaloLiveMonitor
+                  key={selected.id + ":" + monitorJobId}
+                  campaignId={selected.id}
+                  jobId={monitorJobId}
+                />
+              ) : null}
             </>
           )}
         </div>

@@ -1,0 +1,16 @@
+# HABI_API_DOMAIN is a hostname (without protocol), e.g. api.1.2.3.4.sslip.io.
+# HTTPS is automatically provisioned by Caddy when DNS and ports 80/443 work.
+{$HABI_API_DOMAIN} {
+    encode gzip zstd
+
+    # Worker endpoints are for traffic on the private Docker network only.
+    @internal path /api/internal/*
+    respond @internal "Not found" 404
+
+    reverse_proxy api:4000
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+    }
+}

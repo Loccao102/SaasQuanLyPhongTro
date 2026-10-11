@@ -13,3 +13,6 @@ coverage
 *.tsbuildinfo
 
 data/
+
+# Private staging VM credentials; only the example is tracked.
+.env.staging

@@ -3,7 +3,8 @@ export type WorkerRole =
   | "BILLING"
   | "BILLING_WEBHOOK"
   | "RENTER_PAYMENT_WEBHOOK"
-  | "DUNNING";
+  | "DUNNING"
+  | "ZALO_LOGIN";
 
 export function resolveWorkerRole(value: string | undefined): WorkerRole {
   const normalized = value?.trim().toUpperCase() || "NOTIFICATION";
@@ -12,12 +13,13 @@ export function resolveWorkerRole(value: string | undefined): WorkerRole {
     normalized === "BILLING" ||
     normalized === "BILLING_WEBHOOK" ||
     normalized === "RENTER_PAYMENT_WEBHOOK" ||
-    normalized === "DUNNING"
+    normalized === "DUNNING" ||
+    normalized === "ZALO_LOGIN"
   ) {
     return normalized;
   }
   throw new Error(
-    "WORKER_ROLE must be NOTIFICATION, BILLING, BILLING_WEBHOOK, RENTER_PAYMENT_WEBHOOK, or DUNNING."
+    "WORKER_ROLE must be NOTIFICATION, BILLING, BILLING_WEBHOOK, RENTER_PAYMENT_WEBHOOK, DUNNING, or ZALO_LOGIN."
   );
 }
 

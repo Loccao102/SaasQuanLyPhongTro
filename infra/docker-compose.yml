@@ -18,6 +18,7 @@ x-worker-environment: &worker-environment
   INTERNAL_API_BASE_URL: http://api:4000/api
   INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:-replace-with-a-long-random-worker-token}
   WORKER_PROVIDER: ${WORKER_PROVIDER:-DEV_MANUAL_REVIEW}
+  ZALO_SESSION_MASTER_KEY_BASE64: ${ZALO_SESSION_MASTER_KEY_BASE64:-}
   WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1500}
   WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-15000}
   BILLING_SWEEP_INTERVAL_MS: ${BILLING_SWEEP_INTERVAL_MS:-60000}
@@ -183,6 +184,7 @@ services:
       ZALO_HEADLESS: ${ZALO_HEADLESS:-true}
       ZALO_SESSION_PATH: /home/pwuser/.habi/zalo/session.enc
       ZALO_SESSION_KEY_BASE64: ${ZALO_SESSION_KEY_BASE64:-}
+      ZALO_SESSION_LOCK_DIR: /home/pwuser/.habi/zalo/locks
       ZALO_NAVIGATION_TIMEOUT_MS: ${ZALO_NAVIGATION_TIMEOUT_MS:-30000}
       ZALO_SELECTOR_TIMEOUT_MS: ${ZALO_SELECTOR_TIMEOUT_MS:-5000}
       ZALO_VERIFICATION_TIMEOUT_MS: ${ZALO_VERIFICATION_TIMEOUT_MS:-10000}
@@ -194,6 +196,22 @@ services:
     command: [ "pnpm", "--filter", "@propops/worker", "dev" ]
     volumes:
       - habi_zalo_session:/home/pwuser/.habi/zalo
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Separate browser process for tenant QR login; never shares browser contexts
+  # or an authenticated session between tenants.
+  worker-zalo-login:
+    profiles: [ "zalo-personal" ]
+    <<: *playwright-worker-service
+    environment:
+      <<: *worker-environment
+      WORKER_ROLE: ZALO_LOGIN
+      WORKER_ID: docker-zalo-login-worker
+      ZALO_BASE_URL: ${ZALO_BASE_URL:-https://chat.zalo.me/}
+      ZALO_HEADLESS: "true"
+    command: [ "pnpm", "--filter", "@propops/worker", "dev" ]
     depends_on:
       api:
         condition: service_healthy

@@ -94,10 +94,12 @@ The provider is deliberately conservative.
 Before send it requires:
 1. Zalo session is authenticated;
 2. no CAPTCHA/security blocker is detected;
-3. a recipient display name is present;
-4. exactly one visible search result matches that display name;
+3. a valid Vietnamese mobile number is provided (a display name is optional);
+4. a single matching search result can be verified through the searched phone or a unique contact result;
 5. a conversation opens with a detectable message editor;
-6. the expected display name is still visible.
+6. when the search result exposes a name, the conversation is checked against that name.
+
+If Zalo does not provide enough information to verify a phone-only recipient, the job stays in `MANUAL_REVIEW` rather than choosing an arbitrary conversation.
 
 After send it requires:
 1. the editor no longer contains the unsent message;
@@ -135,13 +137,8 @@ A Playwright timeout after a send action has been attempted is classified as
 
 ## Provider pause behavior
 
-These conditions request a global provider pause through the existing worker heartbeat/control flow:
-
-- `AUTH_REQUIRED`;
-- `SESSION_EXPIRED`;
-- `SESSION_STORAGE_ERROR`;
-- `CAPTCHA`;
-- `PROVIDER_UI_BROKEN`.
+The shared provider pauses on `PROVIDER_UI_BROKEN`. Account-specific login, expired
+session and CAPTCHA errors should affect only the account that experienced them.
 
 Recipient-specific ambiguity does not pause every Zalo job; it goes to manual review instead.
 
@@ -186,7 +183,34 @@ It does not return:
 - message body;
 - recipient phone/name.
 
-Screenshots are intentionally not enabled by default. If failure screenshots are added later, define PII redaction, encryption, access control and retention first.
+### Opt-in live browser monitor (staging)
+
+From Admin → Thông báo, select a campaign and choose **Xem thao tác** on one job.
+Click **Bật xem màn hình** before running the job. The provider captures
+low-quality JPEG previews roughly every 2.5 seconds and the admin displays
+the current Playwright stage and any error code. The API also shows the
+provider's global PAUSED reason (for example `PROVIDER_UI_BROKEN`).
+
+Privacy and operational boundaries:
+- Only an authenticated OWNER/ADMIN of the job's organization can enable/read frames.
+- The monitor is **read-only**; it cannot click Zalo or retry a notification.
+- Frames remain in API process memory only, and are never written to Neon,
+  application logs, worker evidence, cloud storage or the file system.
+- The viewing lease expires after 15 seconds unless the browser refreshes it;
+  the last frame expires within 180 seconds and is cleared on Stop.
+- Only one API replica is supported by this in-memory staging implementation.
+  A scaled deployment needs a shared expiring, tenant-scoped frame store.
+- Screenshots may contain phone numbers and private conversation content.
+  Enable only when necessary for diagnostics, disable afterward, and do not
+  share captured images. Only operational stage labels and bounded input-field
+  metadata are used in durable failure evidence.
+- If the worker is already finished, enabling the viewer does not rerun it;
+  historical job error codes remain visible without a screenshot.
+- The provider must be deliberately re-enabled after a global UI failure;
+  enabling the viewer never resumes a paused queue.
+
+Before enabling monitoring in production, perform a privacy review and
+consider masking unrelated chats in the captured viewport.
 
 ## Failure drills before production
 

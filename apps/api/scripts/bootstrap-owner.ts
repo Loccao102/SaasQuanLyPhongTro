@@ -41,11 +41,12 @@ async function main(): Promise<void> {
 
     const userResult = await client.query<{ id: string }>(
       `INSERT INTO users (
-         organization_id, account_type, email, display_name
+         organization_id, account_type, email, display_name, email_verified_at
        )
-       VALUES ($1, 'TENANT', $2, $3)
+       VALUES ($1, 'TENANT', $2, $3, now())
        ON CONFLICT (lower(email)) DO UPDATE
          SET display_name = EXCLUDED.display_name,
+             email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at),
              updated_at = now()
        WHERE users.organization_id = EXCLUDED.organization_id
          AND users.account_type = 'TENANT'

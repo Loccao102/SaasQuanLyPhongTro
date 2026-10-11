@@ -6,6 +6,7 @@ import {
   Post,
   UseGuards
 } from "@nestjs/common";
+import { NotificationMonitorService } from "./application/notification-monitor.service.js";
 import { NotificationOperationsService } from "./application/notification-operations.service.js";
 import { NotificationWorkerService } from "./application/notification-worker.service.js";
 import type { NotificationProviderResult } from "./domain/notification-provider.js";
@@ -113,7 +114,8 @@ function parseProviderResult(value: unknown): NotificationProviderResult {
 export class NotificationInternalController {
   constructor(
     private readonly worker: NotificationWorkerService,
-    private readonly operations: NotificationOperationsService
+    private readonly operations: NotificationOperationsService,
+    private readonly monitor: NotificationMonitorService
   ) {}
 
   @Post("heartbeat")
@@ -147,6 +149,37 @@ export class NotificationInternalController {
   claim(@Body() input: ClaimInput) {
     const provider = requireNonEmptyString(input.provider, "provider");
     return this.worker.claimNext(provider);
+  }
+
+  @Post(":jobId/monitor/active")
+  monitorActive(@Param("jobId") jobId: string, @Body() input: {
+    organizationId?: string; attemptNumber?: number;
+  }) {
+    return this.monitor.active(
+      requireNonEmptyString(input.organizationId, "organizationId"),
+      jobId,
+      Number(input.attemptNumber)
+    );
+  }
+
+  @Post(":jobId/monitor/frame")
+  monitorFrame(@Param("jobId") jobId: string, @Body() input: {
+    organizationId?: string;
+    attemptNumber?: number;
+    stage?: string;
+    image?: string | null;
+    errorCode?: string | null;
+  }) {
+    return this.monitor.publish(
+      requireNonEmptyString(input.organizationId, "organizationId"),
+      jobId,
+      {
+        attemptNumber: Number(input.attemptNumber),
+        stage: requireNonEmptyString(input.stage, "stage"),
+        errorCode: input.errorCode,
+        image: input.image
+      }
+    );
   }
 
   @Post(":jobId/complete")

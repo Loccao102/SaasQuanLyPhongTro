@@ -3,12 +3,19 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { InternalWorkerApiClient } from "./internal-api-client.js";
 import { fatalProviderPauseReason } from "./provider-health.js";
 import { executeProviderSafely } from "./provider-execution.js";
+import { ZaloPlaywrightProvider } from "./providers/zalo-playwright.provider.js";
 import { loadProvider } from "./provider-registry.js";
 import { positiveInteger } from "./worker-config.js";
 
 export async function runNotificationWorker(): Promise<void> {
   const provider = loadProvider();
   const api = new InternalWorkerApiClient();
+  if (provider instanceof ZaloPlaywrightProvider) {
+    provider.setMonitorPort({
+      enabled: (job) => api.monitorActive(job),
+      publish: (job, frame) => api.monitorFrame(job, frame)
+    });
+  }
   const pollIntervalMs = positiveInteger(
     process.env.WORKER_POLL_INTERVAL_MS,
     1500,
@@ -118,6 +125,19 @@ export async function runNotificationWorker(): Promise<void> {
       }
 
       const result = await executeProviderSafely(provider, job);
+      // An account-specific login problem must revoke only that tenant's
+      // stored session, never pause the shared Playwright provider.
+      const accountError = "errorCode" in result ? result.errorCode ?? "" : "";
+      if (provider.name === "PLAYWRIGHT_ZALO" &&
+          ["AUTH_REQUIRED", "SESSION_EXPIRED", "SESSION_STORAGE_ERROR", "CAPTCHA"]
+            .includes(accountError)) {
+        try {
+          await api.zaloPersonalInvalidateSession(job.id, accountError);
+        } catch (error) {
+          process.stderr.write("[notification-worker] Cannot invalidate tenant Zalo session: " +
+            (error instanceof Error ? error.message : String(error)) + "\n");
+        }
+      }
       const completion = await api.complete(job, result);
       const pauseProviderReason = fatalProviderPauseReason(result);
 

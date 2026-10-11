@@ -30,3 +30,12 @@ test("Zalo Playwright config parses safe defaults and selector overrides", () =>
   assert.deepEqual(config.selectors.searchInputs, ["#one", "#two"]);
   assert.equal(config.sessionPath, ".runtime-secrets/zalo/session.enc");
 });
+
+test("default search selectors cover Zalo SPA id, aria and class-based fields", () => {
+  const config = loadZaloPlaywrightConfig({
+    ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 3).toString("base64")
+  });
+  assert.ok(config.selectors.searchInputs.includes("#input-search"));
+  assert.ok(config.selectors.searchInputs.includes('input[class*="search"]'));
+  assert.ok(config.selectors.searchInputs.includes('input[type="search"]'));
+});

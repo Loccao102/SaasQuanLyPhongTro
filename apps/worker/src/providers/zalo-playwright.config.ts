@@ -108,9 +108,19 @@ export function loadZaloPlaywrightConfig(
         'text=/Xác minh tài khoản/i'
       ]),
       searchInputs: selectorList(env.ZALO_SEARCH_INPUT_SELECTORS, [
-        'input[placeholder*="Tìm kiếm"]',
-        'input[placeholder*="Tìm"]',
-        'input[placeholder*="Search"]'
+        // Zalo Web changes placeholder text/markup between versions.
+        '#input-search',
+        '#search-input',
+        '#contact-search-input',
+        'input.search-input',
+        'input[class*="search"]',
+        'input[aria-label*="Tìm" i]',
+        'input[aria-label*="Search" i]',
+        'input[placeholder*="Tìm" i]',
+        'input[placeholder*="Search" i]',
+        'input[role="searchbox"]',
+        '[role="searchbox"]',
+        'input[type="search"]'
       ]),
       messageEditors: selectorList(env.ZALO_MESSAGE_EDITOR_SELECTORS, [
         '[contenteditable="true"][role="textbox"]',

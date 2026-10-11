@@ -18,6 +18,27 @@ export type NotificationCampaignSummary = {
   updatedAt: string;
 };
 
+export type ZaloMonitorState = {
+  watching: boolean;
+  frame: {
+    stage: string;
+    errorCode: string | null;
+    image: string | null;
+    capturedAt: string;
+    attemptNumber: number;
+  } | null;
+  provider: { status: string; reason: string | null };
+  diagnostics: {
+    pageHost: string | null;
+    inputHints: Array<Record<string, string>>;
+  };
+  job: {
+    status: string;
+    lastErrorCode: string | null;
+    lastErrorMessage: string | null;
+  };
+};
+
 export type NotificationCampaignList = {
   organization: { id: string; name: string };
   campaigns: NotificationCampaignSummary[];
@@ -50,6 +71,15 @@ async function request<T>(
 
 export const adminNotificationsApi = {
   list: () => request<NotificationCampaignList>(""),
+  monitor: (campaignId: string, jobId: string) =>
+    request<ZaloMonitorState>(
+      "/" + encodeURIComponent(campaignId) + "/jobs/" + encodeURIComponent(jobId) + "/monitor"
+    ),
+  watchMonitor: (campaignId: string, jobId: string, enabled: boolean) =>
+    request<{ watching: boolean }>(
+      "/" + encodeURIComponent(campaignId) + "/jobs/" + encodeURIComponent(jobId) + "/monitor",
+      { method: "POST", body: { enabled } }
+    ),
   detail: (campaignId: string) =>
     request<NotificationCampaignDetail>("/" + encodeURIComponent(campaignId)),
   create: (input: {

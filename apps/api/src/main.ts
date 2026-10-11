@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { allowedBrowserOrigins } from "./modules/identity/auth/auth-http.js";
 import { applyHttpSecurityHeaders } from "./security/http-security.js";
@@ -11,9 +12,19 @@ import {
 async function bootstrap() {
   assertSecurityConfiguration();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true
   });
+
+  // Zalo Web storageState is encrypted and base64-encoded before POSTing to
+  // /api/internal/zalo-personal/:requestId/finish and /session/:jobId/save.
+  // Nest/Express defaults to 100 KB, rejecting valid ~100-700 KB envelopes
+  // with 413 before InternalServiceGuard or the strict Zalo payload validator.
+  // Keep the parser capped at 1 MiB; the Zalo service additionally bounds
+  // encryptedSession to 900,000 characters and requires an authenticated
+  // internal worker token on both endpoints.
+  // Using Nest's parser helper preserves rawBody for webhook signature checks.
+  app.useBodyParser("json", { limit: "1mb" });
 
   const express = app.getHttpAdapter().getInstance();
   express.disable("x-powered-by");

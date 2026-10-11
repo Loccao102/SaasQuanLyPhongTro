@@ -128,6 +128,196 @@ export class AssetReadService {
     };
   }
 
+
+  /**
+   * Tenant-scoped operational dashboard. Property visibility comes from the
+   * existing asset overview, so financial and notification totals cannot
+   * accidentally include properties outside the caller's membership scope.
+   */
+  async dashboard(principal: TenantPrincipal) {
+    const assets = await this.overview(principal);
+    const propertyIds = assets.properties.map((property) => property.id);
+    const canReadLeases = roleHasPermission(principal.role, "lease.read");
+    const canReadBilling = roleHasPermission(principal.role, "billing.read");
+    const canReadPayments = roleHasPermission(principal.role, "payment.read");
+    const canReadNotifications = roleHasPermission(principal.role, "notification.read")
+      && principal.membership.scopes.some((scope) => scope.type === "ORGANIZATION");
+
+    type InvoiceRow = QueryResultRow & {
+      property_id: string;
+      billed_rooms: number;
+      outstanding_vnd: string;
+      overdue_rooms: number;
+      review_invoices: number;
+    };
+    type PaidRow = QueryResultRow & {
+      property_id: string;
+      paid_vnd: string;
+    };
+
+    const emptyInvoices: InvoiceRow[] = [];
+    const emptyPayments: PaidRow[] = [];
+    const monthStart =
+      "date_trunc('month', now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date";
+    const dayToday = "(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date";
+
+    const [
+      newRoomsResult,
+      invoicesResult,
+      paymentsResult,
+      leasesResult,
+      notificationsResult
+    ] = await Promise.all([
+      propertyIds.length
+        ? this.db.query<{ count: number }>(
+            `SELECT count(*)::int AS count
+             FROM rooms
+             WHERE organization_id = $1::uuid
+               AND property_id = ANY($2::uuid[])
+               AND is_active = true
+               AND created_at >= now() - interval '30 days'`,
+            [principal.organizationId, propertyIds]
+          )
+        : Promise.resolve({ rows: [{ count: 0 }] }),
+      propertyIds.length && canReadBilling
+        ? this.db.query<InvoiceRow>(
+            `SELECT
+               property_id::text AS property_id,
+               count(DISTINCT room_id) FILTER (
+                 WHERE status = 'ISSUED'
+                   AND period_start >= ${monthStart}
+                   AND period_start < (${monthStart} + interval '1 month')::date
+               )::int AS billed_rooms,
+               COALESCE(sum(GREATEST(remaining_vnd, 0))
+                 FILTER (WHERE status = 'ISSUED'), 0)::text AS outstanding_vnd,
+               count(DISTINCT room_id) FILTER (
+                 WHERE status = 'ISSUED'
+                   AND remaining_vnd > 0
+                   AND due_date < ${dayToday}
+               )::int AS overdue_rooms,
+               count(*) FILTER (
+                 WHERE status <> 'VOID'
+                   AND calculation_status = 'REVIEW_REQUIRED'
+                   AND period_start >= ${monthStart}
+                   AND period_start < (${monthStart} + interval '1 month')::date
+               )::int AS review_invoices
+             FROM renter_invoices
+             WHERE organization_id = $1::uuid
+               AND property_id = ANY($2::uuid[])
+             GROUP BY property_id`,
+            [principal.organizationId, propertyIds]
+          )
+        : Promise.resolve({ rows: emptyInvoices }),
+      propertyIds.length && canReadPayments
+        ? this.db.query<PaidRow>(
+            `SELECT i.property_id::text AS property_id,
+                    COALESCE(sum(a.amount_vnd), 0)::text AS paid_vnd
+             FROM renter_payment_allocations a
+             JOIN renter_invoices i
+               ON i.id = a.invoice_id
+              AND i.organization_id = a.organization_id
+             JOIN renter_payment_transactions t
+               ON t.id = a.payment_transaction_id
+              AND t.organization_id = a.organization_id
+             WHERE a.organization_id = $1::uuid
+               AND i.property_id = ANY($2::uuid[])
+               AND t.status = 'POSTED'
+               AND t.occurred_at >= (${monthStart}::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')
+               AND t.occurred_at < ((${monthStart} + interval '1 month')::timestamp
+                  AT TIME ZONE 'Asia/Ho_Chi_Minh')
+             GROUP BY i.property_id`,
+            [principal.organizationId, propertyIds]
+          )
+        : Promise.resolve({ rows: emptyPayments }),
+      propertyIds.length && canReadLeases
+        ? this.db.query<{ count: number }>(
+            `SELECT count(DISTINCT l.id)::int AS count
+             FROM leases l
+             JOIN rooms r
+               ON r.id = l.room_id AND r.organization_id = l.organization_id
+              AND r.is_active = true
+             WHERE l.organization_id = $1::uuid
+               AND r.property_id = ANY($2::uuid[])
+               AND l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+               AND l.planned_end_date >= ${dayToday}
+               AND l.planned_end_date < (${dayToday} + interval '30 days')::date`,
+            [principal.organizationId, propertyIds]
+          )
+        : Promise.resolve({ rows: [{ count: 0 }] }),
+      canReadNotifications
+        ? this.db.query<{ count: number }>(
+            `SELECT count(*)::int AS count
+             FROM notification_jobs
+             WHERE organization_id = $1::uuid
+               AND status IN ('FAILED', 'MANUAL_REVIEW')`,
+            [principal.organizationId]
+          )
+        : Promise.resolve({ rows: [{ count: 0 }] })
+    ]);
+
+    const invoicesByProperty = new Map(
+      invoicesResult.rows.map((row) => [row.property_id, row])
+    );
+    const paymentsByProperty = new Map(
+      paymentsResult.rows.map((row) => [row.property_id, row])
+    );
+
+    const properties = assets.properties.map((property) => {
+      const invoice = invoicesByProperty.get(property.id);
+      const payment = paymentsByProperty.get(property.id);
+      return {
+        id: property.id,
+        code: property.code,
+        name: property.name,
+        administrativeArea: property.administrativeArea,
+        rooms: property.rooms,
+        occupiedRooms: property.occupiedRooms,
+        billedRooms: canReadBilling
+          ? Math.min(property.occupiedRooms, invoice?.billed_rooms ?? 0) : null,
+        outstandingVnd: canReadBilling
+          ? Number(invoice?.outstanding_vnd ?? 0) : null,
+        collectedThisMonthVnd: canReadPayments
+          ? Number(payment?.paid_vnd ?? 0) : null,
+        overdueRooms: canReadBilling ? invoice?.overdue_rooms ?? 0 : null,
+        reviewInvoices: canReadBilling ? invoice?.review_invoices ?? 0 : null
+      };
+    });
+
+    const sum = (field: "outstandingVnd" | "collectedThisMonthVnd"
+      | "overdueRooms" | "reviewInvoices" | "billedRooms") =>
+      properties.reduce((total, property) => total + (property[field] ?? 0), 0);
+
+    const monthLabel = new Intl.DateTimeFormat("vi-VN", {
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "Asia/Ho_Chi_Minh"
+    }).format(new Date());
+
+    return {
+      monthLabel,
+      summary: {
+        propertyCount: assets.summary.propertyCount,
+        roomCount: assets.summary.roomCount,
+        occupiedRoomCount: assets.summary.occupiedRoomCount,
+        newRoomsLast30Days: newRoomsResult.rows[0]?.count ?? 0,
+        collectedThisMonthVnd: canReadPayments
+          ? sum("collectedThisMonthVnd") : null,
+        outstandingVnd: canReadBilling ? sum("outstandingVnd") : null,
+        overdueRooms: canReadBilling ? sum("overdueRooms") : null,
+        expiringLeases: canReadLeases ? leasesResult.rows[0]?.count ?? 0 : null,
+        failedNotifications: canReadNotifications
+          ? notificationsResult.rows[0]?.count ?? 0 : null
+      },
+      billingProgress: {
+        totalOccupiedRooms: assets.summary.occupiedRoomCount,
+        billedRooms: canReadBilling ? sum("billedRooms") : null,
+        reviewInvoices: canReadBilling ? sum("reviewInvoices") : null,
+        overdueRooms: canReadBilling ? sum("overdueRooms") : null
+      },
+      properties
+    };
+  }
+
   async property(principal: TenantPrincipal, propertyId: string) {
     this.requirePropertyRead(principal);
 

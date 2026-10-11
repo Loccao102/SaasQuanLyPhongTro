@@ -256,6 +256,15 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     assert.equal(quotaAfterCampaign.rows[0]?.reserved_actions, 2);
     assert.equal(quotaAfterCampaign.rows[0]?.consumed_actions, 0);
 
+    // A Zalo job must never be claimed without an account linked to this tenant.
+    const disconnectedClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
+    assert.equal(disconnectedClaim, null);
+    await fixturePool.query(
+      `INSERT INTO zalo_personal_accounts (organization_id, status, encrypted_session)
+       VALUES ($1, 'CONNECTED', 'integration-test-encrypted-session')`,
+      [organizationId]
+    );
+
     const firstClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(firstClaim);
     assert.ok(
