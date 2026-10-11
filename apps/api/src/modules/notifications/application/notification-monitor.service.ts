@@ -48,6 +48,7 @@ export class NotificationMonitorService {
     last_error_message: string | null;
     provider_status: string;
     provider_reason: string | null;
+    evidence: unknown;
   }> {
     const match = await this.db.query<QueryResultRow & {
       status: string;
@@ -55,8 +56,9 @@ export class NotificationMonitorService {
       last_error_message: string | null;
       provider_status: string;
       provider_reason: string | null;
+      evidence: unknown;
     }>(
-      `SELECT j.status, j.last_error_code, j.last_error_message,
+      `SELECT j.status, j.last_error_code, j.last_error_message, j.evidence,
               COALESCE(pc.status, 'ACTIVE') AS provider_status,
               pc.reason AS provider_reason
        FROM notification_jobs j
@@ -126,6 +128,7 @@ export class NotificationMonitorService {
     frame: MonitorFrame | null;
     provider: { status: string; reason: string | null };
     job: { status: string; lastErrorCode: string | null; lastErrorMessage: string | null };
+    diagnostics: { pageHost: string | null; inputHints: Array<Record<string, string>> };
   }> {
     this.requireAdmin(principal);
     const job = await this.assertTenantJob(principal, campaignId, jobId);
@@ -142,10 +145,29 @@ export class NotificationMonitorService {
       }
       : null;
     if (current && !frame) this.frames.delete(key);
+    const evidence = typeof job.evidence === "object" && job.evidence !== null &&
+      !Array.isArray(job.evidence)
+      ? job.evidence as Record<string, unknown>
+      : {};
+    const inputHints = Array.isArray(evidence.inputHints) ? evidence.inputHints : [];
+    const safeHints = inputHints.slice(0, 12).filter(
+      (hint): hint is Record<string, unknown> =>
+        typeof hint === "object" && hint !== null && !Array.isArray(hint)
+    ).map((hint) => {
+      const result: Record<string, string> = {};
+      for (const field of ["tag", "type", "id", "placeholder", "ariaLabel"]) {
+        if (typeof hint[field] === "string") result[field] = hint[field].slice(0, 80);
+      }
+      return result;
+    });
     return {
       watching: watcher !== null,
       frame,
       provider: { status: job.provider_status, reason: job.provider_reason },
+      diagnostics: {
+        pageHost: typeof evidence.pageHost === "string" ? evidence.pageHost.slice(0, 100) : null,
+        inputHints: safeHints
+      },
       job: {
         status: job.status,
         lastErrorCode: job.last_error_code,
