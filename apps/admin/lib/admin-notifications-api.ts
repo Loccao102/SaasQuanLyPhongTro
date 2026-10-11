@@ -39,6 +39,21 @@ export type ZaloMonitorState = {
   };
 };
 
+export type EligibleNotificationResident = {
+  residentId: string;
+  fullName: string;
+  phone: string;
+  propertyId: string;
+  propertyName: string;
+  roomCode: string;
+  leaseCode: string;
+};
+
+export type EligibleNotificationRecipients = {
+  truncated: boolean;
+  residents: EligibleNotificationResident[];
+};
+
 export type NotificationCampaignList = {
   organization: { id: string; name: string };
   campaigns: NotificationCampaignSummary[];
@@ -71,6 +86,7 @@ async function request<T>(
 
 export const adminNotificationsApi = {
   list: () => request<NotificationCampaignList>(""),
+  eligibleResidents: () => request<EligibleNotificationRecipients>("/eligible-residents"),
   monitor: (campaignId: string, jobId: string) =>
     request<ZaloMonitorState>(
       "/" + encodeURIComponent(campaignId) + "/jobs/" + encodeURIComponent(jobId) + "/monitor"
