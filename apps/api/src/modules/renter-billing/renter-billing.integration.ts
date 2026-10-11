@@ -760,8 +760,8 @@ test("previous debt carry-forward policy rolls unpaid balance into next cycle an
     assert.equal(inv2.lines.some((l) => l.type === "PREVIOUS_DEBT"), false, "PREVIOUS_DEBT line should be removed");
 
     // Check audit event
-    const audits = await fixturePool.query<{ action: string; payload: Record<string, unknown> }>(
-      `SELECT action, payload
+    const audits = await fixturePool.query<{ action: string; metadata: Record<string, unknown> }>(
+      `SELECT action, metadata
        FROM audit_events
        WHERE organization_id = $1
          AND action = 'RENTER_RENT_DRAFTS_GENERATED'
@@ -769,7 +769,7 @@ test("previous debt carry-forward policy rolls unpaid balance into next cycle an
        LIMIT 1`,
       [orgId]
     );
-    assert.equal(audits.rows[0]?.payload.previousDebtPolicy, "PREVIOUS_DEBT_CARRY_FORWARD_V1");
+    assert.equal(audits.rows[0]?.metadata.previousDebtPolicy, "PREVIOUS_DEBT_CARRY_FORWARD_V1");
   } finally {
     await database.onModuleDestroy();
     await cleanupOrg(fixturePool, orgId, uId);
