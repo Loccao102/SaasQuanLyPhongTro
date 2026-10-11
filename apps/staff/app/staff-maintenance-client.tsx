@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseOutlined,
@@ -17,10 +16,8 @@ import {
   staffMaintenanceApi,
   type MaintenanceTicketCategory,
   type MaintenanceTicketPriority,
-  type MaintenanceTicketStatus,
   type StaffMaintenanceTicket
 } from "../lib/staff-maintenance-api";
-import { useStaffAuth } from "../components/staff-auth-provider";
 
 function formatVnd(amount: number): string {
   return new Intl.NumberFormat("vi-VN", {
@@ -61,7 +58,6 @@ const PRIORITY_TONES: Record<
 };
 
 export function StaffMaintenanceClient() {
-  const auth = useStaffAuth();
   const [tickets, setTickets] = useState<StaffMaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +83,6 @@ export function StaffMaintenanceClient() {
   const [createPriority, setCreatePriority] =
     useState<MaintenanceTicketPriority>("NORMAL");
   const [createDescription, setCreateDescription] = useState("");
-  const [createRoomName, setCreateRoomName] = useState("");
   const [createResidentName, setCreateResidentName] = useState("");
   const [createResidentPhone, setCreateResidentPhone] = useState("");
   const [submittingCreate, setSubmittingCreate] = useState(false);
@@ -195,7 +190,6 @@ export function StaffMaintenanceClient() {
       setCreateModalOpen(false);
       setCreateTitle("");
       setCreateDescription("");
-      setCreateRoomName("");
       setCreateResidentName("");
       setCreateResidentPhone("");
       void loadTickets();
