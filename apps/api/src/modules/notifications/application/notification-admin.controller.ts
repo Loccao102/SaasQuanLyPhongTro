@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Post,
@@ -42,6 +43,7 @@ export class NotificationAdminController {
   }
 
   @Get(":campaignId/jobs/:jobId/monitor")
+  @Header("Cache-Control", "no-store")
   getMonitor(
     @Req() request: TenantRequest,
     @Param("campaignId", new ParseUUIDPipe({ version: "4" })) campaignId: string,
