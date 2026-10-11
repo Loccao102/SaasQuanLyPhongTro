@@ -65,6 +65,62 @@ export class NotificationAdminService {
     };
   }
 
+  /**
+   * Authorized, tenant-scoped selection list for notification campaigns.
+   * Only current lease parties are eligible (not historical tenants or drafts).
+   * Return a sentinel overflow flag instead of silently truncating >5000 rows.
+   * No identity documents or emails are exposed through this endpoint.
+   */
+  async eligibleResidents(principal: TenantPrincipal) {
+    this.require(principal, "notification.send");
+    type RecipientRow = QueryResultRow & {
+      resident_id: string;
+      full_name: string;
+      phone: string;
+      property_id: string;
+      property_name: string;
+      room_code: string;
+      lease_code: string;
+    };
+    const result = await this.db.query<RecipientRow>(
+      `SELECT DISTINCT ON (r.id, l.id)
+          r.id::text AS resident_id, r.full_name, r.phone,
+          p.id::text AS property_id, p.name AS property_name,
+          rm.code AS room_code, l.lease_code
+       FROM leases l
+       JOIN lease_residents lr
+         ON lr.organization_id = l.organization_id AND lr.lease_id = l.id
+       JOIN residents r
+         ON r.organization_id = lr.organization_id AND r.id = lr.resident_id
+       JOIN rooms rm
+         ON rm.organization_id = l.organization_id AND rm.id = l.room_id
+       JOIN properties p
+         ON p.organization_id = rm.organization_id AND p.id = rm.property_id
+       WHERE l.organization_id = $1::uuid
+         AND l.status IN ('ACTIVE', 'TERMINATION_SCHEDULED')
+         AND r.is_active = true
+         AND NULLIF(btrim(r.phone), '') IS NOT NULL
+         AND (lr.joined_on IS NULL OR lr.joined_on <= CURRENT_DATE)
+         AND (lr.left_on IS NULL OR lr.left_on > CURRENT_DATE)
+       ORDER BY r.id, l.id
+       LIMIT 5001`,
+      [principal.organizationId]
+    );
+    const rows = result.rows;
+    return {
+      truncated: rows.length > 5000,
+      residents: rows.slice(0, 5000).map((row) => ({
+        residentId: row.resident_id,
+        fullName: row.full_name,
+        phone: row.phone,
+        propertyId: row.property_id,
+        propertyName: row.property_name,
+        roomCode: row.room_code,
+        leaseCode: row.lease_code
+      }))
+    };
+  }
+
   async detail(principal: TenantPrincipal, campaignId: string) {
     this.require(principal, "notification.read");
     const campaignResult = await this.db.query<CampaignRow>(
