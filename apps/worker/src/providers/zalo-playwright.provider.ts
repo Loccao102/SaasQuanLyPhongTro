@@ -257,12 +257,17 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         // Short-lived read-only debug frames. Never log, save to disk, or
         // attach to durable notification evidence.
         try {
-          const jpeg = await page.screenshot({
+          let jpeg = await page.screenshot({
             type: "jpeg",
             quality: 35,
             animations: "disabled",
             timeout: 1800
           });
+          if (jpeg.length > 135_000) {
+            jpeg = await page.screenshot({
+              type: "jpeg", quality: 18, animations: "disabled", timeout: 1800
+            });
+          }
           const base64 = jpeg.toString("base64");
           if (base64.length <= 199_950) {
             image = "data:image/jpeg;base64," + base64;
