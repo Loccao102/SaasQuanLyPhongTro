@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 import {
   existingDeliveryReplayResult,
+  normalizeZaloRecipientPhone,
   ZaloPlaywrightProvider
 } from "./zalo-playwright.provider.js";
 
@@ -55,4 +56,13 @@ test("replay detection confirms an existing exact message without exposing messa
 test("replay detection never auto-confirms a normal first delivery or absent message", () => {
   assert.equal(existingDeliveryReplayResult(job(false), 1), null);
   assert.equal(existingDeliveryReplayResult(job(true), 0), null);
+});
+
+test("Zalo phone-only recipients normalize local and international formats", () => {
+  assert.equal(normalizeZaloRecipientPhone("0359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("+84359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("84359224828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("035 922 4828"), "0359224828");
+  assert.equal(normalizeZaloRecipientPhone("invalid"), null);
+  assert.equal(normalizeZaloRecipientPhone("123"), null);
 });
