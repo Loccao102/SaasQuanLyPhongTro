@@ -38,4 +38,17 @@ test("default search selectors cover Zalo SPA id, aria and class-based fields", 
   assert.ok(config.selectors.searchInputs.includes("#input-search"));
   assert.ok(config.selectors.searchInputs.includes('input[class*="search"]'));
   assert.ok(config.selectors.searchInputs.includes('input[type="search"]'));
+  // Login detection already accepts Zalo's custom contenteditable search UI.
+  // Delivery must recognize the same field rather than pausing the provider.
+  assert.ok(config.selectors.searchInputs.includes(
+    '[contenteditable="true"][data-placeholder*="Tìm" i]'
+  ));
+  assert.ok(config.selectors.searchInputs.includes(
+    '[contenteditable="true"][placeholder*="Tìm" i]'
+  ));
+  assert.ok(config.selectors.searchInputs.includes(
+    '[contenteditable="true"][aria-label*="Search" i]'
+  ));
+  // Never match an arbitrary contenteditable: that could be the chat composer.
+  assert.equal(config.selectors.searchInputs.includes('[contenteditable="true"]'), false);
 });

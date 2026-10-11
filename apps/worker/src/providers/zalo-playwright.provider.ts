@@ -161,16 +161,26 @@ async function findRecipientCandidate(
 async function searchInputDiagnostics(page: Page): Promise<Record<string, unknown>> {
   // Field metadata only: do not log input values, phone numbers or message bodies.
   try {
-    const inputHints = await page.locator("input, [role='searchbox']").evaluateAll(
+    const inputHints = await page.locator(
+      "input, [role='searchbox'], [contenteditable='true']"
+    ).evaluateAll(
+      // Only DOM attributes, never field values, contact names or message text.
       (elements) => elements.slice(0, 16).map((element) => ({
         tag: element.tagName.toLowerCase(),
         type: element.getAttribute("type"),
         id: (element.id || "").slice(0, 60),
+        role: element.getAttribute("role"),
+        contenteditable: element.getAttribute("contenteditable"),
         placeholder: (element.getAttribute("placeholder") || "").slice(0, 80),
+        dataPlaceholder: (element.getAttribute("data-placeholder") || "").slice(0, 80),
         ariaLabel: (element.getAttribute("aria-label") || "").slice(0, 80)
       }))
     );
-    return { pageHost: new URL(page.url()).hostname, inputHints };
+    return {
+      pageHost: new URL(page.url()).hostname,
+      frameCount: page.frames().length,
+      inputHints
+    };
   } catch {
     return { inputDiagnosticUnavailable: true };
   }
@@ -442,7 +452,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         const searchInput = await firstVisible(
           page,
           this.config.selectors.searchInputs,
-          Math.min(15000, this.config.navigationTimeoutMs)
+          Math.min(30000, this.config.navigationTimeoutMs)
         );
         if (!searchInput) {
           monitorStage = "SEARCH_INPUT_NOT_FOUND";

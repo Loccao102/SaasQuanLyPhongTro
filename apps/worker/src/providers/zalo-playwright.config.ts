@@ -120,7 +120,17 @@ export function loadZaloPlaywrightConfig(
         'input[placeholder*="Search" i]',
         'input[role="searchbox"]',
         '[role="searchbox"]',
-        'input[type="search"]'
+        'input[type="search"]',
+        // Zalo sometimes renders search as a contenteditable div, not an input.
+        // Restrict to search-specific attributes; never target the chat composer.
+        '[contenteditable="true"][data-placeholder*="Tìm" i]',
+        '[contenteditable="true"][placeholder*="Tìm" i]',
+        '[contenteditable="true"][aria-label*="Tìm" i]',
+        '[contenteditable="true"][data-placeholder*="Search" i]',
+        '[contenteditable="true"][placeholder*="Search" i]',
+        '[contenteditable="true"][aria-label*="Search" i]',
+        '[contenteditable="true"][id*="search" i]',
+        '[contenteditable="true"][class*="search" i]'
       ]),
       messageEditors: selectorList(env.ZALO_MESSAGE_EDITOR_SELECTORS, [
         '[contenteditable="true"][role="textbox"]',
