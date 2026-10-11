@@ -57,10 +57,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to Neon staging pooled connection}
       DATABASE_POOL_MAX: "5"
       REDIS_URL: redis://redis:6379
-      # Allow exactly the known admin origin and an optional staging preview;
-      # never wildcard *.vercel.app (CSRF origin validation relies on this list).
-      CORS_ORIGINS: "${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN},${HABI_PREVIEW_ADMIN_ORIGIN:-}"
-      AUTH_PUBLIC_APP_URL: ${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN}
+      # Allow only exact HTTPS admin origins. The canonical + main-branch
+      # Vercel domains must work even when HABI_ADMIN_ORIGIN is a legacy preview.
+      # No wildcard *.vercel.app: auth/CSRF origin checks rely on this allowlist.
+      CORS_ORIGINS: "${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN},${HABI_CANONICAL_ADMIN_ORIGIN:-https://habi-admin-staging-loccao102s-projects.vercel.app},${HABI_MAIN_BRANCH_ADMIN_ORIGIN:-https://habi-admin-staging-git-main-loccao102s-projects.vercel.app},${HABI_PREVIEW_ADMIN_ORIGIN:-}"
+      AUTH_PUBLIC_APP_URL: ${HABI_CANONICAL_ADMIN_ORIGIN:-https://habi-admin-staging-loccao102s-projects.vercel.app}
       AUTH_SECURITY_HMAC_KEY: ${AUTH_SECURITY_HMAC_KEY:?Set AUTH_SECURITY_HMAC_KEY}
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:?Set INTERNAL_WORKER_TOKEN}
       OBSERVABILITY_METRICS_TOKEN: ${OBSERVABILITY_METRICS_TOKEN:?Set OBSERVABILITY_METRICS_TOKEN}
