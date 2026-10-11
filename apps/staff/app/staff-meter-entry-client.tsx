@@ -11,10 +11,7 @@ import {
   type FormEvent
 } from "react";
 import {
-  CalendarOutlined,
   CheckOutlined,
-  DisconnectOutlined,
-  HomeOutlined,
   LogoutOutlined,
   MinusOutlined,
   QuestionOutlined,
@@ -22,8 +19,7 @@ import {
   SyncOutlined,
   ThunderboltOutlined,
   ToolOutlined,
-  WarningOutlined,
-  WifiOutlined
+  WarningOutlined
 } from "@ant-design/icons";
 import { ProgressBar, StatusBadge } from "@propops/ui";
 import { StaffMaintenanceClient } from "./staff-maintenance-client";
