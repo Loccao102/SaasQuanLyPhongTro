@@ -125,3 +125,28 @@ jobs:
       - name: Build
         if: always()
         run: pnpm build
+
+  # Only the reviewed main branch may execute inside the VM.
+  # PR code is verified on GitHub-hosted runners, never on the VM.
+  deploy-staging-vm:
+    name: Deploy staging on habi-gp
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify]
+    runs-on: [self-hosted, linux, x64, habi-staging]
+    environment: staging
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    concurrency:
+      group: habi-staging-vm
+      cancel-in-progress: false
+    steps:
+      - name: Checkout tested main commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build and deploy Docker on staging VM
+        env:
+          HABI_STAGING_ENV_FILE: ${{ vars.HABI_STAGING_ENV_FILE }}
+        run: bash infra/deploy-staging-on-vm.sh
