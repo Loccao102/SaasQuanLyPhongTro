@@ -41,7 +41,7 @@ export class ZaloPersonalService {
   async status(principal: TenantPrincipal) {
     this.authorize(principal);
     await this.expireOldRequests(principal.organizationId);
-    const [account, login, pause] = await Promise.all([
+    const [account, login, pause, providerControl] = await Promise.all([
       this.db.query<AccountRow>(
         `SELECT status, connected_at FROM zalo_personal_accounts WHERE organization_id = $1::uuid`,
         [principal.organizationId]
@@ -58,6 +58,12 @@ export class ZaloPersonalService {
          FROM zalo_personal_delivery_pauses
          WHERE organization_id = $1::uuid`,
         [principal.organizationId]
+      ),
+      this.db.query<QueryResultRow & { status: string; reason: string | null }>(
+        `SELECT status, reason
+         FROM notification_provider_controls
+         WHERE provider = 'PLAYWRIGHT_ZALO'
+         LIMIT 1`
       )
     ]);
     const canManage = principal.role === "OWNER" || principal.role === "ADMIN";
@@ -66,6 +72,10 @@ export class ZaloPersonalService {
       canManage,
       status: account.rows[0]?.status ?? "DISCONNECTED",
       connectedAt: account.rows[0]?.connected_at?.toISOString() ?? null,
+      provider: {
+        status: providerControl.rows[0]?.status ?? "UNKNOWN",
+        reason: providerControl.rows[0]?.reason ?? null
+      },
       sending: {
         paused: Boolean(pause.rows[0]),
         reason: pause.rows[0]?.reason ?? null,
