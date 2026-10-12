@@ -41,7 +41,7 @@ export class ZaloPersonalService {
   async status(principal: TenantPrincipal) {
     this.authorize(principal);
     await this.expireOldRequests(principal.organizationId);
-    const [account, login] = await Promise.all([
+    const [account, login, pause] = await Promise.all([
       this.db.query<AccountRow>(
         `SELECT status, connected_at FROM zalo_personal_accounts WHERE organization_id = $1::uuid`,
         [principal.organizationId]
@@ -52,6 +52,12 @@ export class ZaloPersonalService {
          WHERE organization_id = $1::uuid
          ORDER BY created_at DESC LIMIT 1`,
         [principal.organizationId]
+      ),
+      this.db.query<QueryResultRow & { reason: string; paused_at: Date }>(
+        `SELECT reason, paused_at
+         FROM zalo_personal_delivery_pauses
+         WHERE organization_id = $1::uuid`,
+        [principal.organizationId]
       )
     ]);
     const canManage = principal.role === "OWNER" || principal.role === "ADMIN";
@@ -60,6 +66,11 @@ export class ZaloPersonalService {
       canManage,
       status: account.rows[0]?.status ?? "DISCONNECTED",
       connectedAt: account.rows[0]?.connected_at?.toISOString() ?? null,
+      sending: {
+        paused: Boolean(pause.rows[0]),
+        reason: pause.rows[0]?.reason ?? null,
+        pausedAt: pause.rows[0]?.paused_at?.toISOString() ?? null
+      },
       login: row && canManage ? {
         id: row.id,
         status: row.status,
@@ -125,6 +136,55 @@ export class ZaloPersonalService {
       );
       return { requestId, expiresAt: expiresAt.toISOString() };
     });
+  }
+
+  async pauseSending(principal: TenantPrincipal) {
+    this.authorize(principal);
+    this.authorizeManage(principal);
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        "SELECT id FROM organizations WHERE id = $1::uuid FOR UPDATE",
+        [principal.organizationId]
+      );
+      await client.query(
+        `INSERT INTO zalo_personal_delivery_pauses (organization_id, reason)
+         VALUES ($1::uuid, $2)
+         ON CONFLICT (organization_id) DO UPDATE
+         SET reason = EXCLUDED.reason, paused_at = now()`,
+        [principal.organizationId, "Outgoing messages paused by organization admin."]
+      );
+      await client.query(
+        `INSERT INTO audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         VALUES ($1, $2, 'ZALO_PERSONAL_SENDING_PAUSED', 'ZALO_PERSONAL_ACCOUNT',
+                 $1, '{}'::jsonb)`,
+        [principal.organizationId, principal.userId]
+      );
+    });
+    return { paused: true };
+  }
+
+  async resumeSending(principal: TenantPrincipal) {
+    this.authorize(principal);
+    this.authorizeManage(principal);
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        "SELECT id FROM organizations WHERE id = $1::uuid FOR UPDATE",
+        [principal.organizationId]
+      );
+      await client.query(
+        "DELETE FROM zalo_personal_delivery_pauses WHERE organization_id = $1::uuid",
+        [principal.organizationId]
+      );
+      await client.query(
+        `INSERT INTO audit_events
+           (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+         VALUES ($1, $2, 'ZALO_PERSONAL_SENDING_RESUMED', 'ZALO_PERSONAL_ACCOUNT',
+                 $1, '{}'::jsonb)`,
+        [principal.organizationId, principal.userId]
+      );
+    });
+    return { paused: false };
   }
 
   async disconnect(principal: TenantPrincipal) {
