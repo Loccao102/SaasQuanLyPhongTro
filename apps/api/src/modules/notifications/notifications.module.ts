@@ -4,6 +4,7 @@ import { DatabaseModule } from "../database/database.module.js";
 import { IdentityModule } from "../identity/identity.module.js";
 import { NotificationAdminController } from "./application/notification-admin.controller.js";
 import { NotificationAdminService } from "./application/notification-admin.service.js";
+import { NotificationTemplateService } from "./application/notification-template.service.js";
 import { NotificationCampaignService } from "./application/notification-campaign.service.js";
 import { NotificationMonitorService } from "./application/notification-monitor.service.js";
 import { NotificationOperationsService } from "./application/notification-operations.service.js";
@@ -23,6 +24,7 @@ import { InternalServiceGuard } from "../internal/internal-service.guard.js";
   providers: [
     InternalServiceGuard,
     NotificationAdminService,
+    NotificationTemplateService,
     NotificationCampaignService,
     NotificationWorkerService,
     NotificationOperationsService,

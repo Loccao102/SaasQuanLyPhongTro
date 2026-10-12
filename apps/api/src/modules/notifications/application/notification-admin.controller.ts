@@ -2,10 +2,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards
@@ -16,6 +18,7 @@ import type { TenantRequest } from "../../identity/tenant-principal.js";
 import { NotificationMonitorService } from "./notification-monitor.service.js";
 import { NotificationCampaignService } from "./notification-campaign.service.js";
 import { NotificationAdminService } from "./notification-admin.service.js";
+import { NotificationTemplateService } from "./notification-template.service.js";
 
 type BodyInput = Record<string, unknown>;
 
@@ -25,6 +28,7 @@ type BodyInput = Record<string, unknown>;
 export class NotificationAdminController {
   constructor(
     private readonly admin: NotificationAdminService,
+    private readonly templates: NotificationTemplateService,
     private readonly campaigns: NotificationCampaignService,
     private readonly monitor: NotificationMonitorService
   ) {}
@@ -38,6 +42,33 @@ export class NotificationAdminController {
   @Header("Cache-Control", "private, no-store")
   eligibleResidents(@Req() request: TenantRequest) {
     return this.admin.eligibleResidents(this.principal(request));
+  }
+
+  @Get("templates")
+  listTemplates(@Req() request: TenantRequest) {
+    return this.templates.list(this.principal(request));
+  }
+
+  @Post("templates")
+  createTemplate(@Req() request: TenantRequest, @Body() input: BodyInput) {
+    return this.templates.create(this.principal(request), input);
+  }
+
+  @Patch("templates/:templateId")
+  updateTemplate(
+    @Req() request: TenantRequest,
+    @Param("templateId", new ParseUUIDPipe({ version: "4" })) templateId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.templates.update(this.principal(request), templateId, input);
+  }
+
+  @Delete("templates/:templateId")
+  deleteTemplate(
+    @Req() request: TenantRequest,
+    @Param("templateId", new ParseUUIDPipe({ version: "4" })) templateId: string
+  ) {
+    return this.templates.remove(this.principal(request), templateId);
   }
 
   @Get(":campaignId")
