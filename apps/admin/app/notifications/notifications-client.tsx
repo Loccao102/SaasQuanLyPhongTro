@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { StatusBadge } from "@propops/ui";
 import Link from "next/link";
 import { ZaloLiveMonitor } from "./zalo-live-monitor";
+import { NotificationTemplateLibrary } from "./notification-template-library";
+import { renderNotificationTemplate, templateVariables, variableLabels } from "../../lib/notification-template-render";
+import type { NotificationMessageTemplate } from "../../lib/admin-notifications-api";
 import { TenantNotificationRecipientsPicker, normalizeTenantPhone, type SelectedTenantRecipient } from "./tenant-recipients-picker";
 import { adminZaloPersonalApi } from "../../lib/admin-zalo-personal-api";
 import { AdminShell } from "../../components/admin-shell";
@@ -98,6 +101,9 @@ export function NotificationsClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [messageBody, setMessageBody] = useState("");
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [recipientMode, setRecipientMode] = useState<"MANUAL" | "TENANTS">("TENANTS");
   const [tenantRecipients, setTenantRecipients] = useState<SelectedTenantRecipient[]>([]);
   const [filterTab, setFilterTab] = useState<"ALL" | "MANUAL_REVIEW" | "SENT" | "PENDING" | "FAILED">("ALL");
@@ -179,6 +185,18 @@ export function NotificationsClient() {
     }
   }
 
+  function useTemplate(template: NotificationMessageTemplate) {
+    setMessageBody(template.body);
+    setTemplateName(template.name);
+    setTemplateValues({});
+    setShowCreate(true);
+    setError(null);
+    requestAnimationFrame(() => {
+      document.getElementById("notification-create-campaign")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -192,6 +210,22 @@ export function NotificationsClient() {
             recipientDisplayName: nameParts.join("|").trim() || null
           };
         });
+
+    const rendered = renderNotificationTemplate(messageBody, templateValues);
+    if (rendered.invalid.length || rendered.missing.length) {
+      setError("Mẫu tin còn biến chưa hợp lệ hoặc chưa điền: " +
+        [...rendered.invalid, ...rendered.missing].join(", "));
+      return;
+    }
+    if (!rendered.body.trim() || rendered.body.length > 4000) {
+      setError("Nội dung tin sau khi điền biến phải từ 1 đến 4.000 ký tự.");
+      return;
+    }
+    if (recipients.length > 1 &&
+      templateVariables(messageBody).some(key => ["ten_khach", "so_phong", "so_tien"].includes(key))) {
+      setError("Mẫu này chứa thông tin riêng từng người/phòng/số tiền. Hãy gửi riêng từng người để tránh nhầm dữ liệu.");
+      return;
+    }
 
     if (!recipients.length) {
       setError("Hãy chọn ít nhất một khách thuê hoặc nhập một số điện thoại hợp lệ.");
@@ -219,13 +253,16 @@ export function NotificationsClient() {
     const succeeded = await mutate(() =>
       adminNotificationsApi.create({
         idempotencyKey: crypto.randomUUID(),
-        messageBody: String(form.get("messageBody") ?? ""),
+        messageBody: rendered.body,
         recipients
       })
     );
     if (succeeded) {
       setShowCreate(false);
       setTenantRecipients([]);
+      setMessageBody("");
+      setTemplateValues({});
+      setTemplateName(null);
     }
   }
 
@@ -267,6 +304,7 @@ export function NotificationsClient() {
           </Link>
         </section>
       )}
+      <NotificationTemplateLibrary onUse={useTemplate} />
       <section className="asset-context">
         <div>
           <span className="eyebrow">ZALO / NOTIFICATION QUEUE</span>
@@ -279,15 +317,62 @@ export function NotificationsClient() {
       </section>
 
       {showCreate ? (
-        <section className="panel">
+        <section className="panel" id="notification-create-campaign">
           <div className="asset-section-heading">
             <div><span className="eyebrow">NEW CAMPAIGN</span><h2>Tạo chiến dịch thông báo</h2></div>
           </div>
           <form className="notification-create-form" onSubmit={(event) => void createCampaign(event)}>
+            {templateName && (
+              <div className="admin-state" role="status">
+                Đang dùng mẫu: <strong>{templateName}</strong>. Bạn có thể chỉnh sửa nội dung trước khi gửi.
+              </div>
+            )}
             <label>
               <span>Nội dung</span>
-              <textarea name="messageBody" rows={5} maxLength={4000} required placeholder="Nội dung tin nhắn..." />
+              <textarea name="messageBody" rows={6} maxLength={4000} required
+                value={messageBody}
+                onChange={event => {
+                  setMessageBody(event.target.value);
+                  setTemplateName(null);
+                }}
+                placeholder="Nhập tin nhắn hoặc chọn một mẫu ở thư viện phía trên…" />
             </label>
+            {templateVariables(messageBody).length > 0 && (
+              <fieldset style={{
+                border: "1px solid #dbe4ef", borderRadius: 12,
+                padding: 16, display: "grid", gap: 10
+              }}>
+                <legend style={{ padding: "0 8px", fontWeight: 600 }}>Điền biến nội dung</legend>
+                <small>Các giá trị sẽ dùng chung cho mọi người nhận. Thông tin cá nhân hoặc số tiền nên gửi riêng từng người.</small>
+                {templateVariables(messageBody).map(variable => (
+                  <label key={variable}>
+                    <span>{variableLabels[variable] ?? "Biến không hỗ trợ: " + variable}</span>
+                    {variable === "noi_dung" ? (
+                      <textarea rows={3} value={templateValues[variable] ?? ""}
+                        onChange={event => setTemplateValues(old => ({
+                          ...old, [variable]: event.target.value
+                        }))} placeholder={"Điền " + variable} />
+                    ) : (
+                      <input className="form-input" value={templateValues[variable] ?? ""}
+                        onChange={event => setTemplateValues(old => ({
+                          ...old, [variable]: event.target.value
+                        }))} placeholder={"Điền " + variable} />
+                    )}
+                  </label>
+                ))}
+                <div style={{ background: "#f8fafc", borderRadius: 10, padding: 12 }}>
+                  <strong>Bản xem trước trước khi xếp hàng</strong>
+                  <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 8 }}>
+                    {renderNotificationTemplate(messageBody, templateValues).body}
+                  </p>
+                  {renderNotificationTemplate(messageBody, templateValues).missing.length > 0 && (
+                    <small style={{ color: "#b45309" }}>Cần điền: {
+                      renderNotificationTemplate(messageBody, templateValues).missing.join(", ")
+                    }</small>
+                  )}
+                </div>
+              </fieldset>
+            )}
             <fieldset style={{ border: "1px solid #dbe4ef", borderRadius: 12, padding: 16 }}>
               <legend style={{ padding: "0 8px", fontWeight: 600 }}>Chọn nguồn người nhận</legend>
               <div className="button-row" style={{ marginBottom: 14 }}>
