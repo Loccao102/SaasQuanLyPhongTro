@@ -71,6 +71,12 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       TRUST_PROXY_HOPS: "1"
       NOTIFICATION_RUNNING_TIMEOUT_SECONDS: "600"
+      # Transactional Zalo Personal messages only; safe defaults, not official limits.
+      ZALO_SEND_MIN_GAP_SECONDS: ${ZALO_SEND_MIN_GAP_SECONDS:-60}
+      ZALO_SEND_MAX_PER_15_MINUTES: ${ZALO_SEND_MAX_PER_15_MINUTES:-4}
+      ZALO_SEND_MAX_PER_24_HOURS: ${ZALO_SEND_MAX_PER_24_HOURS:-30}
+      ZALO_SEND_START_HOUR: ${ZALO_SEND_START_HOUR:-8}
+      ZALO_SEND_END_HOUR: ${ZALO_SEND_END_HOUR:-20}
     expose:
       - "4000"
     depends_on:
