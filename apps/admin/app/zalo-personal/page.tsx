@@ -54,8 +54,30 @@ export default function ZaloPersonalPage() {
     }
   }
 
+  async function changeSending(paused: boolean) {
+    const message = paused
+      ? "Tạm dừng tất cả tin Zalo chưa gửi của tổ chức này?"
+      : "Chỉ tiếp tục sau khi đã kiểm tra nguyên nhân bị hạn chế gửi từ Zalo. Tiếp tục queue?";
+    if (!window.confirm(message)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (paused) {
+        await adminZaloPersonalApi.pauseSending();
+      } else {
+        await adminZaloPersonalApi.resumeSending();
+      }
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không đổi được trạng thái gửi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const connected = connection?.status === "CONNECTED";
   const connecting = connection?.status === "CONNECTING";
+  const sendingPaused = connection?.sending?.paused ?? false;
   const login = connection?.login;
 
   return (
@@ -99,13 +121,35 @@ export default function ZaloPersonalPage() {
                 Ngắt kết nối
               </button>
             )}
+            {connection?.canManage && connected && (
+              <button type="button" className="secondary-button" disabled={busy}
+                onClick={() => void changeSending(!sendingPaused)}>
+                {sendingPaused ? "Tiếp tục gửi" : "Tạm dừng gửi"}
+              </button>
+            )}
           </div>
         </div>
 
         {connected && (
           <div className="admin-state admin-state--success" role="status">
             Phiên Zalo đã được mã hóa và lưu riêng cho tổ chức này.
-            Bạn có thể quay lại mục Thông báo để gửi tin.
+            {sendingPaused
+              ? " Phiên vẫn kết nối, nhưng queue gửi tin đang tạm dừng."
+              : " Queue sẽ gửi có giới hạn tốc độ và trong giờ làm việc."}
+          </div>
+        )}
+        {sendingPaused && (
+          <div className="admin-state admin-state--error" role="alert">
+            Đã tạm dừng gửi Zalo cho tổ chức này. Lý do:{" "}
+            {connection?.sending?.reason ?? "Cần quản trị viên kiểm tra."}
+            {" "}Không tự khởi động lại nếu Zalo hạn chế tài khoản.
+          </div>
+        )}
+        {connected && !sendingPaused && (
+          <div className="admin-state">
+            Giới hạn mặc định staging: cách nhau ít nhất 60 giây, tối đa 4 lượt/15 phút,
+            30 lượt/24 giờ, giờ Việt Nam 08:00–20:00. Đây không phải giới hạn
+            chính thức của Zalo. Chỉ gửi thông báo giao dịch cho người đã đồng ý.
           </div>
         )}
 
