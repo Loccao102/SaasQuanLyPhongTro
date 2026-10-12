@@ -94,6 +94,54 @@ host the interactive QR/login worker reliably. Configure protected
 - Verify incorrect/expired sessions and CAPTCHA go to manual review without
   accidentally retrying uncertain deliveries.
 
+
+## Sending safeguards (staging, after migration 0002)
+
+Only send requested transactional messages to recipients who have consented.
+This unofficial Zalo Web integration **cannot determine delivery or read status**
+from a chat message bubble, and offers no spam-immunity guarantees.
+
+The API claims outbound jobs from PostgreSQL with per-organization limits,
+including across campaigns, worker restarts and parallel workers:
+
+- Minimum 60 seconds between message attempts.
+- At most 4 attempts in a rolling 15-minute window (then wait until capacity returns).
+- At most 30 attempts in a rolling 24-hour window.
+- Only 08:00–20:00 Asia/Ho_Chi_Minh. Outside hours, queued jobs wait.
+- All rules count attempts, not only apparent successful sends. These are
+  **pilot defaults**, not official Zalo limits.
+
+All five values can only be made more conservative or modified within bounded
+ranges through `ZALO_SEND_MIN_GAP_SECONDS`, `ZALO_SEND_MAX_PER_15_MINUTES`,
+`ZALO_SEND_MAX_PER_24_HOURS`, `ZALO_SEND_START_HOUR` and
+`ZALO_SEND_END_HOUR` on the **API container**. A service-wide provider
+UI breakage is handled separately from a single organization's hold.
+
+If the Zalo Web UI explicitly reports a sending limit or account restriction,
+the ongoing job enters MANUAL_REVIEW and the **organization alone** is put on a
+durable send hold in `zalo_personal_delivery_pauses`. Only an OWNER/ADMIN can
+resume after checking the account; the hold does not expire automatically.
+A clear recipient block produces MANUAL_REVIEW for that recipient, not a
+global hold. An unverified post-click result never auto-retries; check the
+actual conversation before using the manual retry action.
+
+Status `SENT` means a matching message bubble was observed in Zalo Web.
+It must be displayed as "Đã gửi trên Zalo Web", **not** "Đã giao" or "Đã xem".
+No delivery/read receipts are inferred or fabricated. If Zalo changes its UI,
+these classifiers may fail closed and require human review.
+
+### Apply schema to Neon staging before deploying the API
+
+Use the `habi-staging` branch only. The new migration is
+`apps/api/db/migrations/0002_zalo_delivery_pauses.sql`. Apply via the
+existing `db:setup` script with production `NODE_ENV` (which skips demo
+seeds), or a reviewed DB migration workflow. Never apply it to the primary
+Neon production branch just to test this feature.
+
+Then rebuild/restart **both** `api` and `worker-notification`, as the API
+enforces DB pacing and the notification worker detects visible send errors.
+The QR login worker does not require changes for this particular feature.
+
 ## Limitations
 
 - The initial QR implementation uses a compact JPEG screenshot of Zalo Web
