@@ -43,7 +43,7 @@ function campaignStatusLabel(status: string) {
 
 function jobStatusLabel(status: string) {
   switch (status) {
-    case "SENT": return "Đã gửi thành công";
+    case "SENT": return "Đã gửi trên Zalo Web";
     case "MANUAL_REVIEW": return "Cần kiểm tra";
     case "RUNNING": return "Đang gửi...";
     case "QUEUED": return "Chờ gửi";
@@ -58,7 +58,13 @@ function explainError(code: string | null, message: string | null): string | nul
   if (!code && !message) return null;
   switch (code) {
     case "RECIPIENT_NOT_FOUND":
-      return "⚠️ Không tìm thấy Zalo: Số điện thoại chưa đăng ký Zalo hoặc người này chặn tìm kiếm bằng số điện thoại.";
+      return "⚠️ Không xác minh được người nhận: Có thể không tìm thấy, người nhận ẩn số điện thoại hoặc Zalo thay đổi giao diện.";
+    case "ZALO_RECIPIENT_BLOCKED":
+      return "⚠️ Zalo báo người nhận đã chặn: Không tự gửi lại.";
+    case "ZALO_RATE_RESTRICTED":
+      return "🛑 Zalo hạn chế gửi tin: Queue của tổ chức đã tạm dừng, cần quản trị viên kiểm tra.";
+    case "ZALO_SEND_REJECTED":
+      return "⚠️ Zalo báo lỗi gửi: Chưa thể xác nhận tin có được gửi hay không. Kiểm tra Zalo trước khi gửi lại.";
     case "RECIPIENT_AMBIGUOUS":
       return "⚠️ Trùng tên hiển thị: Tìm thấy nhiều tài khoản trùng tên. Hệ thống dừng lại để tránh gửi nhầm người.";
     case "RECIPIENT_VERIFICATION_FAILED":
@@ -91,6 +97,7 @@ export function NotificationsClient() {
   const [filterTab, setFilterTab] = useState<"ALL" | "MANUAL_REVIEW" | "SENT" | "PENDING" | "FAILED">("ALL");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [zaloConnected, setZaloConnected] = useState(false);
+  const [zaloSendingPaused, setZaloSendingPaused] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,7 +105,9 @@ export function NotificationsClient() {
     try {
       const next = await adminNotificationsApi.list();
       setData(next);
-      setZaloConnected((await adminZaloPersonalApi.status().catch(() => null))?.status === "CONNECTED");
+      const zalo = await adminZaloPersonalApi.status().catch(() => null);
+      setZaloConnected(zalo?.status === "CONNECTED");
+      setZaloSendingPaused(zalo?.sending?.paused ?? false);
       if (selected) {
         const detail = await adminNotificationsApi.detail(selected.id);
         setSelected(detail.campaign);
@@ -114,6 +123,22 @@ export function NotificationsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A job can move from QUEUED -> RUNNING -> SENT/MANUAL_REVIEW on the
+  // backend without a page reload. Refresh only the selected campaign.
+  useEffect(() => {
+    const selectedId = selected?.id;
+    if (!selectedId) return;
+    const timer = window.setInterval(() => {
+      void adminNotificationsApi.detail(selectedId).then((detail) => {
+        setSelected((old) => old?.id === selectedId ? detail.campaign : old);
+        setJobs(detail.jobs);
+      }).catch(() => {
+        // Keep last known state; explicit Refresh can surface the API error.
+      });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [selected?.id]);
 
   async function openCampaign(campaign: NotificationCampaignSummary) {
     setSelected(campaign);
@@ -192,6 +217,14 @@ export function NotificationsClient() {
         </div>
       ) : null}
 
+      {zaloSendingPaused && !loading && (
+        <section className="admin-state admin-state--error" role="alert">
+          Queue Zalo của tổ chức đang tạm dừng vì cảnh báo hoặc thao tác quản trị.
+          <Link href="/zalo-personal" className="text-link" style={{ marginLeft: 12 }}>
+            Kiểm tra trạng thái
+          </Link>
+        </section>
+      )}
       {!zaloConnected && !loading && (
         <section className="admin-state" role="status">
           Bạn cần liên kết Zalo của tổ chức trước khi gửi tin.
@@ -204,9 +237,9 @@ export function NotificationsClient() {
         <div>
           <span className="eyebrow">ZALO / NOTIFICATION QUEUE</span>
           <h2>{data?.organization.name ?? "Workspace hiện tại"}</h2>
-          <p>Mỗi người nhận là một nhiệm vụ độc lập (durable job); trạng thái UNKNOWN/MANUAL_REVIEW không bao giờ bị coi là gửi thành công.</p>
+          <p>Queue gửi có giới hạn tốc độ và nghỉ theo khung giờ. “Đã gửi trên Zalo Web” không có nghĩa là người nhận đã nhận hoặc đọc. Tin chưa xác minh không được tự gửi lại.</p>
         </div>
-        <button className="primary-button" type="button" disabled={!zaloConnected} onClick={() => setShowCreate((value) => !value)}>
+        <button className="primary-button" type="button" disabled={!zaloConnected || zaloSendingPaused} onClick={() => setShowCreate((value) => !value)}>
           + Tạo chiến dịch
         </button>
       </section>
@@ -295,7 +328,11 @@ export function NotificationsClient() {
                   }}>Tạm dừng</button>
                 ) : null}
                 {selected.failed + selected.manualReview > 0 && selected.status !== "CANCELLED" ? (
-                  <button className="secondary-button" disabled={saving} onClick={() => void mutate(() => adminNotificationsApi.retry(selected.id))}>Gửi lại mục lỗi / cần kiểm tra</button>
+                  <button className="secondary-button" disabled={saving} onClick={() => {
+                    if (window.confirm("Chỉ gửi lại khi bạn đã kiểm tra trực tiếp trong Zalo rằng tin chưa được gửi. Gửi lại sai có thể tạo tin trùng. Bạn đã xác minh chưa?")) {
+                      void mutate(() => adminNotificationsApi.retry(selected.id));
+                    }
+                  }}>Gửi lại sau khi xác minh</button>
                 ) : null}
                 {selected.status !== "CANCELLED" && selected.status !== "COMPLETED" ? (
                   <button className="danger-button" disabled={saving} onClick={() => {
