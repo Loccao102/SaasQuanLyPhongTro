@@ -45,7 +45,7 @@ function campaignStatusLabel(status: string) {
 
 function jobStatusLabel(status: string) {
   switch (status) {
-    case "SENT": return "Đã gửi thành công";
+    case "SENT": return "Đã gửi trên Zalo Web";
     case "MANUAL_REVIEW": return "Cần kiểm tra";
     case "RUNNING": return "Đang gửi...";
     case "QUEUED": return "Chờ gửi";
@@ -59,8 +59,16 @@ function jobStatusLabel(status: string) {
 function explainError(code: string | null, message: string | null): string | null {
   if (!code && !message) return null;
   switch (code) {
+    case "RECIPIENT_DISPLAY_NAME_REQUIRED":
+      return "⚠️ Thiếu tên hiển thị Zalo. Kiểm tra người nhận và tạo chiến dịch mới với tên Zalo chính xác.";
     case "RECIPIENT_NOT_FOUND":
-      return "⚠️ Không tìm thấy Zalo: Số điện thoại chưa đăng ký Zalo hoặc người này chặn tìm kiếm bằng số điện thoại.";
+      return "⚠️ Không xác minh được người nhận: Có thể không tìm thấy, họ hạn chế tìm kiếm hoặc giao diện Zalo đã thay đổi.";
+    case "ZALO_RECIPIENT_BLOCKED":
+      return "⚠️ Zalo thông báo người nhận đã chặn. Không tự gửi lại.";
+    case "ZALO_RATE_RESTRICTED":
+      return "🛑 Zalo báo hạn chế gửi. Queue tổ chức đã tạm dừng; hãy kiểm tra trước khi tiếp tục.";
+    case "ZALO_SEND_REJECTED":
+      return "⚠️ Zalo báo lỗi gửi: Chưa xác nhận tin đã đi. Kiểm tra trong Zalo trước khi gửi lại.";
     case "RECIPIENT_AMBIGUOUS":
       return "⚠️ Trùng tên hiển thị: Tìm thấy nhiều tài khoản trùng tên. Hệ thống dừng lại để tránh gửi nhầm người.";
     case "RECIPIENT_VERIFICATION_FAILED":
@@ -96,6 +104,7 @@ export function NotificationsClient() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [monitorJobId, setMonitorJobId] = useState<string | null>(null);
   const [zaloConnected, setZaloConnected] = useState(false);
+  const [zaloSendingPaused, setZaloSendingPaused] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,7 +112,9 @@ export function NotificationsClient() {
     try {
       const next = await adminNotificationsApi.list();
       setData(next);
-      setZaloConnected((await adminZaloPersonalApi.status().catch(() => null))?.status === "CONNECTED");
+      const zalo = await adminZaloPersonalApi.status().catch(() => null);
+      setZaloConnected(zalo?.status === "CONNECTED");
+      setZaloSendingPaused(zalo?.sending?.paused ?? false);
       if (selected) {
         const detail = await adminNotificationsApi.detail(selected.id);
         setSelected(detail.campaign);
@@ -119,6 +130,22 @@ export function NotificationsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const selectedId = selected?.id;
+    if (!selectedId) return;
+    const timer = window.setInterval(() => {
+      void adminNotificationsApi.detail(selectedId).then((detail) => {
+        setSelected((old) => old?.id === selectedId ? detail.campaign : old);
+        setJobs(detail.jobs);
+      }).catch(() => {});
+      void adminZaloPersonalApi.status().then((zalo) => {
+        setZaloConnected(zalo.status === "CONNECTED");
+        setZaloSendingPaused(zalo.sending?.paused ?? false);
+      }).catch(() => {});
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [selected?.id]);
 
   async function openCampaign(campaign: NotificationCampaignSummary) {
     setMonitorJobId(null);
@@ -174,6 +201,10 @@ export function NotificationsClient() {
       setError("Danh sách có số điện thoại không hợp lệ. Vui lòng kiểm tra lại.");
       return;
     }
+    if (recipients.some(r => !r.recipientDisplayName?.trim())) {
+      setError("Mỗi người nhận cần có tên hiển thị Zalo để xác minh, không chỉ số điện thoại.");
+      return;
+    }
     if (new Set(recipients.map(r => r.recipientKey)).size !== recipients.length) {
       setError("Danh sách có số điện thoại trùng. Mỗi số chỉ được nhận một lần.");
       return;
@@ -220,6 +251,14 @@ export function NotificationsClient() {
         </div>
       ) : null}
 
+      {zaloSendingPaused && !loading && (
+        <section className="admin-state admin-state--error" role="alert">
+          Gửi Zalo của tổ chức đang tạm dừng do cảnh báo hoặc thao tác quản trị.
+          <Link href="/zalo-personal" className="text-link" style={{ marginLeft: 12 }}>
+            Xem trạng thái
+          </Link>
+        </section>
+      )}
       {!zaloConnected && !loading && (
         <section className="admin-state" role="status">
           Bạn cần liên kết Zalo của tổ chức trước khi gửi tin.
@@ -232,9 +271,9 @@ export function NotificationsClient() {
         <div>
           <span className="eyebrow">ZALO / NOTIFICATION QUEUE</span>
           <h2>{data?.organization.name ?? "Workspace hiện tại"}</h2>
-          <p>Mỗi người nhận là một nhiệm vụ độc lập (durable job); trạng thái UNKNOWN/MANUAL_REVIEW không bao giờ bị coi là gửi thành công.</p>
+          <p>Queue tự giãn nhịp gửi và nghỉ ngoài giờ. “Đã gửi trên Zalo Web” không đồng nghĩa đã giao hoặc đã đọc. Tin chưa xác minh sẽ không tự gửi lại.</p>
         </div>
-        <button className="primary-button" type="button" disabled={!zaloConnected} onClick={() => setShowCreate((value) => !value)}>
+        <button className="primary-button" type="button" disabled={!zaloConnected || zaloSendingPaused} onClick={() => setShowCreate((value) => !value)}>
           + Tạo chiến dịch
         </button>
       </section>
@@ -261,17 +300,21 @@ export function NotificationsClient() {
                 <TenantNotificationRecipientsPicker onChange={setTenantRecipients} />
               ) : (
                 <label>
-                  <span>Người nhận · mỗi dòng: Số điện thoại (tùy chọn thêm | Tên Zalo)</span>
+                  <span>Người nhận · mỗi dòng: Số điện thoại | Tên Zalo (bắt buộc)</span>
                   <textarea name="recipients" rows={8} required
-                    placeholder={"0901234567\n0909999999 | Tên hiển thị Zalo"} />
+                    placeholder={"0901234567 | Tên hiển thị Zalo\n0909999999 | Tên Zalo khác"} />
                 </label>
               )}
             </fieldset>
             <p style={{ fontSize: 13, color: "#64748b" }}>
               Hãy kiểm tra danh sách trước khi xếp hàng. Nhà cung cấp Zalo đang tạm dừng sẽ không tự gửi cho đến khi được kích hoạt.
             </p>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <input name="recipientConsent" type="checkbox" required style={{ marginTop: 4 }} />
+              <span>Tôi xác nhận người nhận đã đồng ý nhận thông báo; không gửi tin quảng cáo trái mong muốn.</span>
+            </label>
             <div className="button-row">
-              <button className="primary-button" type="submit" disabled={saving}>Xếp hàng gửi</button>
+              <button className="primary-button" type="submit" disabled={saving || zaloSendingPaused}>Xếp hàng gửi</button>
             </div>
           </form>
         </section>
@@ -302,7 +345,7 @@ export function NotificationsClient() {
                   </div>
                   <div>
                     <StatusBadge tone={campaignTone(campaign.status)}>{campaignStatusLabel(campaign.status)}</StatusBadge>
-                    <small>{campaign.sent} đã gửi · {campaign.failed + campaign.manualReview} cần xử lý</small>
+                    <small>{campaign.sent} đã hiện trên Zalo Web · {campaign.failed + campaign.manualReview} cần xử lý</small>
                   </div>
                 </button>
               ))}
@@ -320,7 +363,7 @@ export function NotificationsClient() {
             <>
               <div className="asset-section-heading">
                 <div><span className="eyebrow">{selected.provider}</span><h2>{campaignStatusLabel(selected.status)}</h2></div>
-                <StatusBadge tone={campaignTone(selected.status)}>{selected.sent}/{selected.totalRecipients} ĐÃ GỬI</StatusBadge>
+                <StatusBadge tone={campaignTone(selected.status)}>{selected.sent}/{selected.totalRecipients} ĐÃ HIỆN TRÊN ZALO WEB</StatusBadge>
               </div>
               <p className="notification-message-preview">{selected.messageBody}</p>
               <div className="notification-stats">
@@ -340,7 +383,11 @@ export function NotificationsClient() {
                   }}>Tạm dừng</button>
                 ) : null}
                 {selected.failed + selected.manualReview > 0 && selected.status !== "CANCELLED" ? (
-                  <button className="secondary-button" disabled={saving} onClick={() => void mutate(() => adminNotificationsApi.retry(selected.id))}>Gửi lại mục lỗi / cần kiểm tra</button>
+                  <button className="secondary-button" disabled={saving} onClick={() => {
+                    if (window.confirm("Bạn đã kiểm tra trực tiếp Zalo và chắc chắn tin chưa gửi? Gửi lại khi chưa xác minh có thể tạo tin trùng.")) {
+                      void mutate(() => adminNotificationsApi.retry(selected.id));
+                    }
+                  }}>Gửi lại sau khi xác minh</button>
                 ) : null}
                 {selected.status !== "CANCELLED" && selected.status !== "COMPLETED" ? (
                   <button className="danger-button" disabled={saving} onClick={() => {

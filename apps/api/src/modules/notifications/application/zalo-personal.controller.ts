@@ -29,4 +29,14 @@ export class ZaloPersonalController {
   disconnect(@Req() request: TenantRequest) {
     return this.zalo.disconnect(this.principal(request));
   }
+
+  @Post("pause-sending")
+  pauseSending(@Req() request: TenantRequest) {
+    return this.zalo.pauseSending(this.principal(request));
+  }
+
+  @Post("resume-sending")
+  resumeSending(@Req() request: TenantRequest) {
+    return this.zalo.resumeSending(this.principal(request));
+  }
 }

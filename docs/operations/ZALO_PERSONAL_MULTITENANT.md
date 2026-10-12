@@ -106,3 +106,37 @@ host the interactive QR/login worker reliably. Configure protected
 - Use only for legitimate transactional messages to intended/consenting
   recipients, obey Zalo's terms and platform message limits. Prefer an
   official OA/ZBS adapter for scalable production messaging.
+
+
+## Safe, paced Zalo Personal sending
+
+Sending is supported **only for recipients who consent to transactional notices**.
+The Zalo Web integration is unofficial and does not reveal trustworthy
+"delivered" or "read" receipts. `SENT` means the worker observed an exact
+message bubble on Zalo Web; do not equate it to recipient delivery.
+
+The API now checks a persisted, per-organization rolling attempt history
+before claiming an outgoing job (even across VM or worker restarts):
+
+- Minimum 60 seconds between attempts, maximum 4 in 15 minutes, maximum
+  30 in 24 hours.
+- Send only during 08:00–20:00 Asia/Ho_Chi_Minh.
+- Limits apply across campaigns to the entire organization's Zalo account.
+- Values can be reduced/tuned within bounded ranges on the API container with
+  `ZALO_SEND_MIN_GAP_SECONDS`, `ZALO_SEND_MAX_PER_15_MINUTES`,
+  `ZALO_SEND_MAX_PER_24_HOURS`, `ZALO_SEND_START_HOUR`,
+  and `ZALO_SEND_END_HOUR`.
+
+These pilot limits are **not Zalo's published quotas** and do **not** guarantee
+freedom from anti-spam restrictions. Do not circumvent CAPTCHA or platform
+restriction notices. When Zalo visibly reports rate-limited sending,
+the organization's jobs enter `MANUAL_REVIEW` and its outgoing queue is held
+persistently, without affecting other tenants. OWNER/ADMIN must check Zalo
+and explicitly resume. Clear recipient-block notices are handled per job.
+Uncertain post-click sends never auto-retry; inspect the conversation first.
+
+Before deploying this change, apply database migrations
+`0002_zalo_delivery_pauses.sql` and `0003_zalo_dispatch_pace_index.sql`
+to the target database branch. Neon `habi-staging` was migrated already,
+not the production branch. Rebuild `api` and `worker-notification`; the Zalo
+login worker does not need a rebuild solely for this change.

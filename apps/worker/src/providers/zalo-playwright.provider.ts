@@ -20,6 +20,7 @@ import {
   EncryptedStorageStateStore,
   ExclusiveSessionFileLock
 } from "./zalo-session-store.js";
+import { visibleZaloSendFeedback } from "./zalo-message-feedback.js";
 
 function evidence(
   job: ClaimedNotificationJob,
@@ -579,6 +580,26 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         monitorStage = "VERIFYING_DELIVERY";
         const postSendBlocker = await this.detectBlocker(page, job);
         if (postSendBlocker) return postSendBlocker;
+
+        // Classify only Zalo's visible error banners, not the content of
+        // messages. Uncertain sends require manual verification before retry.
+        await page.waitForTimeout(600);
+        const sendFeedback = await visibleZaloSendFeedback(page);
+        if (sendFeedback) {
+          return {
+            kind: sendFeedback === "ZALO_SEND_REJECTED"
+              ? "UNKNOWN" : "MANUAL_REVIEW",
+            errorCode: sendFeedback,
+            errorMessage: sendFeedback === "ZALO_RATE_RESTRICTED"
+              ? "Zalo reported a sending restriction. This organization's queue has been paused."
+              : sendFeedback === "ZALO_RECIPIENT_BLOCKED"
+                ? "Zalo displayed an explicit recipient-blocking notice."
+                : "Zalo displayed a send failure; actual delivery is unverified.",
+            evidence: evidence(job, "visible-provider-send-feedback", {
+              reportedCode: sendFeedback
+            })
+          };
+        }
 
         const remainingEditorText = (await editorText(editor)).trim();
         if (remainingEditorText === job.messageBody.trim()) {

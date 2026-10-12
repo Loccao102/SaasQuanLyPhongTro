@@ -87,7 +87,13 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
 
   const originalRunningTimeout =
     process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS;
+  const originalStartHour = process.env.ZALO_SEND_START_HOUR;
+  const originalEndHour = process.env.ZALO_SEND_END_HOUR;
   process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS = "60";
+  // This test exercises queue durability independently of wall-clock quiet
+  // hours. Production hour controls remain enforced by the dispatch policy.
+  process.env.ZALO_SEND_START_HOUR = "0";
+  process.env.ZALO_SEND_END_HOUR = "24";
 
   const fixturePool = new Pool({ connectionString });
   const database = new DatabaseService();
@@ -347,6 +353,16 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
       [organizationId, firstClaim.id]
     );
 
+    // Previous attempt is recent; even a retry-ready job must respect the
+    // persisted per-tenant gap before being claimable again.
+    const pacedRetryClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
+    assert.equal(pacedRetryClaim, null);
+    await fixturePool.query(
+      `UPDATE notification_attempts
+       SET started_at = now() - interval '26 hours'
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
     const retryClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(retryClaim);
     assert.equal(retryClaim.id, firstClaim.id);
@@ -380,6 +396,14 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     assert.equal(sentFirst.status, "SENT");
     assert.equal(sentFirst.verificationState, "VERIFIED");
 
+    // Simulate waiting for the next safe dispatch window; do not slow CI by
+    // sleeping for a real minute and never weaken production limits.
+    await fixturePool.query(
+      `UPDATE notification_attempts
+       SET started_at = now() - interval '26 hours'
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
     const secondClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(secondClaim);
     assert.ok(
@@ -434,6 +458,12 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
       [organizationId]
     );
 
+    await fixturePool.query(
+      `UPDATE notification_attempts
+       SET started_at = now() - interval '26 hours'
+       WHERE organization_id = $1`,
+      [organizationId]
+    );
     const blockedClaim = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.equal(blockedClaim, null);
 
@@ -526,6 +556,16 @@ test("notification campaign and worker flow is durable, quota-safe and evidence-
     } else {
       process.env.NOTIFICATION_RUNNING_TIMEOUT_SECONDS =
         originalRunningTimeout;
+    }
+    if (originalStartHour === undefined) {
+      delete process.env.ZALO_SEND_START_HOUR;
+    } else {
+      process.env.ZALO_SEND_START_HOUR = originalStartHour;
+    }
+    if (originalEndHour === undefined) {
+      delete process.env.ZALO_SEND_END_HOUR;
+    } else {
+      process.env.ZALO_SEND_END_HOUR = originalEndHour;
     }
     await database.onModuleDestroy();
     await cleanup(fixturePool);
