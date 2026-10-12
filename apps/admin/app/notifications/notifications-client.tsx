@@ -136,6 +136,12 @@ export function NotificationsClient() {
       }).catch(() => {
         // Keep last known state; explicit Refresh can surface the API error.
       });
+      void adminZaloPersonalApi.status().then((zalo) => {
+        setZaloConnected(zalo.status === "CONNECTED");
+        setZaloSendingPaused(zalo.sending?.paused ?? false);
+      }).catch(() => {
+        // Keep the existing status if the connection check is unavailable.
+      });
     }, 5000);
     return () => window.clearInterval(timer);
   }, [selected?.id]);
@@ -290,7 +296,7 @@ export function NotificationsClient() {
                   </div>
                   <div>
                     <StatusBadge tone={campaignTone(campaign.status)}>{campaignStatusLabel(campaign.status)}</StatusBadge>
-                    <small>{campaign.sent} đã gửi · {campaign.failed + campaign.manualReview} cần xử lý</small>
+                    <small>{campaign.sent} đã hiện trên Zalo Web · {campaign.failed + campaign.manualReview} cần xử lý</small>
                   </div>
                 </button>
               ))}
@@ -308,7 +314,7 @@ export function NotificationsClient() {
             <>
               <div className="asset-section-heading">
                 <div><span className="eyebrow">{selected.provider}</span><h2>{campaignStatusLabel(selected.status)}</h2></div>
-                <StatusBadge tone={campaignTone(selected.status)}>{selected.sent}/{selected.totalRecipients} ĐÃ GỬI</StatusBadge>
+                <StatusBadge tone={campaignTone(selected.status)}>{selected.sent}/{selected.totalRecipients} ĐÃ HIỆN TRÊN ZALO WEB</StatusBadge>
               </div>
               <p className="notification-message-preview">{selected.messageBody}</p>
               <div className="notification-stats">
