@@ -1,3 +1,25 @@
+export type NotificationTemplateCategory =
+  | "RENT" | "PAYMENT" | "UTILITY" | "MAINTENANCE" | "GENERAL";
+
+export type NotificationMessageTemplate = {
+  id: string;
+  name: string;
+  category: NotificationTemplateCategory;
+  body: string;
+  source: "CUSTOM" | "PRESET";
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type NotificationTemplateInput = Pick<
+  NotificationMessageTemplate, "name" | "category" | "body"
+>;
+
+export type NotificationTemplateList = {
+  fields: string[];
+  templates: NotificationMessageTemplate[];
+};
+
 import { adminApiRequest } from "./admin-api-client";
 
 export type NotificationCampaignSummary = {
@@ -87,6 +109,14 @@ async function request<T>(
 export const adminNotificationsApi = {
   list: () => request<NotificationCampaignList>(""),
   eligibleResidents: () => request<EligibleNotificationRecipients>("/eligible-residents"),
+  templates: () => request<NotificationTemplateList>("/templates"),
+  createTemplate: (input: NotificationTemplateInput) =>
+    request<NotificationMessageTemplate>("/templates", { method: "POST", body: input }),
+  updateTemplate: (id: string, input: NotificationTemplateInput) =>
+    request<NotificationMessageTemplate>("/templates/" + encodeURIComponent(id),
+      { method: "PATCH", body: input }),
+  deleteTemplate: (id: string) =>
+    request<{ deleted: true }>("/templates/" + encodeURIComponent(id), { method: "DELETE" }),
   monitor: (campaignId: string, jobId: string) =>
     request<ZaloMonitorState>(
       "/" + encodeURIComponent(campaignId) + "/jobs/" + encodeURIComponent(jobId) + "/monitor"
