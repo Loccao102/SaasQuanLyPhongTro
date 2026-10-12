@@ -151,7 +151,7 @@ export class ZaloPersonalService {
          VALUES ($1::uuid, $2)
          ON CONFLICT (organization_id) DO UPDATE
          SET reason = EXCLUDED.reason, paused_at = now()`,
-        [principal.organizationId, "Outgoing messages paused by organization admin."]
+        [principal.organizationId, "Quản trị viên đã tạm dừng gửi tin Zalo."]
       );
       await client.query(
         `INSERT INTO audit_events
