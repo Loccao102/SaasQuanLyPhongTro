@@ -9,6 +9,7 @@ import {
   type NotificationVerificationState
 } from "../domain/notification-lifecycle.js";
 import type { NotificationProviderResult } from "../domain/notification-provider.js";
+import { zaloDispatchPolicy } from "../domain/zalo-dispatch-policy.js";
 
 type ClaimRow = QueryResultRow & {
   id: string;
@@ -76,6 +77,7 @@ export class NotificationWorkerService {
       throw new Error("provider is required.");
     }
     const runningTimeoutSeconds = this.runningTimeoutSeconds();
+    const pace = zaloDispatchPolicy();
 
     return this.database.withTransaction(async (client) => {
       const result = await client.query<ClaimRow>(
@@ -148,6 +150,37 @@ export class NotificationWorkerService {
              )
            )
            AND c.status IN ('QUEUED', 'RUNNING')
+           -- Per-tenant pacing is enforced where jobs are claimed, not in one
+           -- process's memory. Other tenants are not affected.
+           AND (
+             j.provider NOT IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM zalo_personal_delivery_pauses zp
+                 WHERE zp.organization_id = j.organization_id
+               )
+               AND EXTRACT(HOUR FROM now() AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $3::int
+               AND EXTRACT(HOUR FROM now() AT TIME ZONE 'Asia/Ho_Chi_Minh') < $4::int
+               AND NOT EXISTS (
+                 SELECT 1 FROM notification_attempts previous
+                 WHERE previous.organization_id = j.organization_id
+                   AND previous.provider IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+                   AND previous.started_at > now() - make_interval(secs => $5::int)
+               )
+               AND (
+                 SELECT count(*) FROM notification_attempts previous
+                 WHERE previous.organization_id = j.organization_id
+                   AND previous.provider IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+                   AND previous.started_at > now() - interval '15 minutes'
+               ) < $6::int
+               AND (
+                 SELECT count(*) FROM notification_attempts previous
+                 WHERE previous.organization_id = j.organization_id
+                   AND previous.provider IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
+                   AND previous.started_at > now() - interval '24 hours'
+               ) < $7::int
+             )
+           )
            AND (
              j.provider NOT IN ('PLAYWRIGHT_ZALO','ZALO_PLAYWRIGHT')
              OR EXISTS (
@@ -174,7 +207,11 @@ export class NotificationWorkerService {
            j.id
          FOR UPDATE OF j, o SKIP LOCKED
          LIMIT 1`,
-        [normalizedProvider, runningTimeoutSeconds]
+        [
+          normalizedProvider, runningTimeoutSeconds,
+          pace.startHour, pace.endHour,
+          pace.minGapSeconds, pace.maxPer15Minutes, pace.maxPer24Hours
+        ]
       );
       const row = result.rows[0];
       if (!row) {
@@ -480,6 +517,19 @@ export class NotificationWorkerService {
           JSON.stringify(evidence)
         ]
       );
+
+      // A provider restriction pauses ONLY the sending organization's queue.
+      // Never auto-resume after a delay or retry an uncertain send.
+      if (errorCode === "ZALO_RATE_RESTRICTED" &&
+          ["PLAYWRIGHT_ZALO", "ZALO_PLAYWRIGHT"].includes(job.provider)) {
+        await client.query(
+          `INSERT INTO zalo_personal_delivery_pauses (organization_id, reason)
+           VALUES ($1::uuid, $2)
+           ON CONFLICT (organization_id) DO UPDATE
+           SET reason = EXCLUDED.reason, paused_at = now()`,
+          [input.organizationId, "Zalo reported a messaging rate or account restriction."]
+        );
+      }
 
       await this.refreshCampaignStatus(
         client,
