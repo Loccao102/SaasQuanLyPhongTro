@@ -111,6 +111,8 @@ export function NotificationsClient() {
   const [monitorJobId, setMonitorJobId] = useState<string | null>(null);
   const [zaloConnected, setZaloConnected] = useState(false);
   const [zaloSendingPaused, setZaloSendingPaused] = useState(false);
+  const [zaloProviderPaused, setZaloProviderPaused] = useState(false);
+  const [zaloProviderReason, setZaloProviderReason] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +123,8 @@ export function NotificationsClient() {
       const zalo = await adminZaloPersonalApi.status().catch(() => null);
       setZaloConnected(zalo?.status === "CONNECTED");
       setZaloSendingPaused(zalo?.sending?.paused ?? false);
+      setZaloProviderPaused(zalo?.provider?.status === "PAUSED");
+      setZaloProviderReason(zalo?.provider?.reason ?? null);
       if (selected) {
         const detail = await adminNotificationsApi.detail(selected.id);
         setSelected(detail.campaign);
@@ -148,6 +152,8 @@ export function NotificationsClient() {
       void adminZaloPersonalApi.status().then((zalo) => {
         setZaloConnected(zalo.status === "CONNECTED");
         setZaloSendingPaused(zalo.sending?.paused ?? false);
+        setZaloProviderPaused(zalo.provider?.status === "PAUSED");
+        setZaloProviderReason(zalo.provider?.reason ?? null);
       }).catch(() => {});
     }, 5000);
     return () => window.clearInterval(timer);
@@ -284,6 +290,13 @@ export function NotificationsClient() {
         </div>
       ) : null}
 
+      {zaloProviderPaused && !loading && (
+        <section className="admin-state admin-state--error" role="alert">
+          Nhà cung cấp gửi Zalo đang tạm dừng. Phiên Zalo vẫn có thể kết nối,
+          nhưng các tin trong hàng đợi sẽ không được gửi cho đến khi quản trị hệ thống
+          kiểm tra và bật lại. {zaloProviderReason ? "Lý do: " + zaloProviderReason : ""}
+        </section>
+      )}
       {zaloSendingPaused && !loading && (
         <section className="admin-state admin-state--error" role="alert">
           Gửi Zalo của tổ chức đang tạm dừng do cảnh báo hoặc thao tác quản trị.
@@ -307,7 +320,7 @@ export function NotificationsClient() {
           <h2>{data?.organization.name ?? "Workspace hiện tại"}</h2>
           <p>Queue tự giãn nhịp gửi và nghỉ ngoài giờ. “Đã gửi trên Zalo Web” không đồng nghĩa đã giao hoặc đã đọc. Tin chưa xác minh sẽ không tự gửi lại.</p>
         </div>
-        <button className="primary-button" type="button" disabled={!zaloConnected || zaloSendingPaused} onClick={() => setShowCreate((value) => !value)}>
+        <button className="primary-button" type="button" disabled={!zaloConnected || zaloSendingPaused || zaloProviderPaused} onClick={() => setShowCreate((value) => !value)}>
           + Tạo chiến dịch
         </button>
       </section>
@@ -395,7 +408,7 @@ export function NotificationsClient() {
               <span>Tôi xác nhận người nhận đã đồng ý nhận thông báo; không gửi tin quảng cáo trái mong muốn.</span>
             </label>
             <div className="button-row">
-              <button className="primary-button" type="submit" disabled={saving || zaloSendingPaused}>Xếp hàng gửi</button>
+              <button className="primary-button" type="submit" disabled={saving || zaloSendingPaused || zaloProviderPaused}>Xếp hàng gửi</button>
             </div>
           </form>
         </section>
