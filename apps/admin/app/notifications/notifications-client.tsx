@@ -58,7 +58,7 @@ function explainError(code: string | null, message: string | null): string | nul
   if (!code && !message) return null;
   switch (code) {
     case "RECIPIENT_DISPLAY_NAME_REQUIRED":
-      return "⚠️ Thiếu tên hiển thị Zalo của người nhận. Cần nhập đúng tên Zalo trước khi thử gửi lại.";
+      return "⚠️ Thiếu tên hiển thị Zalo. Job này không thể tự sửa; kiểm tra người nhận rồi tạo chiến dịch mới với tên Zalo chính xác.";
     case "RECIPIENT_NOT_FOUND":
       return "⚠️ Không xác minh được người nhận: Có thể không tìm thấy, người nhận ẩn số điện thoại hoặc Zalo thay đổi giao diện.";
     case "ZALO_RECIPIENT_BLOCKED":
