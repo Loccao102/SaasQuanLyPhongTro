@@ -63,7 +63,7 @@ function explainError(code: string | null, message: string | null): string | nul
   if (!code && !message) return null;
   switch (code) {
     case "RECIPIENT_DISPLAY_NAME_REQUIRED":
-      return "⚠️ Thiếu tên hiển thị Zalo. Kiểm tra người nhận và tạo chiến dịch mới với tên Zalo chính xác.";
+      return "⚠️ Job cũ yêu cầu tên Zalo. Tạo chiến dịch mới chỉ với số điện thoại để sử dụng cơ chế tìm người nhận đã cập nhật.";
     case "RECIPIENT_NOT_FOUND":
       return "⚠️ Không xác minh được người nhận: Có thể không tìm thấy, họ hạn chế tìm kiếm hoặc giao diện Zalo đã thay đổi.";
     case "ZALO_RECIPIENT_BLOCKED":
@@ -75,7 +75,7 @@ function explainError(code: string | null, message: string | null): string | nul
     case "RECIPIENT_AMBIGUOUS":
       return "⚠️ Trùng tên hiển thị: Tìm thấy nhiều tài khoản trùng tên. Hệ thống dừng lại để tránh gửi nhầm người.";
     case "RECIPIENT_VERIFICATION_FAILED":
-      return "⚠️ Không khớp người nhận: Tên trong khung chat Zalo không khớp với tên người thuê trên hợp đồng.";
+      return "⚠️ Không xác minh được cuộc trò chuyện với kết quả tìm kiếm Zalo đã chọn. Dừng gửi để tránh nhầm người.";
     case "CAPTCHA":
       return "🛑 Zalo yêu cầu xác minh CAPTCHA: Hệ thống đã tự động tạm dừng để bảo vệ tài khoản, tránh bị khóa nick.";
     case "AUTH_REQUIRED":
@@ -235,10 +235,6 @@ export function NotificationsClient() {
       setError("Danh sách có số điện thoại không hợp lệ. Vui lòng kiểm tra lại.");
       return;
     }
-    if (recipients.some(r => !r.recipientDisplayName?.trim())) {
-      setError("Mỗi người nhận cần có tên hiển thị Zalo để xác minh, không chỉ số điện thoại.");
-      return;
-    }
     if (new Set(recipients.map(r => r.recipientKey)).size !== recipients.length) {
       setError("Danh sách có số điện thoại trùng. Mỗi số chỉ được nhận một lần.");
       return;
@@ -385,9 +381,9 @@ export function NotificationsClient() {
                 <TenantNotificationRecipientsPicker onChange={setTenantRecipients} />
               ) : (
                 <label>
-                  <span>Người nhận · mỗi dòng: Số điện thoại | Tên Zalo (bắt buộc)</span>
+                  <span>Người nhận · mỗi dòng: Số điện thoại (Tên Zalo tùy chọn sau dấu |)</span>
                   <textarea name="recipients" rows={8} required
-                    placeholder={"0901234567 | Tên hiển thị Zalo\n0909999999 | Tên Zalo khác"} />
+                    placeholder={"0901234567\n0909999999 | Tên Zalo nếu biết"} />
                 </label>
               )}
             </fieldset>
