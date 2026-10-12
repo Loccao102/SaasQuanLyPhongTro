@@ -57,6 +57,8 @@ function jobStatusLabel(status: string) {
 function explainError(code: string | null, message: string | null): string | null {
   if (!code && !message) return null;
   switch (code) {
+    case "RECIPIENT_DISPLAY_NAME_REQUIRED":
+      return "⚠️ Thiếu tên hiển thị Zalo của người nhận. Cần nhập đúng tên Zalo trước khi thử gửi lại.";
     case "RECIPIENT_NOT_FOUND":
       return "⚠️ Không xác minh được người nhận: Có thể không tìm thấy, người nhận ẩn số điện thoại hoặc Zalo thay đổi giao diện.";
     case "ZALO_RECIPIENT_BLOCKED":
@@ -190,6 +192,11 @@ export function NotificationsClient() {
           recipientDisplayName: nameParts.join("|").trim() || null
         };
       });
+
+    if (recipients.some((recipient) => !recipient.recipientKey || !recipient.recipientDisplayName)) {
+      setError("Mỗi người nhận phải có số điện thoại và tên hiển thị Zalo: 09xxxxxxxx | Tên Zalo.");
+      return;
+    }
 
     await mutate(() =>
       adminNotificationsApi.create({
