@@ -264,8 +264,15 @@ export function NotificationsClient() {
               <span>Người nhận · mỗi dòng: recipientKey | Tên hiển thị</span>
               <textarea name="recipients" rows={8} required placeholder={"0901234567 | Nguyễn Văn A\n0909999999 | Trần B"} />
             </label>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <input type="checkbox" name="recipientConsent" required style={{ marginTop: 4 }} />
+              <span>Tôi xác nhận chỉ gửi thông báo cho những người đã đồng ý nhận tin
+                và không sử dụng chiến dịch để gửi quảng cáo hàng loạt ngoài mong muốn.</span>
+            </label>
             <div className="button-row">
-              <button className="primary-button" type="submit" disabled={saving}>Xếp hàng gửi</button>
+              <button className="primary-button" type="submit" disabled={saving || zaloSendingPaused}>
+                Xếp hàng gửi
+              </button>
             </div>
           </form>
         </section>
