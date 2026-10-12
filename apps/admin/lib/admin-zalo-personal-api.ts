@@ -4,6 +4,7 @@ export type ZaloPersonalStatus = {
   status: "DISCONNECTED" | "CONNECTING" | "CONNECTED";
   canManage: boolean;
   connectedAt: string | null;
+  provider: { status: string; reason: string | null };
   sending: {
     paused: boolean;
     reason: string | null;
