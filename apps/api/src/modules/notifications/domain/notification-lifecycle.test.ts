@@ -71,3 +71,33 @@ test("unknown provider result is never success", () => {
   assert.equal(decision.sent, false);
   assert.equal(decision.verificationState, "UNKNOWN");
 });
+
+test("Zalo account restriction always needs review and never schedules automatic retries", () => {
+  const decision = decideNotificationCompletion({
+    result: {
+      kind: "MANUAL_REVIEW",
+      errorCode: "ZALO_RATE_RESTRICTED",
+      errorMessage: "Zalo rate limit reported"
+    },
+    attemptCount: 1,
+    maxAttempts: 3
+  });
+  assert.equal(decision.jobStatus, "MANUAL_REVIEW");
+  assert.equal(decision.retryDelaySeconds, null);
+  assert.equal(decision.sent, false);
+});
+
+test("uncertain post-click Zalo send is never silently retried or marked as delivered", () => {
+  const decision = decideNotificationCompletion({
+    result: {
+      kind: "UNKNOWN",
+      errorCode: "ZALO_SEND_REJECTED",
+      errorMessage: "Unverified Zalo send"
+    },
+    attemptCount: 1,
+    maxAttempts: 3
+  });
+  assert.equal(decision.jobStatus, "MANUAL_REVIEW");
+  assert.equal(decision.retryDelaySeconds, null);
+  assert.equal(decision.sent, false);
+});
