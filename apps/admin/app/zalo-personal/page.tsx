@@ -78,6 +78,7 @@ export default function ZaloPersonalPage() {
   const connected = connection?.status === "CONNECTED";
   const connecting = connection?.status === "CONNECTING";
   const sendingPaused = connection?.sending?.paused ?? false;
+  const providerPaused = connection?.provider?.status === "PAUSED";
   const login = connection?.login;
 
   return (
@@ -136,6 +137,15 @@ export default function ZaloPersonalPage() {
             {sendingPaused
               ? " Phiên vẫn kết nối, nhưng queue gửi tin đang tạm dừng."
               : " Queue sẽ gửi có giới hạn tốc độ và trong giờ làm việc."}
+          </div>
+        )}
+        {providerPaused && (
+          <div className="admin-state admin-state--error" role="alert">
+            Nhà cung cấp gửi Zalo đang được quản trị hệ thống tạm dừng.
+            {connection?.provider?.reason ? " Lý do: " + connection.provider.reason : ""}
+            {" "}Tài khoản vẫn kết nối nhưng chưa thể gửi tin.
+            Nút “Tiếp tục gửi” bên dưới chỉ xử lý tạm dừng theo tổ chức,
+            không thể tự bỏ tạm dừng của toàn hệ thống.
           </div>
         )}
         {sendingPaused && (
