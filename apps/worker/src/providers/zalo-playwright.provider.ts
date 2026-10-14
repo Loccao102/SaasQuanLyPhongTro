@@ -191,6 +191,42 @@ async function visibleExactTextCount(
   return { count, first };
 }
 
+async function visibleOutgoingExactTextCount(
+  page: Page,
+  text: string,
+  selectors: readonly string[]
+): Promise<number> {
+  // Only count message containers positively identified as *ours*.
+  // A new incoming bubble or a generic text match is not send evidence.
+  let count = 0;
+  for (const selector of selectors) {
+    const matches = page.locator(selector);
+    let total: number;
+    try {
+      total = Math.min(await matches.count(), 60);
+    } catch {
+      // Zalo selectors may change; a broken selector must not prove delivery.
+      continue;
+    }
+    for (let i = 0; i < total; i++) {
+      const container = matches.nth(i);
+      try {
+        if (!await container.isVisible()) continue;
+        if ((await container.innerText()).trim() === text ||
+            await container.getByText(text, { exact: true }).count() > 0) {
+          count++;
+        }
+      } catch {
+        // The SPA may replace message nodes while we examine them.
+      }
+    }
+    // The first supported marker family is authoritative, preventing the
+    // same bubble being double counted by two overlapping CSS selectors.
+    if (count > 0) return count;
+  }
+  return 0;
+}
+
 async function editorText(locator: Locator): Promise<string> {
   const tagName = await locator.evaluate((element) => element.tagName.toLowerCase());
   if (tagName === "textarea" || tagName === "input") {
@@ -537,8 +573,8 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
 
         // Snapshot matching text *before* composing. An old message (or a
         // matching incoming message) must never become proof that this send worked.
-        const preSendMatches = await visibleExactTextCount(
-          page, job.messageBody
+        const preSendMatches = await visibleOutgoingExactTextCount(
+          page, job.messageBody, this.config.selectors.outgoingMessageContainers
         );
         monitorStage = "PREPARING_MESSAGE";
         await editor.fill(job.messageBody);
@@ -592,22 +628,23 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         }
 
         const deadline = Date.now() + this.config.verificationTimeoutMs;
-        let postSendMatches = preSendMatches.count;
+        let postSendMatches = preSendMatches;
         do {
-          const matching = await visibleExactTextCount(page, job.messageBody);
-          postSendMatches = matching.count;
-          if (postSendMatches > preSendMatches.count) break;
+          postSendMatches = await visibleOutgoingExactTextCount(
+            page, job.messageBody, this.config.selectors.outgoingMessageContainers
+          );
+          if (postSendMatches > preSendMatches) break;
           await page.waitForTimeout(Math.min(250, Math.max(0, deadline - Date.now())));
         } while (Date.now() < deadline);
-        if (postSendMatches <= preSendMatches.count) {
+        if (postSendMatches <= preSendMatches) {
           return {
             kind: "UNKNOWN",
             errorCode: "SEND_UNVERIFIED",
             errorMessage:
-              "No NEW matching message appeared after the send action; a pre-existing bubble cannot verify delivery.",
+              "No NEW outgoing message with a trusted direction marker was observed; incoming or old bubbles cannot verify delivery.",
             evidence: evidence(job, "verify-new-sent-message", {
-              matchingBubblesBefore: preSendMatches.count,
-              matchingBubblesAfter: postSendMatches
+              outgoingBubblesBefore: preSendMatches,
+              outgoingBubblesAfter: postSendMatches
             })
           };
         }
@@ -621,7 +658,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           providerReference: null,
           evidence: evidence(job, "sent-confirmed", {
             recipientVerification: recipientMatches.verification,
-            postSendVerification: "message-bubble-exact"
+            postSendVerification: "new-outgoing-bubble-exact"
           })
         };
       } finally {
