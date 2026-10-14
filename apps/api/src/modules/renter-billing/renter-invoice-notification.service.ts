@@ -159,7 +159,6 @@ export class RenterInvoiceNotificationService {
           invoices: []
         };
         bucket.invoices.push({
-          invoiceId: item.invoice_id,
           invoiceNumber: item.invoice_number,
           roomCode: item.room_code,
           remainingVnd: Number(item.remaining_vnd),
