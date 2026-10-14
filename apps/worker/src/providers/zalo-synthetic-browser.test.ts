@@ -135,6 +135,15 @@ browserTest("mocked Zalo: new outgoing bubble is observed and verified", async (
   }
 });
 
+browserTest("mocked Zalo: unique phone-only contact can send without a name", async () => {
+  const result = await runSyntheticSend("sent", null);
+  assert.equal(result.kind, "SENT_CONFIRMED");
+  if (result.kind === "SENT_CONFIRMED") {
+    assert.equal(result.recipientVerified, true);
+    assert.equal(result.sendVerified, true);
+  }
+});
+
 browserTest("mocked Zalo: old identical bubble never confirms a new send", async () => {
   const result = await runSyntheticSend("old-bubble-only");
   assert.equal(result.kind, "UNKNOWN");
