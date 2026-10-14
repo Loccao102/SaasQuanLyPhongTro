@@ -36,31 +36,6 @@ function evidence(
   };
 }
 
-export function existingDeliveryReplayResult(
-  job: ClaimedNotificationJob,
-  visibleExactMatches: number
-): NotificationProviderResult | null {
-  if (
-    !job.deliveryReplayCheckRequired ||
-    !Number.isInteger(visibleExactMatches) ||
-    visibleExactMatches < 1
-  ) {
-    return null;
-  }
-
-  return {
-    kind: "SENT_CONFIRMED",
-    recipientVerified: true,
-    sendVerified: true,
-    providerReference: null,
-    evidence: evidence(job, "pre-send-replay-detected", {
-      visibleExactMatches,
-      recipientVerification: "display-name-exact",
-      postSendVerification: "existing-message-bubble-exact"
-    })
-  };
-}
-
 async function firstVisible(
   page: Page,
   selectors: readonly string[],
@@ -371,6 +346,19 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
       };
     }
 
+    // A stale worker or an UNKNOWN outcome may already have sent this message.
+    // Neither an exact text match in the DOM nor its absence proves delivery:
+    // it might be an incoming bubble, hidden history or a delayed provider update.
+    // Never send a second message or mark it SENT without an operator check.
+    if (job.deliveryReplayCheckRequired) {
+      return {
+        kind: "MANUAL_REVIEW",
+        errorCode: "ZALO_PREVIOUS_SEND_UNVERIFIED",
+        errorMessage: "A prior send attempt has an uncertain outcome. Check the Zalo conversation manually before deciding whether another send is needed.",
+        evidence: evidence(job, "previous-uncertain-send-review")
+      };
+    }
+
     const acquired = await this.sessionLock.acquire();
     if (!acquired) {
       return {
@@ -544,20 +532,6 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
               errorMessage: "Conversation did not match the selected search result.",
               evidence: evidence(job, "verify-open-conversation")
             };
-          }
-        }
-
-        if (job.deliveryReplayCheckRequired) {
-          const existingDelivery = await visibleExactTextCount(
-            page,
-            job.messageBody
-          );
-          const replayResult = existingDeliveryReplayResult(
-            job,
-            existingDelivery.count
-          );
-          if (replayResult) {
-            return replayResult;
           }
         }
 
