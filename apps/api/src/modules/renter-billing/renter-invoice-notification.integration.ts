@@ -201,6 +201,21 @@ test("finalized billing cycle creates idempotent personalized invoice jobs with 
       [invoice1, invoice2, org, cycle, property, room1, lease1, room2, lease2]
     );
 
+    // Itemized snapshots are read verbatim: no meter or pricing recalculation.
+    await pool.query(
+      `INSERT INTO renter_invoice_lines (
+         organization_id, invoice_id, line_type, description,
+         quantity, unit_price_vnd, amount_vnd, sort_order, snapshot
+       ) VALUES
+         ($1, $2, 'RENT', 'Tiền phòng', 1, 800000, 800000, 10, '{}'::jsonb),
+         ($1, $2, 'ELECTRICITY', 'Tiền điện', 30, 4000, 120000, 20,
+          '{"meter":{"previous":{"value":"120.000"},"current":{"value":"150.000"}}}'::jsonb),
+         ($1, $2, 'WATER', 'Tiền nước', 4, 20000, 80000, 30,
+          '{"meter":{"previous":{"value":"12.000"},"current":{"value":"16.000"}}}'::jsonb),
+         ($1, $3, 'RENT', 'Tiền phòng', 1, 1200000, 1200000, 10, '{}'::jsonb)`,
+      [org, invoice1, invoice2]
+    );
+
     const first = await notifications.createCycleCampaign(
       principal,
       cycle,
@@ -247,6 +262,10 @@ test("finalized billing cycle creates idempotent personalized invoice jobs with 
     );
     const job = await worker.claimNext("PLAYWRIGHT_ZALO");
     assert.ok(job);
+    assert.match(job.messageBody, /Tiền điện · chỉ số 120 → 150/);
+    assert.match(job.messageBody, /Tiền nước · chỉ số 12 → 16/);
+    assert.match(job.messageBody, /Tổng hóa đơn: 1\\.000\\.000đ/);
+    assert.match(job.messageBody, /quét mã QR VietQR/);
     assert.equal(job.recipientKey, "0901234567");
     assert.match(job.messageBody, /Phòng 101: 1\.000\.000đ/);
     assert.match(job.messageBody, /Phòng 102: 1\.200\.000đ/);
