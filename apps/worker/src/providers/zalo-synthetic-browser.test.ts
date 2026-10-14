@@ -1,0 +1,154 @@
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import test from "node:test";
+import { once } from "node:events";
+import { loadZaloPlaywrightConfig } from "./zalo-playwright.config.js";
+import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
+import type { ClaimedNotificationJob } from "../notification-types.js";
+
+const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
+type Scenario = "sent" | "old-bubble-only" | "blocked" | "ambiguous";
+
+function mockZaloHtml(mode: Scenario): string {
+  // All content here is synthetic local HTML; never use real contact details,
+  // Zalo credentials or live network requests in CI.
+  return `<!DOCTYPE html><html lang="vi"><meta charset="utf-8"><body>
+    <input id="input-search" placeholder="Search contacts" aria-label="Search contacts" />
+    <div id="search-results"></div>
+    <section id="chat" hidden>
+      <header><strong id="selected-contact">Nguyen A</strong></header>
+      <div id="messages"></div>
+      <div role="textbox" contenteditable="true" id="composer"></div>
+      <button aria-label="Gửi" id="send">Gửi</button>
+    </section>
+    <div role="alert" id="warning" hidden></div>
+    <script>
+      const mode = ${JSON.stringify(mode)};
+      const phone = "0901234567";
+      const body = "Unique invoice notification";
+      const search = document.getElementById("input-search");
+      const results = document.getElementById("search-results");
+      const chat = document.getElementById("chat");
+      const messages = document.getElementById("messages");
+      const editor = document.getElementById("composer");
+      const addBubble = (value) => {
+        const bubble = document.createElement("p");
+        bubble.className = "outgoing";
+        bubble.textContent = value;
+        messages.appendChild(bubble);
+      };
+      search.addEventListener("input", () => {
+        results.replaceChildren();
+        if (!search.value.includes(phone)) return;
+        const contacts = mode === "ambiguous" ? ["Nguyen A", "Tran B"] : ["Nguyen A"];
+        for (const name of contacts) {
+          const item = document.createElement("button");
+          item.className = "search-result__item";
+          item.textContent = name;
+          item.onclick = () => {
+            results.replaceChildren();
+            search.hidden = true;
+            chat.hidden = false;
+            document.getElementById("selected-contact").textContent = name;
+            if (mode === "old-bubble-only") addBubble(body);
+          };
+          results.appendChild(item);
+        }
+      });
+      document.getElementById("send").onclick = () => {
+        const message = editor.textContent.trim();
+        editor.textContent = "";
+        if (mode === "blocked") {
+          const alert = document.getElementById("warning");
+          alert.textContent = "Người này đã chặn bạn";
+          alert.hidden = false;
+        } else if (mode === "sent") {
+          addBubble(message);
+        }
+      };
+    </script>
+  </body></html>`;
+}
+
+async function openFixture(scenario: Scenario): Promise<{ server: Server; url: string }> {
+  const server = createServer((_req, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(mockZaloHtml(scenario));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No local port");
+  return { server, url: `http://127.0.0.1:${address.port}/` };
+}
+
+function job(displayName: string | null = "Nguyen A"): ClaimedNotificationJob {
+  return {
+    id: "10000000-0000-4000-8000-000000000001",
+    organizationId: "10000000-0000-4000-8000-000000000002",
+    campaignId: "10000000-0000-4000-8000-000000000003",
+    recipientKey: "0901234567",
+    recipientDisplayName: displayName,
+    provider: "PLAYWRIGHT_ZALO",
+    channel: "ZALO",
+    messageBody: "Unique invoice notification",
+    attemptNumber: 1,
+    maxAttempts: 3,
+    deliveryReplayCheckRequired: false
+  };
+}
+
+async function runSyntheticSend(scenario: Scenario, recipientName: string | null = "Nguyen A") {
+  const fixture = await openFixture(scenario);
+  let released = false;
+  const config = loadZaloPlaywrightConfig({
+    ZALO_BASE_URL: fixture.url,
+    ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 7).toString("base64"),
+    ZALO_HEADLESS: "true",
+    ZALO_SELECTOR_TIMEOUT_MS: "1000",
+    ZALO_NAVIGATION_TIMEOUT_MS: "6000",
+    ZALO_VERIFICATION_TIMEOUT_MS: "1500"
+  });
+  const provider = ZaloPlaywrightProvider.withStorage(
+    config,
+    { load: async () => ({ cookies: [], origins: [] }), save: async () => {} },
+    { acquire: async () => true, release: async () => { released = true; } }
+  );
+  try {
+    const result = await provider.send(job(recipientName));
+    assert.equal(released, true, "The worker must release the tenant session lock");
+    return result;
+  } finally {
+    await provider.close();
+    await new Promise<void>((resolve, reject) =>
+      fixture.server.close(error => error ? reject(error) : resolve())
+    );
+  }
+}
+
+browserTest("mocked Zalo: new outgoing bubble is observed and verified", async () => {
+  const result = await runSyntheticSend("sent");
+  assert.equal(result.kind, "SENT_CONFIRMED");
+  if (result.kind === "SENT_CONFIRMED") {
+    assert.equal(result.recipientVerified, true);
+    assert.equal(result.sendVerified, true);
+  }
+});
+
+browserTest("mocked Zalo: old identical bubble never confirms a new send", async () => {
+  const result = await runSyntheticSend("old-bubble-only");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: explicit recipient block is manual review", async () => {
+  const result = await runSyntheticSend("blocked");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "ZALO_RECIPIENT_BLOCKED");
+});
+
+browserTest("mocked Zalo: phone-only ambiguous results must not send", async () => {
+  const result = await runSyntheticSend("ambiguous", null);
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_AMBIGUOUS");
+});
