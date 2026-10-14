@@ -25,6 +25,13 @@ export const defaultNotificationTemplates: Array<{
   source: "PRESET"; createdAt: null; updatedAt: null;
 }> = [
   {
+    id: "preset-rent-itemized",
+    name: "Bảng kê tiền phòng, điện nước & QR thanh toán",
+    category: "RENT",
+    body: "[HABI · BẢNG KÊ TIỀN PHÒNG]\nKỳ và phòng của khách\n• Tiền phòng\n• Tiền điện: chỉ số đầu kỳ → cuối kỳ, số tiêu thụ, thành tiền\n• Tiền nước: chỉ số đầu kỳ → cuối kỳ, số tiêu thụ, thành tiền\n• Dịch vụ, phụ phí, điều chỉnh, nợ cũ (nếu có)\nTổng hóa đơn · Đã thanh toán · Còn phải thanh toán\nHạn thanh toán và liên kết xem hóa đơn có VietQR theo số tiền còn lại.\n(Các khoản thu được lấy tự động từ hóa đơn đã phát hành.)",
+    source: "PRESET", createdAt: null, updatedAt: null
+  },
+  {
     id: "preset-rent-due",
     name: "Nhắc hạn thanh toán tiền phòng",
     category: "RENT",

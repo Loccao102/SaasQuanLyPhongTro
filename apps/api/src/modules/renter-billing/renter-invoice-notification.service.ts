@@ -11,6 +11,11 @@ import { AccessControlService } from "../identity/access-control.service.js";
 import type { TenantPrincipal } from "../identity/tenant-principal.js";
 import { NotificationCampaignService } from "../notifications/application/notification-campaign.service.js";
 import { RenterPublicInvoiceService } from "./renter-public-invoice.service.js";
+import {
+  formatItemizedInvoiceZaloMessage,
+  type ItemizedInvoice,
+  type ItemizedInvoiceLine
+} from "./itemized-invoice-zalo-message.js";
 
 type CycleRow = QueryResultRow & {
   id: string;
@@ -36,18 +41,21 @@ type CandidateRow = QueryResultRow & {
   invoice_number: string;
   room_code: string;
   remaining_vnd: string;
+  total_vnd: string;
+  paid_vnd: string;
   due_date: Date | string;
   resident_name: string | null;
   phone: string | null;
 };
 
-type GroupedInvoice = {
-  invoiceId: string;
-  invoiceNumber: string;
-  roomCode: string;
-  remainingVnd: number;
-  dueDate: string;
-  publicUrl: string;
+type InvoiceLineRow = QueryResultRow & {
+  invoice_id: string;
+  line_type: string;
+  description: string;
+  quantity: string;
+  unit_price_vnd: string;
+  amount_vnd: string;
+  snapshot: unknown;
 };
 
 @Injectable()
@@ -110,10 +118,35 @@ export class RenterInvoiceNotificationService {
         );
       }
 
+      // Read the finalized invoice snapshot; prices/readings can change later.
+      // A QR is only generated when the organization has an active payment profile.
+      await this.publicInvoices.assertPaymentQrConfigured(principal.organizationId);
+      const invoiceLines = await client.query<InvoiceLineRow>(
+        `SELECT invoice_id::text, line_type, description, quantity::text,
+                unit_price_vnd::text, amount_vnd::text, snapshot
+         FROM renter_invoice_lines
+         WHERE organization_id = $1::uuid
+           AND invoice_id = ANY($2::uuid[])
+         ORDER BY invoice_id, sort_order, id`,
+        [principal.organizationId, eligible.map(item => item.invoice_id)]
+      );
+      const linesByInvoice = new Map<string, ItemizedInvoiceLine[]>();
+      for (const line of invoiceLines.rows) {
+        const bucket = linesByInvoice.get(line.invoice_id) ?? [];
+        bucket.push({
+          type: line.line_type,
+          description: line.description,
+          quantity: line.quantity,
+          unitPriceVnd: Number(line.unit_price_vnd),
+          amountVnd: Number(line.amount_vnd),
+          snapshot: line.snapshot
+        });
+        linesByInvoice.set(line.invoice_id, bucket);
+      }
       const baseUrl = this.publicInvoiceBaseUrl();
       const groups = new Map<
         string,
-        { displayName: string | null; invoices: GroupedInvoice[] }
+        { displayName: string | null; invoices: ItemizedInvoice[] }
       >();
 
       for (const item of eligible) {
@@ -128,10 +161,12 @@ export class RenterInvoiceNotificationService {
           invoices: []
         };
         bucket.invoices.push({
-          invoiceId: item.invoice_id,
           invoiceNumber: item.invoice_number,
           roomCode: item.room_code,
           remainingVnd: Number(item.remaining_vnd),
+          totalVnd: Number(item.total_vnd),
+          paidVnd: Number(item.paid_vnd),
+          lines: linesByInvoice.get(item.invoice_id) ?? [],
           dueDate: this.dateOnly(item.due_date),
           publicUrl:
             baseUrl + "/i/" + encodeURIComponent(link.token)
@@ -143,7 +178,7 @@ export class RenterInvoiceNotificationService {
         ([recipientKey, group]) => ({
           recipientKey,
           recipientDisplayName: group.displayName,
-          messageBodyOverride: this.message(
+          messageBodyOverride: formatItemizedInvoiceZaloMessage(
             cycle.cycle_code,
             group.displayName,
             group.invoices
@@ -285,6 +320,8 @@ export class RenterInvoiceNotificationService {
          i.invoice_number,
          i.room_code_snapshot AS room_code,
          i.remaining_vnd::text,
+         i.total_vnd::text,
+         i.paid_vnd::text,
          i.due_date,
          contact.full_name AS resident_name,
          contact.phone
@@ -360,37 +397,6 @@ export class RenterInvoiceNotificationService {
       );
     }
     return raw.replace(/\/$/, "");
-  }
-
-  private message(
-    cycleCode: string,
-    displayName: string | null,
-    invoices: readonly GroupedInvoice[]
-  ): string {
-    const money = new Intl.NumberFormat("vi-VN");
-    const lines = invoices.flatMap((invoice) => [
-      "- Phòng " +
-        invoice.roomCode +
-        ": " +
-        money.format(invoice.remainingVnd) +
-        "đ · hạn " +
-        invoice.dueDate,
-      "  " + invoice.publicUrl
-    ]);
-
-    const message = [
-      displayName ? "Xin chào " + displayName + "," : "Xin chào,",
-      "Habi gửi hóa đơn " + cycleCode + ":",
-      ...lines,
-      "Vui lòng mở đúng link ở trên để xem chi tiết và thanh toán."
-    ].join("\n");
-
-    if (message.length > 4000) {
-      throw new ConflictException(
-        "Personalized invoice notification exceeds 4000 characters."
-      );
-    }
-    return message;
   }
 
   private dateOnly(value: Date | string) {
