@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import {
   adminNotificationsApi,
   type NotificationMessageTemplate,
@@ -152,7 +153,7 @@ export function NotificationTemplateLibrary({
                   <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
                     <strong>{template.name}</strong>
                     <small style={{ color: "#64748b", whiteSpace: "nowrap" }}>
-                      {template.source === "PRESET" ? "Mẫu gợi ý" : "Mẫu riêng"}
+                      {template.id === "preset-rent-itemized" ? "Tự động từ hóa đơn" : template.source === "PRESET" ? "Mẫu gợi ý" : "Mẫu riêng"}
                     </small>
                   </div>
                   <small>{categories.find(c => c.value === template.category)?.label}</small>
@@ -162,13 +163,21 @@ export function NotificationTemplateLibrary({
                     overflowWrap: "anywhere", maxHeight: 80, overflow: "hidden"
                   }}>{template.body}</p>
                   <div className="button-row" style={{ flexWrap: "wrap", marginTop: "auto" }}>
-                    <button type="button" className="primary-button" onClick={() => onUse(template)}>
-                      Dùng mẫu
-                    </button>
-                    <button type="button" className="secondary-button"
-                      onClick={() => newTemplate(template)}>
-                      {template.source === "PRESET" ? "Tùy chỉnh" : "Sửa"}
-                    </button>
+                    {template.id === "preset-rent-itemized" ? (
+                      <Link href="/billing" className="secondary-link-button">
+                        Chọn kỳ hóa đơn để gửi
+                      </Link>
+                    ) : (
+                      <>
+                        <button type="button" className="primary-button" onClick={() => onUse(template)}>
+                          Dùng mẫu
+                        </button>
+                        <button type="button" className="secondary-button"
+                          onClick={() => newTemplate(template)}>
+                          {template.source === "PRESET" ? "Tùy chỉnh" : "Sửa"}
+                        </button>
+                      </>
+                    )}
                     {template.source === "CUSTOM" && (
                       <button type="button" className="danger-button" disabled={busy}
                         onClick={() => void remove(template)}>Xóa</button>
@@ -225,7 +234,7 @@ export function NotificationTemplateLibrary({
             </form>
           )}
           <small style={{ color: "#64748b" }}>
-            Mẫu chỉ là bản nháp. Thay đổi hoặc xóa mẫu không làm thay đổi các tin đã xếp hàng.
+            Mẫu tự động điện nước & QR được lấy từ hóa đơn đã phát hành tại mục Kỳ tính tiền; mã VietQR hiển thị trong trang hóa đơn khách mở từ tin Zalo. Các mẫu khác chỉ là bản nháp. Thay đổi hoặc xóa mẫu không làm thay đổi các tin đã xếp hàng.
             Trước khi gửi tin xác nhận thanh toán, hãy đối chiếu dữ liệu thực tế.
           </small>
         </div>
