@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -50,7 +50,7 @@ function mockZaloHtml(mode: Scenario): string {
             search.hidden = true;
             chat.hidden = false;
             document.getElementById("selected-contact").textContent = name;
-            if (mode === "old-bubble-only") addBubble(body);
+            if (mode === "old-bubble-only" || mode === "old-outgoing-then-incoming") addBubble(body);
           };
           results.appendChild(item);
         }
@@ -64,7 +64,7 @@ function mockZaloHtml(mode: Scenario): string {
           alert.hidden = false;
         } else if (mode === "sent") {
           addBubble(message);
-        } else if (mode === "incoming-only") {
+        } else if (mode === "incoming-only" || mode === "old-outgoing-then-incoming") {
           addBubble(message, "incoming");
         } else if (mode === "undirected-only") {
           addBubble(message, "generic-message");
@@ -156,6 +156,12 @@ browserTest("mocked Zalo: old identical bubble never confirms a new send", async
 
 browserTest("mocked Zalo: new incoming echo is NOT proof of our send", async () => {
   const result = await runSyntheticSend("incoming-only");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: old outgoing plus new incoming echo cannot increase outgoing count", async () => {
+  const result = await runSyntheticSend("old-outgoing-then-incoming");
   assert.equal(result.kind, "UNKNOWN");
   if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
 });
