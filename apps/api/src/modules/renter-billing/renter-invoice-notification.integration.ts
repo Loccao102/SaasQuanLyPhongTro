@@ -264,7 +264,7 @@ test("finalized billing cycle creates idempotent personalized invoice jobs with 
     assert.ok(job);
     assert.match(job.messageBody, /Tiền điện · chỉ số 120 → 150/);
     assert.match(job.messageBody, /Tiền nước · chỉ số 12 → 16/);
-    assert.match(job.messageBody, /Tổng hóa đơn: 1\\.000\\.000đ/);
+    assert.match(job.messageBody, /Tổng hóa đơn: 1\.000\.000đ/);
     assert.match(job.messageBody, /quét mã QR VietQR/);
     assert.equal(job.recipientKey, "0901234567");
     assert.match(job.messageBody, /Phòng 101: 1\.000\.000đ/);
