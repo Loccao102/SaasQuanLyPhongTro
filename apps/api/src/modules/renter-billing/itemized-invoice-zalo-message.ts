@@ -38,7 +38,7 @@ function readingDetails(line: ItemizedInvoiceLine): string {
   const next = (current as Record<string, unknown>).value;
   if (![prior, next].every(value =>
     (typeof value === "string" || typeof value === "number") &&
-    /^\\d+(?:\\.\\d{1,3})?$/.test(String(value))
+    /^\d+(?:\.\d{1,3})?$/.test(String(value))
   )) return "";
 
   const unit = line.type === "ELECTRICITY" ? "kWh" : "m³";
