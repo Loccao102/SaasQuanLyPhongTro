@@ -362,13 +362,13 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                   type="button"
                   disabled={notificationSaving}
                   onClick={() => void sendInvoiceNotifications()}
-                  title="Gửi thông báo hóa đơn tự động qua Zalo/SMS/Telegram tới các phòng còn nợ"
+                  title="Gửi bảng kê tiền phòng, điện nước, dịch vụ và liên kết xem VietQR tự động qua Zalo cho các phòng còn nợ"
                 >
                   <BellOutlined style={{ marginRight: 6 }} />
                   {notificationSaving
                     ? "Đang xếp hàng…"
                     : data.invoices.some((i) => i.remainingVnd > 0)
-                      ? `Nhắc nợ tự động (${data.invoices.filter((i) => i.remainingVnd > 0).length} phòng)`
+                      ? `Gửi bảng kê + QR (${data.invoices.filter((i) => i.remainingVnd > 0).length} phòng)`
                       : "Gửi hóa đơn"}
                 </button>
               ) : null}
