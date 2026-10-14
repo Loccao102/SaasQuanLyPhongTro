@@ -100,6 +100,14 @@ export class RenterPublicInvoiceService {
     }
   }
 
+  async assertPaymentQrConfigured(organizationId: string): Promise<void> {
+    if (!(await this.payments.publicPaymentProfile(organizationId))) {
+      throw new ConflictException(
+        "Hãy cấu hình tài khoản ngân hàng nhận tiền tại Cài đặt thanh toán trước khi gửi bảng kê có mã VietQR."
+      );
+    }
+  }
+
   async issueAccess(principal: TenantPrincipal, invoiceId: string) {
     return this.db.withTransaction((client) =>
       this.issueAccessInTransaction(client, principal, invoiceId)
