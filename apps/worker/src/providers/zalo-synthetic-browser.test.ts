@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "blocked" | "ambiguous";
+type Scenario = "sent" | "old-bubble-only" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -31,9 +31,9 @@ function mockZaloHtml(mode: Scenario): string {
       const chat = document.getElementById("chat");
       const messages = document.getElementById("messages");
       const editor = document.getElementById("composer");
-      const addBubble = (value) => {
+      const addBubble = (value, direction = "outgoing") => {
         const bubble = document.createElement("p");
-        bubble.className = "outgoing";
+        bubble.className = direction;
         bubble.textContent = value;
         messages.appendChild(bubble);
       };
@@ -64,6 +64,10 @@ function mockZaloHtml(mode: Scenario): string {
           alert.hidden = false;
         } else if (mode === "sent") {
           addBubble(message);
+        } else if (mode === "incoming-only") {
+          addBubble(message, "incoming");
+        } else if (mode === "undirected-only") {
+          addBubble(message, "generic-message");
         }
       };
     </script>
@@ -146,6 +150,18 @@ browserTest("mocked Zalo: unique phone-only contact can send without a name", as
 
 browserTest("mocked Zalo: old identical bubble never confirms a new send", async () => {
   const result = await runSyntheticSend("old-bubble-only");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: new incoming echo is NOT proof of our send", async () => {
+  const result = await runSyntheticSend("incoming-only");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: a generic new text node without outgoing marker is NOT send proof", async () => {
+  const result = await runSyntheticSend("undirected-only");
   assert.equal(result.kind, "UNKNOWN");
   if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
 });
