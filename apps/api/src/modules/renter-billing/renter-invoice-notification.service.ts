@@ -119,6 +119,8 @@ export class RenterInvoiceNotificationService {
       }
 
       // Read the finalized invoice snapshot; prices/readings can change later.
+      // A QR is only generated when the organization has an active payment profile.
+      await this.publicInvoices.assertPaymentQrConfigured(principal.organizationId);
       const invoiceLines = await client.query<InvoiceLineRow>(
         `SELECT invoice_id::text, line_type, description, quantity::text,
                 unit_price_vnd::text, amount_vnd::text, snapshot
