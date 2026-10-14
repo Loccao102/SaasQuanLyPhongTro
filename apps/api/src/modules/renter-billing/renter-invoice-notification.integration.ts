@@ -44,6 +44,7 @@ async function cleanup(pool: Pool) {
   await pool.query("DELETE FROM notification_campaigns WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM automation_quota_reservations WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM automation_quota_periods WHERE organization_id = $1", [org]);
+  await pool.query("DELETE FROM organization_payment_profiles WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM renter_invoice_public_links WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM renter_invoice_lines WHERE organization_id = $1", [org]);
   await pool.query("DELETE FROM renter_invoices WHERE organization_id = $1", [org]);
@@ -123,6 +124,12 @@ test("finalized billing cycle creates idempotent personalized invoice jobs with 
        SELECT $1, id, current_version_id, 'ACTIVE'
        FROM saas_plans
        WHERE code = 'STARTER'`,
+      [org]
+    );
+    await pool.query(
+      `INSERT INTO organization_payment_profiles (
+         organization_id, bank_id, account_no, account_name, vietqr_template, is_active
+       ) VALUES ($1, '970422', '1234567890', 'HABI TEST', 'compact2', true)`,
       [org]
     );
     await pool.query(
