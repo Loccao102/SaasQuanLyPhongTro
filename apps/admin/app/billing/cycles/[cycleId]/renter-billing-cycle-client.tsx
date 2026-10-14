@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ArrowLeftOutlined, ArrowRightOutlined, BellOutlined, CopyOutlined, ExportOutlined, FileExcelOutlined, MessageOutlined, PlusOutlined, PrinterOutlined } from "@ant-design/icons";
 import { MoneyDisplay, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../../components/admin-shell";
@@ -157,6 +158,10 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   }
 
   async function sendInvoiceNotifications() {
+    if (!data?.paymentProfile) {
+      setError("Chưa có tài khoản ngân hàng nhận tiền. Vào Cài đặt thanh toán để cấu hình VietQR trước khi gửi.");
+      return;
+    }
     if (
       !window.confirm(
         "Gửi hóa đơn sẽ tạo link công khai mới cho tất cả hóa đơn ISSUED còn nợ có số điện thoại người thuê. Link cũ của các hóa đơn đó sẽ bị vô hiệu. Hóa đơn đã thanh toán không gửi; hóa đơn thiếu số điện thoại sẽ được báo skipped. Tiếp tục?"
@@ -373,6 +378,15 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                 </button>
               ) : null}
             </div>
+            {!data.paymentProfile ? (
+              <p className="inline-note">
+                Để gửi bảng kê có VietQR, cần{" "}
+                <Link href="/billing/payment-settings" className="text-link">
+                  cấu hình tài khoản ngân hàng nhận tiền
+                </Link>{" "}
+                trước.
+              </p>
+            ) : null}
           </section>
 
           {data.invoices.length === 0 ? (
