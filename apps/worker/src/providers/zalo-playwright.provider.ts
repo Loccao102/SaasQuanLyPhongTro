@@ -535,6 +535,11 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           }
         }
 
+        // Snapshot matching text *before* composing. An old message (or a
+        // matching incoming message) must never become proof that this send worked.
+        const preSendMatches = await visibleExactTextCount(
+          page, job.messageBody
+        );
         monitorStage = "PREPARING_MESSAGE";
         await editor.fill(job.messageBody);
 
@@ -586,19 +591,24 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
-        const sentMessage = page.getByText(job.messageBody, { exact: true }).last();
-        try {
-          await sentMessage.waitFor({
-            state: "visible",
-            timeout: this.config.verificationTimeoutMs
-          });
-        } catch {
+        const deadline = Date.now() + this.config.verificationTimeoutMs;
+        let postSendMatches = preSendMatches.count;
+        do {
+          const matching = await visibleExactTextCount(page, job.messageBody);
+          postSendMatches = matching.count;
+          if (postSendMatches > preSendMatches.count) break;
+          await page.waitForTimeout(Math.min(250, Math.max(0, deadline - Date.now())));
+        } while (Date.now() < deadline);
+        if (postSendMatches <= preSendMatches.count) {
           return {
             kind: "UNKNOWN",
             errorCode: "SEND_UNVERIFIED",
             errorMessage:
-              "A post-send message bubble matching the message body was not observed.",
-            evidence: evidence(job, "verify-sent-message")
+              "No NEW matching message appeared after the send action; a pre-existing bubble cannot verify delivery.",
+            evidence: evidence(job, "verify-new-sent-message", {
+              matchingBubblesBefore: preSendMatches.count,
+              matchingBubblesAfter: postSendMatches
+            })
           };
         }
 
