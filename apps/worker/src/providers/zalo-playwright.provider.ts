@@ -228,6 +228,29 @@ async function visibleOutgoingExactTextCount(
   return 0;
 }
 
+async function visibleExactNameInConversationHeader(
+  page: Page,
+  expectedName: string,
+  selectors: readonly string[]
+): Promise<boolean> {
+  for (const selector of selectors) {
+    try {
+      const headers = page.locator(selector);
+      for (let i = 0, count = Math.min(await headers.count(), 12); i < count; i++) {
+        const header = headers.nth(i);
+        if (!await header.isVisible()) continue;
+        const names = header.getByText(expectedName, { exact: true });
+        for (let j = 0, matches = Math.min(await names.count(), 8); j < matches; j++) {
+          if (await names.nth(j).isVisible()) return true;
+        }
+      }
+    } catch {
+      // DOM/selector changes must not produce a false recipient confirmation.
+    }
+  }
+  return false;
+}
+
 async function editorText(locator: Locator): Promise<string> {
   const tagName = await locator.evaluate((element) => element.tagName.toLowerCase());
   if (tagName === "textarea" || tagName === "input") {
@@ -558,11 +581,12 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         }
 
         if (recipientMatches.expectedName) {
-          const conversationMatches = await visibleExactTextCount(
+          const headerMatches = await visibleExactNameInConversationHeader(
             page,
-            recipientMatches.expectedName
+            recipientMatches.expectedName,
+            this.config.selectors.conversationHeaders
           );
-          if (conversationMatches.count < 1) {
+          if (!headerMatches) {
             return {
               kind: "MANUAL_REVIEW",
               errorCode: "RECIPIENT_VERIFICATION_FAILED",
