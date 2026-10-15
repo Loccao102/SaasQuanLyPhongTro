@@ -79,56 +79,57 @@ type RecipientCandidate = {
   expectedName: string | null;
 };
 
+const SEARCH_RESULT_CARD_SELECTORS = [
+  '[data-testid="contact-search-result"]',
+  '[data-testid="user-search-result"]',
+  '[role="listbox"] [role="option"]',
+  '.search-result .friend-item',
+  '.search-result .user-item',
+  '.search-result__item',
+  '.search-result-item',
+  '.list-search-result .item'
+] as const;
+
 async function findRecipientCandidate(
   page: Page,
   name: string | null,
   phone: string
 ): Promise<RecipientCandidate> {
-  if (name) {
-    const found = await visibleExactTextCount(page, name);
-    return { ...found, verification: "display-name-exact", expectedName: name };
-  }
-
-  // Exact phone displayed in the search result is preferred.
-  for (const value of [phone, "84" + phone.slice(1), "+84" + phone.slice(1)]) {
-    const found = await visibleExactTextCount(page, value);
-    if (found.count) {
-      return { ...found, verification: "phone-text-exact", expectedName: null };
-    }
-  }
-
-  // Some Zalo versions expose a contact card without showing its phone.
-  // Select only ONE visible card in the phone-search results, never the
-  // first arbitrary conversation or free-text suggestion.
-  const selectors = [
-    '[data-testid="contact-search-result"]',
-    '[data-testid="user-search-result"]',
-    '[role="listbox"] [role="option"]',
-    '.search-result .friend-item',
-    '.search-result .user-item',
-    '.search-result__item',
-    '.search-result-item',
-    '.list-search-result .item'
-  ];
-  for (const selector of selectors) {
+  // The search was made by phone. Never click an arbitrary exact-name/phone
+  // text node outside the active contact result cards (for example, a sidebar
+  // conversation, a toast, or an unrelated header).
+  for (const selector of SEARCH_RESULT_CARD_SELECTORS) {
     const entries = page.locator(selector);
     const visible: Locator[] = [];
-    for (let i = 0, n = Math.min(await entries.count(), 20); i < n; i += 1) {
-      const entry = entries.nth(i);
+    for (let index = 0, count = Math.min(await entries.count(), 20); index < count; index++) {
+      const entry = entries.nth(index);
       if (await entry.isVisible()) visible.push(entry);
     }
     if (!visible.length) continue;
-    const displayName = visible.length === 1
-      ? (await visible[0]!.innerText()).split("\n")
-          .map((part) => part.trim())
-          .find((part) => part.length > 1 && part.length <= 100 &&
-            part !== phone && !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(part)) ?? null
-      : null;
+    // Ambiguous phone search is not resolved by guessing from a coincidental
+    // display name. Search results can share the same name.
+    if (visible.length !== 1) {
+      return { first: null, count: visible.length, verification: "phone-search-unique", expectedName: null };
+    }
+    const card = visible[0]!;
+    const lines = (await card.innerText()).split("\n").map(line => line.trim()).filter(Boolean);
+    const matchingPhone = [phone, "84" + phone.slice(1), "+84" + phone.slice(1)]
+      .some(value => lines.includes(value));
+    if (name && !lines.includes(name)) {
+      return { first: null, count: 0, verification: "display-name-exact", expectedName: name };
+    }
+    const visibleName = name ?? lines.find(line =>
+      line.length > 1 && line.length <= 100 &&
+      ![phone, "84" + phone.slice(1), "+84" + phone.slice(1)].includes(line) &&
+      !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(line)
+    ) ?? null;
+    // A phone-only record without a stable visible name cannot be confirmed
+    // against the conversation header and should be reviewed by an operator.
     return {
-      first: displayName && visible.length === 1 ? visible[0]! : null,
-      count: visible.length,
-      verification: "phone-search-unique",
-      expectedName: displayName
+      first: visibleName ? card : null,
+      count: 1,
+      verification: name ? "display-name-exact" : matchingPhone ? "phone-text-exact" : "phone-search-unique",
+      expectedName: visibleName
     };
   }
   return { first: null, count: 0, verification: "phone-search-unique", expectedName: null };
