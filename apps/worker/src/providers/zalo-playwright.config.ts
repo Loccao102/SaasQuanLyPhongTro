@@ -14,6 +14,7 @@ export interface ZaloPlaywrightConfig {
     messageEditors: readonly string[];
     sendButtons: readonly string[];
     outgoingMessageContainers: readonly string[];
+    conversationHeaders: readonly string[];
   };
 }
 
@@ -155,6 +156,14 @@ export function loadZaloPlaywrightConfig(
         '.chat-message--outgoing',
         '.msg-item.me',
         '.outgoing'
+      ]),
+      conversationHeaders: selectorList(env.ZALO_CONVERSATION_HEADER_SELECTORS, [
+        '[data-testid="conversation-header"]',
+        '.conversation-header',
+        '.chat-header',
+        '.chat-info',
+        '#chat-header',
+        'section#chat header'
       ])
     }
   };
