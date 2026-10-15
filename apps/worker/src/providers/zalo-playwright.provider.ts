@@ -200,10 +200,17 @@ async function visibleOutgoingExactTextCount(
       const container = matches.nth(i);
       try {
         if (!await container.isVisible()) continue;
-        if ((await container.innerText()).trim() === text ||
-            await container.getByText(text, { exact: true }).count() > 0) {
-          count++;
+        let textIsVisible = (await container.innerText()).trim() === text;
+        if (!textIsVisible) {
+          const exact = container.getByText(text, { exact: true });
+          for (let j = 0, n = Math.min(await exact.count(), 12); j < n; j++) {
+            if (await exact.nth(j).isVisible()) {
+              textIsVisible = true;
+              break;
+            }
+          }
         }
+        if (textIsVisible) count++;
       } catch {
         // The SPA may replace message nodes while we examine them.
       }
