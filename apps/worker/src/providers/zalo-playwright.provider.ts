@@ -128,7 +128,7 @@ async function findRecipientCandidate(
     }
     const visibleName = name ?? lines.find(line =>
       line.length > 1 && line.length <= 100 &&
-      ![phone, "84" + phone.slice(1), "+84" + phone.slice(1)].includes(line) &&
+      !normalizeZaloRecipientPhone(line) &&
       !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(line)
     ) ?? null;
     // A phone-only record without a stable visible name cannot be confirmed
