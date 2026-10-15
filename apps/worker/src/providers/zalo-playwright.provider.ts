@@ -171,27 +171,6 @@ async function anyVisible(
   return (await firstVisible(page, selectors, timeoutMs)) !== null;
 }
 
-async function visibleExactTextCount(
-  page: Page,
-  text: string,
-  limit = 20
-): Promise<{ count: number; first: Locator | null }> {
-  const locator = page.getByText(text, { exact: true });
-  const total = Math.min(await locator.count(), limit);
-  let count = 0;
-  let first: Locator | null = null;
-
-  for (let index = 0; index < total; index += 1) {
-    const candidate = locator.nth(index);
-    if (await candidate.isVisible()) {
-      count += 1;
-      first ??= candidate;
-    }
-  }
-
-  return { count, first };
-}
-
 async function visibleOutgoingExactTextCount(
   page: Page,
   text: string,
