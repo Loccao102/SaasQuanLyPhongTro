@@ -7,14 +7,14 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
   // Zalo credentials or live network requests in CI.
   return `<!DOCTYPE html><html lang="vi"><meta charset="utf-8"><body>
     <input id="input-search" placeholder="Search contacts" aria-label="Search contacts" />
-    <div id="search-results"></div>
+    <div id="search-results"></div>\n    <aside id="prior-chats" hidden><p>Nguyen A</p></aside>
     <section id="chat" hidden>
       <header><strong id="selected-contact">Nguyen A</strong></header>
       <div id="messages"></div>
@@ -40,7 +40,9 @@ function mockZaloHtml(mode: Scenario): string {
       search.addEventListener("input", () => {
         results.replaceChildren();
         if (!search.value.includes(phone)) return;
-        const contacts = mode === "ambiguous" ? ["Nguyen A", "Tran B"] : ["Nguyen A"];
+        const contacts = mode === "ambiguous" ? ["Nguyen A", "Tran B"]
+          : mode === "wrong-card" || mode === "same-name-sidebar" ? ["Wrong Contact"] : ["Nguyen A"];
+        if (mode === "same-name-sidebar") document.getElementById("prior-chats").hidden = false;
         for (const name of contacts) {
           const item = document.createElement("button");
           item.className = "search-result__item";
@@ -176,6 +178,18 @@ browserTest("mocked Zalo: explicit recipient block is manual review", async () =
   const result = await runSyntheticSend("blocked");
   assert.equal(result.kind, "MANUAL_REVIEW");
   if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "ZALO_RECIPIENT_BLOCKED");
+});
+
+browserTest("mocked Zalo: a matching name in a previous conversation cannot override the phone search card", async () => {
+  const result = await runSyntheticSend("same-name-sidebar");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: a unique phone result with a different display name is rejected", async () => {
+  const result = await runSyntheticSend("wrong-card");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
 });
 
 browserTest("mocked Zalo: phone-only ambiguous results must not send", async () => {
