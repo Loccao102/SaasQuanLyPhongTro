@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -46,7 +46,13 @@ function mockZaloHtml(mode: Scenario): string {
         for (const name of contacts) {
           const item = document.createElement("button");
           item.className = "search-result__item";
-          item.textContent = name;
+          item.textContent = mode === "phone-first" ? "090 123 4567" : name;
+          if (mode === "phone-first") {
+            const displayName = document.createElement("span");
+            displayName.style.display = "block";
+            displayName.textContent = name;
+            item.appendChild(displayName);
+          }
           if (mode === "wrong-phone" || mode === "correct-phone") {
             const mobile = document.createElement("span");
             mobile.style.display = "block";
@@ -198,6 +204,11 @@ browserTest("mocked Zalo: contact card showing a different phone is rejected eve
   const result = await runSyntheticSend("wrong-phone");
   assert.equal(result.kind, "MANUAL_REVIEW");
   if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: phone-first search card still verifies its actual display name", async () => {
+  const result = await runSyntheticSend("phone-first", null);
+  assert.equal(result.kind, "SENT_CONFIRMED");
 });
 
 browserTest("mocked Zalo: formatted matching phone in a unique contact card is accepted", async () => {
