@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first" | "hidden-outgoing";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -84,6 +84,16 @@ function mockZaloHtml(mode: Scenario): string {
           addBubble(message, "incoming");
         } else if (mode === "undirected-only") {
           addBubble(message, "generic-message");
+        } else if (mode === "hidden-outgoing") {
+          const bubble = document.createElement("p");
+          bubble.className = "outgoing";
+          const hidden = document.createElement("span");
+          hidden.style.display = "none";
+          hidden.textContent = message;
+          const visible = document.createElement("span");
+          visible.textContent = "An unrelated outgoing notification";
+          bubble.append(hidden, visible);
+          messages.appendChild(bubble);
         }
       };
     </script>
@@ -178,6 +188,12 @@ browserTest("mocked Zalo: new incoming echo is NOT proof of our send", async () 
 
 browserTest("mocked Zalo: old outgoing plus new incoming echo cannot increase outgoing count", async () => {
   const result = await runSyntheticSend("old-outgoing-then-incoming");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: hidden exact text inside outgoing container cannot prove delivery", async () => {
+  const result = await runSyntheticSend("hidden-outgoing");
   assert.equal(result.kind, "UNKNOWN");
   if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
 });
