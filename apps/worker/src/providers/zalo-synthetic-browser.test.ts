@@ -78,7 +78,7 @@ function mockZaloHtml(mode: Scenario): string {
           const alert = document.getElementById("warning");
           alert.textContent = "Người này đã chặn bạn";
           alert.hidden = false;
-        } else if (mode === "sent") {
+        } else if (mode === "sent" || mode === "correct-phone" || mode === "phone-first") {
           addBubble(message);
         } else if (mode === "incoming-only" || mode === "old-outgoing-then-incoming") {
           addBubble(message, "incoming");
