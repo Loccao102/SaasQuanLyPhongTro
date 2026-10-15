@@ -49,6 +49,7 @@ function mockZaloHtml(mode: Scenario): string {
           item.textContent = name;
           if (mode === "wrong-phone" || mode === "correct-phone") {
             const mobile = document.createElement("span");
+            mobile.style.display = "block";
             mobile.textContent = mode === "wrong-phone" ? "0909998887" : "090 123 4567";
             item.appendChild(mobile);
           }
