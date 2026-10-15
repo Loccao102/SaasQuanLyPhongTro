@@ -112,9 +112,17 @@ async function findRecipientCandidate(
       return { first: null, count: visible.length, verification: "phone-search-unique", expectedName: null };
     }
     const card = visible[0]!;
-    const lines = (await card.innerText()).split("\n").map(line => line.trim()).filter(Boolean);
-    const matchingPhone = [phone, "84" + phone.slice(1), "+84" + phone.slice(1)]
-      .some(value => lines.includes(value));
+    const cardText = await card.innerText();
+    const lines = cardText.split("\n").map(line => line.trim()).filter(Boolean);
+    const visiblePhones = (cardText.match(/(?:\+?84|0)[35789](?:[\s().-]*\d){8}/g) ?? [])
+      .map(value => normalizeZaloRecipientPhone(value))
+      .filter((value): value is string => value !== null);
+    // If the contact card reveals a phone number, it MUST be the one searched.
+    // A common display name is not enough to override a conflicting number.
+    if (visiblePhones.some(value => value !== phone)) {
+      return { first: null, count: 0, verification: "phone-text-exact", expectedName: null };
+    }
+    const matchingPhone = visiblePhones.includes(phone);
     if (name && !lines.includes(name)) {
       return { first: null, count: 0, verification: "display-name-exact", expectedName: name };
     }
