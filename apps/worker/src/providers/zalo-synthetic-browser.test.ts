@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -51,7 +51,9 @@ function mockZaloHtml(mode: Scenario): string {
             results.replaceChildren();
             search.hidden = true;
             chat.hidden = false;
-            document.getElementById("selected-contact").textContent = name;
+            document.getElementById("selected-contact").textContent =
+              mode === "header-mismatch" ? "Different Person" : name;
+            if (mode === "header-mismatch") document.getElementById("prior-chats").hidden = false;
             if (mode === "old-bubble-only" || mode === "old-outgoing-then-incoming") addBubble(body);
           };
           results.appendChild(item);
@@ -184,6 +186,12 @@ browserTest("mocked Zalo: a matching name in a previous conversation cannot over
   const result = await runSyntheticSend("same-name-sidebar");
   assert.equal(result.kind, "MANUAL_REVIEW");
   if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: matching name in sidebar never overrides wrong active chat header", async () => {
+  const result = await runSyntheticSend("header-mismatch");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_VERIFICATION_FAILED");
 });
 
 browserTest("mocked Zalo: a unique phone result with a different display name is rejected", async () => {
