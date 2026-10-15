@@ -101,6 +101,8 @@ Before send it requires:
 
 If Zalo does not provide enough information to verify a phone-only recipient, the job stays in `MANUAL_REVIEW` rather than choosing an arbitrary conversation.
 
+The contact match must come from a **single current phone-search result card**. A matching name in the sidebar, notifications or old chat history is not evidence. After opening the chat, verify the name inside the **active conversation header** using `ZALO_CONVERSATION_HEADER_SELECTORS` (not a global page text match). If no reliable active header is available, fail closed to manual review.
+
 After send it requires:
 1. the editor no longer contains the unsent message;
 2. a **new outgoing** message bubble matching the exact body appears after Send;
@@ -159,6 +161,7 @@ ZALO_SEARCH_INPUT_SELECTORS
 ZALO_MESSAGE_EDITOR_SELECTORS
 ZALO_SEND_BUTTON_SELECTORS
 ZALO_OUTGOING_MESSAGE_SELECTORS
+ZALO_CONVERSATION_HEADER_SELECTORS
 ```
 
 `ZALO_OUTGOING_MESSAGE_SELECTORS` is a list of **positive outgoing
