@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -47,6 +47,11 @@ function mockZaloHtml(mode: Scenario): string {
           const item = document.createElement("button");
           item.className = "search-result__item";
           item.textContent = name;
+          if (mode === "wrong-phone" || mode === "correct-phone") {
+            const mobile = document.createElement("span");
+            mobile.textContent = mode === "wrong-phone" ? "0909998887" : "090 123 4567";
+            item.appendChild(mobile);
+          }
           item.onclick = () => {
             results.replaceChildren();
             search.hidden = true;
@@ -186,6 +191,17 @@ browserTest("mocked Zalo: a matching name in a previous conversation cannot over
   const result = await runSyntheticSend("same-name-sidebar");
   assert.equal(result.kind, "MANUAL_REVIEW");
   if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: contact card showing a different phone is rejected even with matching name", async () => {
+  const result = await runSyntheticSend("wrong-phone");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: formatted matching phone in a unique contact card is accepted", async () => {
+  const result = await runSyntheticSend("correct-phone");
+  assert.equal(result.kind, "SENT_CONFIRMED");
 });
 
 browserTest("mocked Zalo: matching name in sidebar never overrides wrong active chat header", async () => {
