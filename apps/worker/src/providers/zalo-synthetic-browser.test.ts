@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first" | "hidden-outgoing";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first" | "hidden-outgoing" | "delayed-outgoing" | "delayed-incoming" | "late-contact-search";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -68,7 +68,11 @@ function mockZaloHtml(mode: Scenario): string {
             if (mode === "header-mismatch") document.getElementById("prior-chats").hidden = false;
             if (mode === "old-bubble-only" || mode === "old-outgoing-then-incoming") addBubble(body);
           };
-          results.appendChild(item);
+          if (mode === "late-contact-search") {
+            setTimeout(() => results.appendChild(item), 500);
+          } else {
+            results.appendChild(item);
+          }
         }
       });
       document.getElementById("send").onclick = () => {
@@ -80,6 +84,10 @@ function mockZaloHtml(mode: Scenario): string {
           alert.hidden = false;
         } else if (mode === "sent" || mode === "correct-phone" || mode === "phone-first") {
           addBubble(message);
+        } else if (mode === "delayed-outgoing" || mode === "late-contact-search") {
+          setTimeout(() => addBubble(message), 320);
+        } else if (mode === "delayed-incoming") {
+          setTimeout(() => addBubble(message, "incoming"), 320);
         } else if (mode === "incoming-only" || mode === "old-outgoing-then-incoming") {
           addBubble(message, "incoming");
         } else if (mode === "undirected-only") {
@@ -178,6 +186,22 @@ browserTest("mocked Zalo: old identical bubble never confirms a new send", async
   const result = await runSyntheticSend("old-bubble-only");
   assert.equal(result.kind, "UNKNOWN");
   if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: delayed outgoing bubble is recognized after send", async () => {
+  const result = await runSyntheticSend("delayed-outgoing");
+  assert.equal(result.kind, "SENT_CONFIRMED");
+});
+
+browserTest("mocked Zalo: delayed incoming echo still cannot confirm send", async () => {
+  const result = await runSyntheticSend("delayed-incoming");
+  assert.equal(result.kind, "UNKNOWN");
+  if (result.kind === "UNKNOWN") assert.equal(result.errorCode, "SEND_UNVERIFIED");
+});
+
+browserTest("mocked Zalo: contact search delayed by SPA still picks unique correct person", async () => {
+  const result = await runSyntheticSend("late-contact-search");
+  assert.equal(result.kind, "SENT_CONFIRMED");
 });
 
 browserTest("mocked Zalo: new incoming echo is NOT proof of our send", async () => {
