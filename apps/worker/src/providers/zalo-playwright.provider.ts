@@ -118,7 +118,7 @@ async function findRecipientCandidate(
     // Matching just the first 10 digits of an 11-digit contact number could
     // otherwise falsely verify a different person.
     const visiblePhoneCandidates = [...cardText.matchAll(
-      /(?:^|[^\\d])((?:\\+?84|0)[35789](?:[\\s().-]*\\d){8,14})(?![\\s().-]*\\d)/g
+      /(?:^|[^\d])((?:\+?84|0)[35789](?:[\s().-]*\d){8,14})(?![\s().-]*\d)/g
     )].map(match => match[1]);
     const visiblePhones = visiblePhoneCandidates
       .map(value => normalizeZaloRecipientPhone(value));
