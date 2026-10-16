@@ -52,3 +52,22 @@ test("default search selectors cover Zalo SPA id, aria and class-based fields", 
   // Never match an arbitrary contenteditable: that could be the chat composer.
   assert.equal(config.selectors.searchInputs.includes('[contenteditable="true"]'), false);
 });
+
+test("outgoing bubble verification requires direction-specific selectors", () => {
+  const config = loadZaloPlaywrightConfig({
+    ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 5).toString("base64")
+  });
+  assert.ok(config.selectors.outgoingMessageContainers.includes('[data-direction="outgoing"]'));
+  assert.ok(config.selectors.outgoingMessageContainers.includes('.message--outgoing'));
+  assert.equal(config.selectors.outgoingMessageContainers.includes('.message'), false);
+  assert.equal(config.selectors.outgoingMessageContainers.includes('[role="textbox"]'), false);
+
+  const custom = loadZaloPlaywrightConfig({
+    ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 5).toString("base64"),
+    ZALO_OUTGOING_MESSAGE_SELECTORS: '.mine || [data-testid="outgoing-message"]'
+  });
+  assert.deepEqual(custom.selectors.outgoingMessageContainers, [
+    ".mine",
+    '[data-testid="outgoing-message"]'
+  ]);
+});

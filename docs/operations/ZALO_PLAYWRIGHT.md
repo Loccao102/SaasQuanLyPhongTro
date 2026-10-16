@@ -101,11 +101,16 @@ Before send it requires:
 
 If Zalo does not provide enough information to verify a phone-only recipient, the job stays in `MANUAL_REVIEW` rather than choosing an arbitrary conversation.
 
+The contact match must come from a **single current phone-search result card**. A matching name in the sidebar, notifications or old chat history is not evidence. After opening the chat, verify the name inside the **active conversation header** using `ZALO_CONVERSATION_HEADER_SELECTORS` (not a global page text match). If no reliable active header is available, fail closed to manual review.
+
 After send it requires:
 1. the editor no longer contains the unsent message;
-2. an exact visible message bubble matching the body is observed.
+2. a **new outgoing** message bubble matching the exact body appears after Send;
+3. the outgoing direction is positively identified using `ZALO_OUTGOING_MESSAGE_SELECTORS`.
 
-Only then does it return `SENT_CONFIRMED`.
+Only then does it return `SENT_CONFIRMED` (observed in Zalo Web UI, **not**
+proof of recipient delivery or read receipt). A new incoming message or
+undirected text cannot establish successful sending.
 
 Ambiguous post-send state returns `UNKNOWN`. It must never be blindly retried as if no send occurred.
 
@@ -121,10 +126,11 @@ When a stale attempt is recovered:
 2. quota consumption remains idempotent for the notification job;
 3. a replacement attempt is created only when automatic attempts remain;
 4. the replacement claim carries `deliveryReplayCheckRequired=true`;
-5. Zalo opens and verifies the intended conversation, then checks for an exact
-   visible copy of the message before typing or clicking Send;
-6. if that exact message already exists, the job is confirmed `SENT` without
-   sending another copy;
+5. for a replacement claim with `deliveryReplayCheckRequired=true`, the
+   provider **does not open a browser or attempt another send**;
+6. the job is set to `MANUAL_REVIEW / ZALO_PREVIOUS_SEND_UNVERIFIED`,
+   requiring authorized operator confirmation of the actual conversation
+   before any deliberate manual resolution;
 7. if the stale attempt already consumed the retry limit, the job moves to
    `MANUAL_REVIEW` instead of silently exceeding the configured limit.
 
@@ -154,7 +160,16 @@ ZALO_CAPTCHA_INDICATORS
 ZALO_SEARCH_INPUT_SELECTORS
 ZALO_MESSAGE_EDITOR_SELECTORS
 ZALO_SEND_BUTTON_SELECTORS
+ZALO_OUTGOING_MESSAGE_SELECTORS
+ZALO_CONVERSATION_HEADER_SELECTORS
 ```
+
+`ZALO_OUTGOING_MESSAGE_SELECTORS` is a list of **positive outgoing
+bubble container markers**. Do not add a generic message, editor,
+conversation-pane or incoming selector simply to increase the SENT rate.
+If the active Zalo Web UI exposes no reliable outgoing-direction marker,
+the job must remain `UNKNOWN`; verify selector changes with the operator's
+authorized test account. A DOM bubble is still not a read receipt.
 
 If a required control cannot be found, the adapter returns `PROVIDER_UI_BROKEN` instead of guessing.
 
@@ -225,6 +240,16 @@ Validate with a non-production/test account:
 7. network timeout before send;
 8. ambiguous state after clicking send;
 9. worker crash and restart;
-10. two worker processes contending for the same session lock.
+10. two worker processes contending for the same session lock;
+11. a matching incoming echo appears after Send (must not confirm SENT);
+12. a pre-existing identical outgoing message is visible (must not confirm SENT);
+13. outgoing bubble marker missing/changed (must remain UNKNOWN);
+14. phone-only unique recipient and ambiguous phone search, separately.
+
+CI provides synthetic local Playwright tests for cases 1, 2, 3, 8, 11,
+12 and 14. Those tests use fixture HTML, not live Zalo accounts.
+The remaining cases require an explicitly authorized, consent-based
+live smoke procedure and operator approval. Do not bypass CAPTCHA or
+account restrictions.
 
 The provider should prefer MANUAL_REVIEW/UNKNOWN over a false positive SENT state.
