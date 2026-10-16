@@ -7,7 +7,7 @@ import { ZaloPlaywrightProvider } from "./zalo-playwright.provider.js";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 
 const browserTest = process.env.ZALO_BROWSER_SMOKE === "1" ? test : test.skip;
-type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first" | "hidden-outgoing" | "delayed-outgoing" | "delayed-incoming" | "late-contact-search";
+type Scenario = "sent" | "old-bubble-only" | "old-outgoing-then-incoming" | "incoming-only" | "undirected-only" | "blocked" | "ambiguous" | "same-name-sidebar" | "wrong-card" | "header-mismatch" | "wrong-phone" | "correct-phone" | "phone-first" | "hidden-outgoing" | "delayed-outgoing" | "delayed-incoming" | "late-contact-search" | "overlong-phone" | "international-phone";
 
 function mockZaloHtml(mode: Scenario): string {
   // All content here is synthetic local HTML; never use real contact details,
@@ -53,10 +53,13 @@ function mockZaloHtml(mode: Scenario): string {
             displayName.textContent = name;
             item.appendChild(displayName);
           }
-          if (mode === "wrong-phone" || mode === "correct-phone") {
+          if (mode === "wrong-phone" || mode === "correct-phone" || mode === "overlong-phone" || mode === "international-phone") {
             const mobile = document.createElement("span");
             mobile.style.display = "block";
-            mobile.textContent = mode === "wrong-phone" ? "0909998887" : "090 123 4567";
+            mobile.textContent = mode === "wrong-phone" ? "0909998887"
+              : mode === "overlong-phone" ? "09012345678"
+              : mode === "international-phone" ? "+84 90 123 4567"
+              : "090 123 4567";
             item.appendChild(mobile);
           }
           item.onclick = () => {
@@ -82,7 +85,7 @@ function mockZaloHtml(mode: Scenario): string {
           const alert = document.getElementById("warning");
           alert.textContent = "Người này đã chặn bạn";
           alert.hidden = false;
-        } else if (mode === "sent" || mode === "correct-phone" || mode === "phone-first") {
+        } else if (mode === "sent" || mode === "correct-phone" || mode === "phone-first" || mode === "international-phone") {
           addBubble(message);
         } else if (mode === "delayed-outgoing" || mode === "late-contact-search") {
           setTimeout(() => addBubble(message), 320);
@@ -238,6 +241,17 @@ browserTest("mocked Zalo: a matching name in a previous conversation cannot over
   const result = await runSyntheticSend("same-name-sidebar");
   assert.equal(result.kind, "MANUAL_REVIEW");
   if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: overlong phone starting with requested digits is never accepted", async () => {
+  const result = await runSyntheticSend("overlong-phone");
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") assert.equal(result.errorCode, "RECIPIENT_NOT_FOUND");
+});
+
+browserTest("mocked Zalo: international +84 formatted phone can match exact recipient", async () => {
+  const result = await runSyntheticSend("international-phone");
+  assert.equal(result.kind, "SENT_CONFIRMED");
 });
 
 browserTest("mocked Zalo: contact card showing a different phone is rejected even with matching name", async () => {
