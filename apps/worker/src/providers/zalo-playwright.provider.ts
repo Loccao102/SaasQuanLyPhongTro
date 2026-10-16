@@ -114,11 +114,16 @@ async function findRecipientCandidate(
     const card = visible[0]!;
     const cardText = await card.innerText();
     const lines = cardText.split("\n").map(line => line.trim()).filter(Boolean);
-    const visiblePhones = (cardText.match(/(?:\+?84|0)[35789](?:[\s().-]*\d){8}/g) ?? [])
-      .map(value => normalizeZaloRecipientPhone(value))
-      .filter((value): value is string => value !== null);
-    // If the contact card reveals a phone number, it MUST be the one searched.
-    // A common display name is not enough to override a conflicting number.
+    // Capture the FULL phone-like token (including surplus digits).
+    // Matching just the first 10 digits of an 11-digit contact number could
+    // otherwise falsely verify a different person.
+    const visiblePhoneCandidates = [...cardText.matchAll(
+      /(?:^|[^\\d])((?:\\+?84|0)[35789](?:[\\s().-]*\\d){8,14})(?![\\s().-]*\\d)/g
+    )].map(match => match[1]);
+    const visiblePhones = visiblePhoneCandidates
+      .map(value => normalizeZaloRecipientPhone(value));
+    // Invalid-length phone-like values and conflicting phones both fail closed.
+    // A name match cannot override a clearly contradictory phone.
     if (visiblePhones.some(value => value !== phone)) {
       return { first: null, count: 0, verification: "phone-text-exact", expectedName: null };
     }
