@@ -119,7 +119,7 @@ async function findRecipientCandidate(
     // otherwise falsely verify a different person.
     const visiblePhoneCandidates = [...cardText.matchAll(
       /(?:^|[^\d])((?:\+?84|0)[35789](?:[\s().-]*\d){8,14})(?![\s().-]*\d)/g
-    )].map(match => match[1]);
+    )].map(match => match[1] ?? "");
     const visiblePhones = visiblePhoneCandidates
       .map(value => normalizeZaloRecipientPhone(value));
     // Invalid-length phone-like values and conflicting phones both fail closed.
