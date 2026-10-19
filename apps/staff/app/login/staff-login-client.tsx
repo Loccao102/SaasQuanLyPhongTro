@@ -21,11 +21,13 @@ import {
   WarningOutlined
 } from "@ant-design/icons";
 import { HabiMark } from "@propops/ui/habi-brand";
+import { TotpQrCode } from "@propops/ui/totp-qr";
 import { useStaffAuth } from "../../components/staff-auth-provider";
 import { StaffGoogleIdentityButton } from "../../components/google-identity-button";
 import {
   staffAuthApi,
-  type StaffAuthConfig
+  type StaffAuthConfig,
+  type StaffAuthenticationResult
 } from "../../lib/staff-auth-api";
 
 function safeNext(value: string | null): string {
@@ -47,6 +49,18 @@ export function StaffLoginClient() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState<{
+    challengeToken: string;
+    expiresAt: string;
+  } | null>(null);
+  const [mfaEnrollment, setMfaEnrollment] = useState<{
+    challengeToken: string;
+    expiresAt: string;
+    requiredByRole: string;
+    setup: { secret: string; provisioningUri: string } | null;
+  } | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [enrolledMemberships, setEnrolledMemberships] = useState(0);
 
   useEffect(() => {
     if (auth.online) {
@@ -69,21 +83,52 @@ export function StaffLoginClient() {
     router
   ]);
 
+  const finish = useCallback(
+    (memberships: number) => {
+      if (memberships === 0) {
+        setError("Tài khoản chưa có workspace hoạt động.");
+        return;
+      }
+      router.replace(next);
+      router.refresh();
+    },
+    [next, router]
+  );
+
+  const handleAuthenticationResult = useCallback(
+    (result: StaffAuthenticationResult) => {
+      if ("mfaRequired" in result) {
+        setMfaChallenge({
+          challengeToken: result.challengeToken,
+          expiresAt: result.expiresAt
+        });
+        setMfaEnrollment(null);
+        return;
+      }
+      if ("mfaEnrollmentRequired" in result) {
+        setMfaEnrollment({
+          challengeToken: result.challengeToken,
+          expiresAt: result.expiresAt,
+          requiredByRole: result.requiredByRole,
+          setup: null
+        });
+        setMfaChallenge(null);
+        setRecoveryCodes([]);
+        return;
+      }
+      finish(result.memberships.length);
+    },
+    [finish]
+  );
+
   const googleLogin = useCallback(
     async (credential: string) => {
       setSubmitting(true);
       setError(null);
       try {
-        const session = await auth.google({
-          credential,
-          mode: "LOGIN"
-        });
-        if (session.memberships.length === 0) {
-          setError("Tài khoản chưa có tenant hoạt động.");
-          return;
-        }
-        router.replace(next);
-        router.refresh();
+        handleAuthenticationResult(
+          await auth.google({ credential, mode: "LOGIN" })
+        );
       } catch (caught) {
         setError(
           caught instanceof Error
@@ -94,7 +139,7 @@ export function StaffLoginClient() {
         setSubmitting(false);
       }
     },
-    [auth, next, router]
+    [auth, handleAuthenticationResult]
   );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -102,28 +147,97 @@ export function StaffLoginClient() {
     const form = new FormData(event.currentTarget);
     setSubmitting(true);
     setError(null);
-
     try {
-      const session = await auth.login({
+      handleAuthenticationResult(await auth.login({
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? "")
-      });
-
-      if (session.memberships.length === 0) {
-        setError(
-          "Tài khoản chưa có workspace hoạt động."
-        );
-        return;
-      }
-
-      router.replace(next);
-      router.refresh();
+      }));
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Không thể đăng nhập. Vui lòng kiểm tra lại email hoặc mật khẩu."
+          : "Không thể đăng nhập. Vui lòng kiểm tra email hoặc mật khẩu."
       );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mfaChallenge) return;
+    const form = new FormData(event.currentTarget);
+    setSubmitting(true);
+    setError(null);
+    try {
+      const session = await auth.verifyMfa({
+        challengeToken: mfaChallenge.challengeToken,
+        code: String(form.get("code") ?? "").trim()
+      });
+      setMfaChallenge(null);
+      finish(session.memberships.length);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể xác thực MFA.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function beginRequiredEnrollment() {
+    if (!mfaEnrollment) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const setup = await staffAuthApi.setupRequiredMfa(mfaEnrollment.challengeToken);
+      setMfaEnrollment((current) =>
+        current ? {
+          ...current,
+          requiredByRole: setup.requiredByRole,
+          setup: { secret: setup.secret, provisioningUri: setup.provisioningUri }
+        } : current
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể thiết lập MFA.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitRequiredEnrollment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mfaEnrollment?.setup) return;
+    const form = new FormData(event.currentTarget);
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await staffAuthApi.confirmRequiredMfa({
+        challengeToken: mfaEnrollment.challengeToken,
+        code: String(form.get("code") ?? "").trim()
+      });
+      setRecoveryCodes(result.recoveryCodes);
+      setEnrolledMemberships(result.memberships.length);
+      // Keep recovery codes visible until the user explicitly confirms saving them.
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể hoàn tất MFA.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function continueAfterEnrollment() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const session = await auth.refresh();
+      if (!session) {
+        setError("Chưa xác thực được phiên mới. Hãy kiểm tra kết nối và thử lại.");
+        return;
+      }
+      setMfaEnrollment(null);
+      setRecoveryCodes([]);
+      finish(enrolledMemberships);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể mở ca trực.");
     } finally {
       setSubmitting(false);
     }
