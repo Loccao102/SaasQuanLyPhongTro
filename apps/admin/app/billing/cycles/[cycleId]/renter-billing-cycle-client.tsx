@@ -27,7 +27,7 @@ function collectionLabel(
   return "CHƯA THANH TOÁN";
 }
 
-function reviewReasonLabel(reason: Record<string, unknown>) {
+function reviewReasonLabel(reason: Record<string, unknown>, periodEnd: string) {
   const code = typeof reason.code === "string" ? reason.code : "UNKNOWN";
   const meterType =
     reason.meterType === "ELECTRICITY"
@@ -44,7 +44,7 @@ function reviewReasonLabel(reason: Record<string, unknown>) {
     case "MISSING_PREVIOUS_READING":
       return "Thiếu chỉ số đầu kỳ của " + meterType + ".";
     case "MISSING_CURRENT_READING":
-      return "Thiếu chỉ số cuối kỳ của " + meterType + ".";
+      return "Thiếu chỉ số cuối kỳ của " + meterType + " (ngày " + formatDateVi(periodEnd) + ").";
     default:
       return "Dữ liệu tính tiền cần được kiểm tra lại (" + code + ").";
   }
@@ -93,6 +93,8 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   const [adjustmentDescription, setAdjustmentDescription] = useState("");
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
   const [adjustmentSaving, setAdjustmentSaving] = useState(false);
+  const [draftRefreshing, setDraftRefreshing] = useState(false);
+  const [draftRefreshMessage, setDraftRefreshMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +115,34 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function refreshMeteredDrafts() {
+    if (!data || data.cycle.status !== "OPEN") return;
+    setDraftRefreshing(true);
+    setDraftRefreshMessage(null);
+    setError(null);
+    try {
+      const result = await renterBillingApi.generateRentDrafts(data.cycle.id);
+      const changed = result.created + result.refreshed;
+      setDraftRefreshMessage(
+        result.requiresReview
+          ? "Đã tính lại " + changed + " hóa đơn nháp; còn " +
+            result.reviewRequiredInvoiceCount +
+            " hóa đơn cần kiểm tra dữ liệu và " +
+            result.partialLeaseCount + " hợp đồng giữa kỳ."
+          : "Đã tính lại " + changed +
+            " hóa đơn nháp từ chỉ số điện nước hiện có."
+      );
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message :
+          "Không thể tính lại hóa đơn nháp."
+      );
+    } finally {
+      setDraftRefreshing(false);
+    }
+  }
 
   async function issuePublicLink(invoiceId: string, alreadyActive: boolean) {
     if (
@@ -322,6 +352,12 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
           ) : null}
         </div>
       ) : null}
+      {draftRefreshMessage ? (
+        <div className="admin-state admin-state--success" role="status">
+          <strong>Đã cập nhật bản tính hóa đơn nháp.</strong>
+          <span>{draftRefreshMessage}</span>
+        </div>
+      ) : null}
       {loading || !data ? (
         <div className="admin-state">Đang tải invoice snapshots…</div>
       ) : (
@@ -341,6 +377,17 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
               >
                 {data.cycle.status}
               </StatusBadge>
+              {data.cycle.status === "OPEN" ? (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={draftRefreshing}
+                  onClick={() => void refreshMeteredDrafts()}
+                  title="Tính lại các hóa đơn DRAFT theo chỉ số đúng ngày cuối kỳ; không phát hành hóa đơn"
+                >
+                  {draftRefreshing ? "Đang tính lại…" : "Tính lại hóa đơn nháp"}
+                </button>
+              ) : null}
               {data.invoices.length > 0 ? (
                 <>
                   <a
@@ -438,9 +485,19 @@ export function RenterBillingCycleClient({ cycleId }: { cycleId: string }) {
                         <span>Dữ liệu tính tiền chưa sẵn sàng.</span>
                       ) : (
                         invoice.reviewReasons.map((reason, index) => (
-                          <span key={index}>{reviewReasonLabel(reason)}</span>
+                          <span key={index}>{reviewReasonLabel(reason, data.cycle.periodEnd)}</span>
                         ))
                       )}
+                      {invoice.reviewReasons.some((reason) =>
+                        reason.code === "MISSING_CURRENT_READING"
+                      ) ? (
+                        <span>
+                          Staff chỉ đồng bộ chỉ số theo ngày đã chọn. Hãy kiểm tra
+                          số đo thực tế đúng ngày {formatDateVi(data.cycle.periodEnd)}
+                          rồi bấm “Tính lại hóa đơn nháp” phía trên.
+                          Số đo giữa kỳ không tự động thay thế số cuối kỳ.
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
 
