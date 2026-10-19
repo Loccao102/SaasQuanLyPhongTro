@@ -57,10 +57,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to Neon staging pooled connection}
       DATABASE_POOL_MAX: "5"
       REDIS_URL: redis://redis:6379
-      # Allow only exact HTTPS admin origins. The canonical + main-branch
-      # Vercel domains must work even when HABI_ADMIN_ORIGIN is a legacy preview.
-      # No wildcard *.vercel.app: auth/CSRF origin checks rely on this allowlist.
-      CORS_ORIGINS: "${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN},${HABI_CANONICAL_ADMIN_ORIGIN:-https://habi-admin-staging-loccao102s-projects.vercel.app},${HABI_MAIN_BRANCH_ADMIN_ORIGIN:-https://habi-admin-staging-git-main-loccao102s-projects.vercel.app},${HABI_PREVIEW_ADMIN_ORIGIN:-}"
+      # Explicitly allow both Admin and Staff staging origins for browser auth/CSRF.
+      # Staff is a separate same-origin PWA proxying /api to this backend.
+      # Do not use wildcard *.vercel.app or allow untrusted preview hosts.
+      CORS_ORIGINS: "${HABI_ADMIN_ORIGIN:?Set HABI_ADMIN_ORIGIN},${HABI_CANONICAL_ADMIN_ORIGIN:-https://habi-admin-staging-loccao102s-projects.vercel.app},${HABI_MAIN_BRANCH_ADMIN_ORIGIN:-https://habi-admin-staging-git-main-loccao102s-projects.vercel.app},${HABI_PREVIEW_ADMIN_ORIGIN:-},${HABI_STAFF_ORIGIN:-https://habi-staff-staging.vercel.app},${HABI_CANONICAL_STAFF_ORIGIN:-https://habi-staff-staging-loccao102s-projects.vercel.app},${HABI_MAIN_BRANCH_STAFF_ORIGIN:-https://habi-staff-staging-git-main-loccao102s-projects.vercel.app}"
       AUTH_PUBLIC_APP_URL: ${HABI_CANONICAL_ADMIN_ORIGIN:-https://habi-admin-staging-loccao102s-projects.vercel.app}
       AUTH_SECURITY_HMAC_KEY: ${AUTH_SECURITY_HMAC_KEY:?Set AUTH_SECURITY_HMAC_KEY}
       INTERNAL_WORKER_TOKEN: ${INTERNAL_WORKER_TOKEN:?Set INTERNAL_WORKER_TOKEN}
