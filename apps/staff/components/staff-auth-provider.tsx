@@ -15,7 +15,8 @@ import {
   StaffAuthApiError,
   StaffNetworkError,
   type StaffMembership,
-  type StaffSession
+  type StaffSession,
+  type StaffAuthenticationResult
 } from "../lib/staff-auth-api";
 import {
   getSelectedStaffOrganizationId,
@@ -46,8 +47,9 @@ type StaffAuthContextValue = {
   selectedMembership: StaffMembership | null;
   error: string | null;
   refresh: () => Promise<StaffSession | null>;
-  login: (input: { email: string; password: string }) => Promise<StaffSession>;
-  google: (input: { credential: string; mode: "LOGIN" }) => Promise<StaffSession>;
+  login: (input: { email: string; password: string }) => Promise<StaffAuthenticationResult>;
+  google: (input: { credential: string; mode: "LOGIN" }) => Promise<StaffAuthenticationResult>;
+  verifyMfa: (input: { challengeToken: string; code: string }) => Promise<StaffSession>;
   logout: () => Promise<void>;
   switchOrganization: (organizationId: string) => void;
 };
@@ -76,6 +78,8 @@ function loadCached(): CachedStaffSession | null {
 
     if (
       !parsed.session ||
+      !parsed.session.user ||
+      !Array.isArray(parsed.session.memberships) ||
       !sessionValid(parsed.session) ||
       !offlineLeaseValid
     ) {
@@ -153,6 +157,9 @@ export function StaffAuthProvider({
       preferred?: string | null,
       lastOnlineVerifiedAt?: string
     ) => {
+      if (!nextSession?.user || !Array.isArray(nextSession.memberships)) {
+        throw new Error("Phản hồi phiên đăng nhập chưa đầy đủ. Vui lòng thử lại.");
+      }
       const organizationId = resolveOrganization(
         nextSession,
         preferred
@@ -279,36 +286,43 @@ export function StaffAuthProvider({
     }
   }, [pathname, router, status]);
 
-  const login = useCallback(
-    async (input: { email: string; password: string }) => {
-      if (
-        typeof navigator !== "undefined" &&
-        !navigator.onLine
-      ) {
-        throw new StaffNetworkError();
+  const applyAuthentication = useCallback(
+    (result: StaffAuthenticationResult): StaffAuthenticationResult => {
+      if ("mfaRequired" in result || "mfaEnrollmentRequired" in result) {
+        // The API has not issued a session yet. Never cache a challenge.
+        return result;
       }
-
-      return applySession(
-        await staffAuthApi.login(input),
-        "authenticated"
-      );
+      return applySession(result, "authenticated");
     },
     [applySession]
   );
 
-  const google = useCallback(
-    async (input: { credential: string; mode: "LOGIN" }) => {
-      if (
-        typeof navigator !== "undefined" &&
-        !navigator.onLine
-      ) {
+  const login = useCallback(
+    async (input: { email: string; password: string }) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
         throw new StaffNetworkError();
       }
+      return applyAuthentication(await staffAuthApi.login(input));
+    },
+    [applyAuthentication]
+  );
 
-      return applySession(
-        await staffAuthApi.google(input),
-        "authenticated"
-      );
+  const google = useCallback(
+    async (input: { credential: string; mode: "LOGIN" }) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        throw new StaffNetworkError();
+      }
+      return applyAuthentication(await staffAuthApi.google(input));
+    },
+    [applyAuthentication]
+  );
+
+  const verifyMfa = useCallback(
+    async (input: { challengeToken: string; code: string }) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        throw new StaffNetworkError();
+      }
+      return applySession(await staffAuthApi.verifyMfa(input), "authenticated");
     },
     [applySession]
   );
@@ -378,6 +392,7 @@ export function StaffAuthProvider({
       refresh,
       login,
       google,
+      verifyMfa,
       logout,
       switchOrganization
     }),
@@ -385,6 +400,7 @@ export function StaffAuthProvider({
       error,
       google,
       login,
+      verifyMfa,
       logout,
       online,
       refresh,
