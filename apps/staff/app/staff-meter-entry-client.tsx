@@ -872,6 +872,32 @@ export function StaffMeterEntryClient() {
                   <StatusBadge tone="success">Khớp kỳ</StatusBadge>
                 )}
               </div>
+              {readingDate !== selectedProperty.activeBillingCycle.periodEnd ? (
+                <div className="staff-state staff-state--warning" role="status">
+                  <strong>Đã đồng bộ không có nghĩa đã chốt số cho hóa đơn.</strong>
+                  <span>
+                    Ngày đang nhập: {readingDate.split("-").reverse().join("/")}.
+                    Hóa đơn {selectedProperty.activeBillingCycle.cycleCode} cần chỉ số
+                    ghi đúng ngày cuối kỳ {selectedProperty.activeBillingCycle.periodEnd.split("-").reverse().join("/")}.
+                    Chỉ số của ngày khác vẫn được lưu trên máy chủ nhưng không thay thế số cuối kỳ.
+                    Sau khi ghi đủ số đúng ngày cuối kỳ, Admin cần bấm
+                    &ldquo;Tính lại hóa đơn nháp&rdquo; để cập nhật tiền điện nước.
+                  </span>
+                  {selectedProperty.activeBillingCycle.periodEnd > todayIso() ? (
+                    <span>
+                      Chưa đến ngày cuối kỳ. Không ghi khống hoặc đổi ngày đo thực tế
+                      chỉ để tính hóa đơn sớm.
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="staff-state staff-state--success" role="status">
+                  <span>
+                    Ngày nhập khớp ngày cuối kỳ. Khi đã đồng bộ đủ điện nước,
+                    Admin cần tính lại hóa đơn nháp để cập nhật số tiền.
+                  </span>
+                </div>
+              )}
             ) : selectedProperty ? (
               <div
                 style={{
@@ -887,7 +913,7 @@ export function StaffMeterEntryClient() {
                 }}
               >
                 <WarningOutlined style={{ fontSize: "18px", flexShrink: 0 }} />
-                <span>Cơ sở này chưa mở kỳ thu tiền. Số ghi nhận vẫn được lưu an toàn trên máy và tự động liên kết khi chủ nhà mở kỳ.</span>
+                <span>Cơ sở này chưa mở kỳ thu tiền. Số đã nhập được lưu theo ngày đo. Khi mở kỳ thu tiền, Admin cần tính lại hóa đơn nháp sau khi đã chốt số cuối kỳ; không tự động đổi ngày ghi số.</span>
               </div>
             ) : null}
 
