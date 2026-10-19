@@ -74,6 +74,24 @@ async function json<T>(
   return response.json() as Promise<T>;
 }
 
+export type StaffMfaChallenge = {
+  mfaRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+};
+
+export type StaffMfaEnrollment = {
+  mfaEnrollmentRequired: true;
+  challengeToken: string;
+  expiresAt: string;
+  requiredByRole: string;
+};
+
+export type StaffAuthenticationResult =
+  | StaffSession
+  | StaffMfaChallenge
+  | StaffMfaEnrollment;
+
 export type StaffAuthConfig = {
   registrationEnabled: boolean;
   googleEnabled: boolean;
@@ -95,7 +113,7 @@ export const staffAuthApi = {
     }),
 
   google: (input: { credential: string; mode: "LOGIN" }) =>
-    json<StaffSession>("/auth/google", {
+    json<StaffAuthenticationResult>("/auth/google", {
       method: "POST",
       body: input,
       organization: false,
@@ -110,7 +128,35 @@ export const staffAuthApi = {
     }),
 
   login: (input: { email: string; password: string }) =>
-    json<StaffSession>("/auth/login", {
+    json<StaffAuthenticationResult>("/auth/login", {
+      method: "POST",
+      body: input,
+      organization: false,
+      csrf: false
+    }),
+
+  setupRequiredMfa: (challengeToken: string) =>
+    json<{ secret: string; provisioningUri: string; requiredByRole: string }>(
+      "/auth/mfa/enrollment/setup", {
+        method: "POST",
+        body: { challengeToken },
+        organization: false,
+        csrf: false
+      }
+    ),
+
+  confirmRequiredMfa: (input: { challengeToken: string; code: string }) =>
+    json<StaffSession & { recoveryCodes: string[] }>(
+      "/auth/mfa/enrollment/confirm", {
+        method: "POST",
+        body: input,
+        organization: false,
+        csrf: false
+      }
+    ),
+
+  verifyMfa: (input: { challengeToken: string; code: string }) =>
+    json<StaffSession>("/auth/mfa/verify", {
       method: "POST",
       body: input,
       organization: false,
