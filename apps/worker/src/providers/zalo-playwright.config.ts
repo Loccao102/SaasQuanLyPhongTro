@@ -13,6 +13,8 @@ export interface ZaloPlaywrightConfig {
     searchInputs: readonly string[];
     messageEditors: readonly string[];
     sendButtons: readonly string[];
+    outgoingMessageContainers: readonly string[];
+    conversationHeaders: readonly string[];
   };
 }
 
@@ -142,6 +144,26 @@ export function loadZaloPlaywrightConfig(
         'button[title*="Gửi"]',
         'button[aria-label*="Send"]',
         'button[title*="Send"]'
+      ]),
+      // Positive outgoing-message markers only. Never infer direction from
+      // arbitrary new text elsewhere in the conversation.
+      outgoingMessageContainers: selectorList(env.ZALO_OUTGOING_MESSAGE_SELECTORS, [
+        '[data-testid="outgoing-message"]',
+        '[data-direction="outgoing"]',
+        '[data-message-direction="outgoing"]',
+        '[data-is-own-message="true"]',
+        '.message--outgoing',
+        '.chat-message--outgoing',
+        '.msg-item.me',
+        '.outgoing'
+      ]),
+      conversationHeaders: selectorList(env.ZALO_CONVERSATION_HEADER_SELECTORS, [
+        '[data-testid="conversation-header"]',
+        '.conversation-header',
+        '.chat-header',
+        '.chat-info',
+        '#chat-header',
+        'section#chat header'
       ])
     }
   };

@@ -3,7 +3,6 @@ import test from "node:test";
 import type { ClaimedNotificationJob } from "../notification-types.js";
 import { loadZaloPlaywrightConfig } from "./zalo-playwright.config.js";
 import {
-  existingDeliveryReplayResult,
   normalizeZaloRecipientPhone,
   ZaloPlaywrightProvider
 } from "./zalo-playwright.provider.js";
@@ -35,28 +34,47 @@ test("Zalo Playwright exposes the durable provider id used by notification jobs"
   assert.deepEqual(provider.claimAliases, ["ZALO_PLAYWRIGHT"]);
 });
 
-test("replay detection confirms an existing exact message without exposing message content", () => {
+test("uncertain previous delivery never auto-sends or claims a sent state", async () => {
+  let acquired = false;
+  let loaded = false;
+  const provider = ZaloPlaywrightProvider.withStorage(
+    loadZaloPlaywrightConfig({
+      ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 7).toString("base64")
+    }),
+    { load: async () => { loaded = true; return undefined; }, save: async () => {} },
+    { acquire: async () => { acquired = true; return true; }, release: async () => {} }
+  );
   const claimed = job(true);
-  const result = existingDeliveryReplayResult(claimed, 1);
-
-  assert.ok(result);
-  assert.equal(result.kind, "SENT_CONFIRMED");
-  if (result.kind !== "SENT_CONFIRMED") return;
-  assert.equal(result.recipientVerified, true);
-  assert.equal(result.sendVerified, true);
-
+  const result = await provider.send(claimed);
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") {
+    assert.equal(result.errorCode, "ZALO_PREVIOUS_SEND_UNVERIFIED");
+    assert.equal((result.evidence as { stage: string }).stage, "previous-uncertain-send-review");
+  }
+  assert.equal(acquired, false);
+  assert.equal(loaded, false);
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes(claimed.messageBody), false);
   assert.equal(serialized.includes(claimed.recipientKey), false);
-  assert.equal(
-    (result.evidence as { stage?: string } | undefined)?.stage,
-    "pre-send-replay-detected"
-  );
 });
 
-test("replay detection never auto-confirms a normal first delivery or absent message", () => {
-  assert.equal(existingDeliveryReplayResult(job(false), 1), null);
-  assert.equal(existingDeliveryReplayResult(job(true), 0), null);
+test("a fresh first attempt still proceeds to tenant session lookup", async () => {
+  let loaded = false;
+  let released = false;
+  const provider = ZaloPlaywrightProvider.withStorage(
+    loadZaloPlaywrightConfig({
+      ZALO_SESSION_KEY_BASE64: Buffer.alloc(32, 7).toString("base64")
+    }),
+    { load: async () => { loaded = true; return undefined; }, save: async () => {} },
+    { acquire: async () => true, release: async () => { released = true; } }
+  );
+  const result = await provider.send(job(false));
+  assert.equal(result.kind, "MANUAL_REVIEW");
+  if (result.kind === "MANUAL_REVIEW") {
+    assert.equal(result.errorCode, "ZALO_SESSION_NOT_CONNECTED");
+  }
+  assert.equal(loaded, true);
+  assert.equal(released, true);
 });
 
 test("Zalo phone-only recipients normalize local and international formats", () => {

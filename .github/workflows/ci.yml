@@ -131,6 +131,28 @@ jobs:
         if: always()
         run: pnpm build
 
+  zalo-synthetic-browser:
+    name: Zalo Playwright synthetic browser safety checks
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'fix/zalo-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 12.4.1
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium runtime
+        run: pnpm --filter @propops/worker exec playwright install --with-deps chromium
+      - name: Run local synthetic Zalo UI safety smoke
+        env:
+          ZALO_BROWSER_SMOKE: "1"
+        run: pnpm --filter @propops/worker exec tsx --test src/providers/zalo-synthetic-browser.test.ts
+
   # Only the reviewed main branch may execute inside the VM.
   # PR code is verified on GitHub-hosted runners, never on the VM.
   deploy-staging-vm:

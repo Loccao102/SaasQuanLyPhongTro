@@ -36,31 +36,6 @@ function evidence(
   };
 }
 
-export function existingDeliveryReplayResult(
-  job: ClaimedNotificationJob,
-  visibleExactMatches: number
-): NotificationProviderResult | null {
-  if (
-    !job.deliveryReplayCheckRequired ||
-    !Number.isInteger(visibleExactMatches) ||
-    visibleExactMatches < 1
-  ) {
-    return null;
-  }
-
-  return {
-    kind: "SENT_CONFIRMED",
-    recipientVerified: true,
-    sendVerified: true,
-    providerReference: null,
-    evidence: evidence(job, "pre-send-replay-detected", {
-      visibleExactMatches,
-      recipientVerification: "display-name-exact",
-      postSendVerification: "existing-message-bubble-exact"
-    })
-  };
-}
-
 async function firstVisible(
   page: Page,
   selectors: readonly string[],
@@ -104,56 +79,70 @@ type RecipientCandidate = {
   expectedName: string | null;
 };
 
+const SEARCH_RESULT_CARD_SELECTORS = [
+  '[data-testid="contact-search-result"]',
+  '[data-testid="user-search-result"]',
+  '[role="listbox"] [role="option"]',
+  '.search-result .friend-item',
+  '.search-result .user-item',
+  '.search-result__item',
+  '.search-result-item',
+  '.list-search-result .item'
+] as const;
+
 async function findRecipientCandidate(
   page: Page,
   name: string | null,
   phone: string
 ): Promise<RecipientCandidate> {
-  if (name) {
-    const found = await visibleExactTextCount(page, name);
-    return { ...found, verification: "display-name-exact", expectedName: name };
-  }
-
-  // Exact phone displayed in the search result is preferred.
-  for (const value of [phone, "84" + phone.slice(1), "+84" + phone.slice(1)]) {
-    const found = await visibleExactTextCount(page, value);
-    if (found.count) {
-      return { ...found, verification: "phone-text-exact", expectedName: null };
-    }
-  }
-
-  // Some Zalo versions expose a contact card without showing its phone.
-  // Select only ONE visible card in the phone-search results, never the
-  // first arbitrary conversation or free-text suggestion.
-  const selectors = [
-    '[data-testid="contact-search-result"]',
-    '[data-testid="user-search-result"]',
-    '[role="listbox"] [role="option"]',
-    '.search-result .friend-item',
-    '.search-result .user-item',
-    '.search-result__item',
-    '.search-result-item',
-    '.list-search-result .item'
-  ];
-  for (const selector of selectors) {
+  // The search was made by phone. Never click an arbitrary exact-name/phone
+  // text node outside the active contact result cards (for example, a sidebar
+  // conversation, a toast, or an unrelated header).
+  for (const selector of SEARCH_RESULT_CARD_SELECTORS) {
     const entries = page.locator(selector);
     const visible: Locator[] = [];
-    for (let i = 0, n = Math.min(await entries.count(), 20); i < n; i += 1) {
-      const entry = entries.nth(i);
+    for (let index = 0, count = Math.min(await entries.count(), 20); index < count; index++) {
+      const entry = entries.nth(index);
       if (await entry.isVisible()) visible.push(entry);
     }
     if (!visible.length) continue;
-    const displayName = visible.length === 1
-      ? (await visible[0]!.innerText()).split("\n")
-          .map((part) => part.trim())
-          .find((part) => part.length > 1 && part.length <= 100 &&
-            part !== phone && !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(part)) ?? null
-      : null;
+    // Ambiguous phone search is not resolved by guessing from a coincidental
+    // display name. Search results can share the same name.
+    if (visible.length !== 1) {
+      return { first: null, count: visible.length, verification: "phone-search-unique", expectedName: null };
+    }
+    const card = visible[0]!;
+    const cardText = await card.innerText();
+    const lines = cardText.split("\n").map(line => line.trim()).filter(Boolean);
+    // Capture the FULL phone-like token (including surplus digits).
+    // Matching just the first 10 digits of an 11-digit contact number could
+    // otherwise falsely verify a different person.
+    const visiblePhoneCandidates = [...cardText.matchAll(
+      /(?:^|[^\d])((?:\+?84[\s().-]*|0)[35789](?:[\s().-]*\d){8,14})(?![\s().-]*\d)/g
+    )].map(match => match[1] ?? "");
+    const visiblePhones = visiblePhoneCandidates
+      .map(value => normalizeZaloRecipientPhone(value));
+    // Invalid-length phone-like values and conflicting phones both fail closed.
+    // A name match cannot override a clearly contradictory phone.
+    if (visiblePhones.some(value => value !== phone)) {
+      return { first: null, count: 0, verification: "phone-text-exact", expectedName: null };
+    }
+    const matchingPhone = visiblePhones.includes(phone);
+    if (name && !lines.includes(name)) {
+      return { first: null, count: 0, verification: "display-name-exact", expectedName: name };
+    }
+    const visibleName = name ?? lines.find(line =>
+      line.length > 1 && line.length <= 100 &&
+      !normalizeZaloRecipientPhone(line) &&
+      !/^(Kết bạn|Nhắn tin|Add friend|Message)$/i.test(line)
+    ) ?? null;
+    // A phone-only record without a stable visible name cannot be confirmed
+    // against the conversation header and should be reviewed by an operator.
     return {
-      first: displayName && visible.length === 1 ? visible[0]! : null,
-      count: visible.length,
-      verification: "phone-search-unique",
-      expectedName: displayName
+      first: visibleName ? card : null,
+      count: 1,
+      verification: name ? "display-name-exact" : matchingPhone ? "phone-text-exact" : "phone-search-unique",
+      expectedName: visibleName
     };
   }
   return { first: null, count: 0, verification: "phone-search-unique", expectedName: null };
@@ -195,25 +184,70 @@ async function anyVisible(
   return (await firstVisible(page, selectors, timeoutMs)) !== null;
 }
 
-async function visibleExactTextCount(
+async function visibleOutgoingExactTextCount(
   page: Page,
   text: string,
-  limit = 20
-): Promise<{ count: number; first: Locator | null }> {
-  const locator = page.getByText(text, { exact: true });
-  const total = Math.min(await locator.count(), limit);
+  selectors: readonly string[]
+): Promise<number> {
+  // Only count message containers positively identified as *ours*.
+  // A new incoming bubble or a generic text match is not send evidence.
   let count = 0;
-  let first: Locator | null = null;
+  for (const selector of selectors) {
+    const matches = page.locator(selector);
+    let total: number;
+    try {
+      total = Math.min(await matches.count(), 60);
+    } catch {
+      // Zalo selectors may change; a broken selector must not prove delivery.
+      continue;
+    }
+    for (let i = 0; i < total; i++) {
+      const container = matches.nth(i);
+      try {
+        if (!await container.isVisible()) continue;
+        let textIsVisible = (await container.innerText()).trim() === text;
+        if (!textIsVisible) {
+          const exact = container.getByText(text, { exact: true });
+          for (let j = 0, n = Math.min(await exact.count(), 12); j < n; j++) {
+            if (await exact.nth(j).isVisible()) {
+              textIsVisible = true;
+              break;
+            }
+          }
+        }
+        if (textIsVisible) count++;
+      } catch {
+        // The SPA may replace message nodes while we examine them.
+      }
+    }
+    // The first supported marker family is authoritative, preventing the
+    // same bubble being double counted by two overlapping CSS selectors.
+    if (count > 0) return count;
+  }
+  return 0;
+}
 
-  for (let index = 0; index < total; index += 1) {
-    const candidate = locator.nth(index);
-    if (await candidate.isVisible()) {
-      count += 1;
-      first ??= candidate;
+async function visibleExactNameInConversationHeader(
+  page: Page,
+  expectedName: string,
+  selectors: readonly string[]
+): Promise<boolean> {
+  for (const selector of selectors) {
+    try {
+      const headers = page.locator(selector);
+      for (let i = 0, count = Math.min(await headers.count(), 12); i < count; i++) {
+        const header = headers.nth(i);
+        if (!await header.isVisible()) continue;
+        const names = header.getByText(expectedName, { exact: true });
+        for (let j = 0, matches = Math.min(await names.count(), 8); j < matches; j++) {
+          if (await names.nth(j).isVisible()) return true;
+        }
+      }
+    } catch {
+      // DOM/selector changes must not produce a false recipient confirmation.
     }
   }
-
-  return { count, first };
+  return false;
 }
 
 async function editorText(locator: Locator): Promise<string> {
@@ -368,6 +402,19 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         errorCode: "RECIPIENT_PHONE_INVALID",
         errorMessage: "A valid Vietnamese recipient phone is required for Zalo lookup.",
         evidence: evidence(job, "validate-recipient-phone")
+      };
+    }
+
+    // A stale worker or an UNKNOWN outcome may already have sent this message.
+    // Neither an exact text match in the DOM nor its absence proves delivery:
+    // it might be an incoming bubble, hidden history or a delayed provider update.
+    // Never send a second message or mark it SENT without an operator check.
+    if (job.deliveryReplayCheckRequired) {
+      return {
+        kind: "MANUAL_REVIEW",
+        errorCode: "ZALO_PREVIOUS_SEND_UNVERIFIED",
+        errorMessage: "A prior send attempt has an uncertain outcome. Check the Zalo conversation manually before deciding whether another send is needed.",
+        evidence: evidence(job, "previous-uncertain-send-review")
       };
     }
 
@@ -533,11 +580,12 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
         }
 
         if (recipientMatches.expectedName) {
-          const conversationMatches = await visibleExactTextCount(
+          const headerMatches = await visibleExactNameInConversationHeader(
             page,
-            recipientMatches.expectedName
+            recipientMatches.expectedName,
+            this.config.selectors.conversationHeaders
           );
-          if (conversationMatches.count < 1) {
+          if (!headerMatches) {
             return {
               kind: "MANUAL_REVIEW",
               errorCode: "RECIPIENT_VERIFICATION_FAILED",
@@ -547,20 +595,11 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           }
         }
 
-        if (job.deliveryReplayCheckRequired) {
-          const existingDelivery = await visibleExactTextCount(
-            page,
-            job.messageBody
-          );
-          const replayResult = existingDeliveryReplayResult(
-            job,
-            existingDelivery.count
-          );
-          if (replayResult) {
-            return replayResult;
-          }
-        }
-
+        // Snapshot matching text *before* composing. An old message (or a
+        // matching incoming message) must never become proof that this send worked.
+        const preSendMatches = await visibleOutgoingExactTextCount(
+          page, job.messageBody, this.config.selectors.outgoingMessageContainers
+        );
         monitorStage = "PREPARING_MESSAGE";
         await editor.fill(job.messageBody);
 
@@ -612,19 +651,25 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           };
         }
 
-        const sentMessage = page.getByText(job.messageBody, { exact: true }).last();
-        try {
-          await sentMessage.waitFor({
-            state: "visible",
-            timeout: this.config.verificationTimeoutMs
-          });
-        } catch {
+        const deadline = Date.now() + this.config.verificationTimeoutMs;
+        let postSendMatches = preSendMatches;
+        do {
+          postSendMatches = await visibleOutgoingExactTextCount(
+            page, job.messageBody, this.config.selectors.outgoingMessageContainers
+          );
+          if (postSendMatches > preSendMatches) break;
+          await page.waitForTimeout(Math.min(250, Math.max(0, deadline - Date.now())));
+        } while (Date.now() < deadline);
+        if (postSendMatches <= preSendMatches) {
           return {
             kind: "UNKNOWN",
             errorCode: "SEND_UNVERIFIED",
             errorMessage:
-              "A post-send message bubble matching the message body was not observed.",
-            evidence: evidence(job, "verify-sent-message")
+              "No NEW outgoing message with a trusted direction marker was observed; incoming or old bubbles cannot verify delivery.",
+            evidence: evidence(job, "verify-new-sent-message", {
+              outgoingBubblesBefore: preSendMatches,
+              outgoingBubblesAfter: postSendMatches
+            })
           };
         }
 
@@ -637,7 +682,7 @@ export class ZaloPlaywrightProvider implements NotificationProvider {
           providerReference: null,
           evidence: evidence(job, "sent-confirmed", {
             recipientVerification: recipientMatches.verification,
-            postSendVerification: "message-bubble-exact"
+            postSendVerification: "new-outgoing-bubble-exact"
           })
         };
       } finally {
