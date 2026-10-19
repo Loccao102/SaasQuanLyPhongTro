@@ -847,6 +847,7 @@ export function StaffMeterEntryClient() {
             </section>
 
             {selectedProperty?.activeBillingCycle ? (
+              <>
               <div className="staff-cycle-banner">
                 <div className="staff-cycle-info">
                   <span className="staff-cycle-kicker">Kỳ tính tiền đang mở</span>
@@ -898,6 +899,7 @@ export function StaffMeterEntryClient() {
                   </span>
                 </div>
               )}
+              </>
             ) : selectedProperty ? (
               <div
                 style={{
