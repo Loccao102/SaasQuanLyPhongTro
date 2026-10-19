@@ -85,5 +85,17 @@ if [[ ! -f "$seed_marker" ]]; then
   mkdir -p "$(dirname "$seed_marker")"
   printf "%s\n" "$GITHUB_SHA" > "$seed_marker"
 fi
+# One-time September 2026 catch-up cycle for the same demo property. No
+# invoice is issued automatically; the user can calculate and finalize in Admin.
+# A separate marker ensures a failed transaction is retried and a successful
+# import is never repeated on normal deploys.
+september_marker="${HOME}/.local/share/habi/loccao102-qa-september-catchup-20261019.done"
+if [[ ! -f "$september_marker" ]]; then
+  echo "Applying September 2026 catch-up billing QA fixture for loccao102@gmail.com..."
+  "${compose[@]}" exec -T -w /app/apps/api -e HABI_QA_SEPTEMBER_STAGING_ONLY=1 api node scripts/seed-loccao102-september-catchup.mjs
+  mkdir -p "$(dirname "$september_marker")"
+  printf "%s\n" "$GITHUB_SHA" > "$september_marker"
+fi
+
 "${compose[@]}" ps
 echo "Staging VM deploy finished at commit $GITHUB_SHA"
