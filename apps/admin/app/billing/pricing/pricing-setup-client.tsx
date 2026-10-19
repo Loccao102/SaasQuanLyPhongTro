@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent
 } from "react";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   MoneyDisplay,
   PageHeader,
@@ -29,6 +29,20 @@ import {
   type PricingListResponse
 } from "../../../lib/pricing-api";
 
+export interface ServiceFeeRow {
+  id: string;
+  name: string;
+  mode: "FIXED_ROOM" | "PER_PERSON";
+  priceVnd: number | "";
+}
+
+const DEFAULT_SERVICE_FEES: ServiceFeeRow[] = [
+  { id: "fee-service-person", name: "Phí dịch vụ chung", mode: "PER_PERSON", priceVnd: 50000 },
+  { id: "fee-elevator", name: "Phí thang máy", mode: "FIXED_ROOM", priceVnd: 50000 },
+  { id: "fee-internet", name: "Internet / Wifi", mode: "FIXED_ROOM", priceVnd: 100000 },
+  { id: "fee-trash", name: "Rác / vệ sinh", mode: "FIXED_ROOM", priceVnd: 50000 }
+];
+
 const itemLabels: Record<PricingItemType, string> = {
   ELECTRICITY_PER_KWH: "Điện (đồng hồ kWh)",
   ELECTRICITY_PER_PERSON: "Điện (theo đầu người)",
@@ -42,7 +56,7 @@ const itemLabels: Record<PricingItemType, string> = {
   PARKING: "Gửi xe (khoán phòng)",
   TRASH: "Rác / vệ sinh",
   ELEVATOR: "Thang máy",
-  CUSTOM: "Phí khác"
+  CUSTOM: "Phí dịch vụ tùy chỉnh"
 };
 
 function itemUnit(itemType: PricingItemType) {
@@ -63,6 +77,7 @@ function itemUnit(itemType: PricingItemType) {
     case "PARKING":
     case "TRASH":
     case "ELEVATOR":
+    case "CUSTOM":
       return "/ phòng / tháng";
     default:
       return "/ đơn vị";
@@ -132,6 +147,29 @@ export function PricingSetupClient() {
   const [parkingMode, setParkingMode] = useState<
     "VEHICLE_PARKING" | "PARKING" | "NONE"
   >("VEHICLE_PARKING");
+  const [serviceFees, setServiceFees] = useState<ServiceFeeRow[]>(DEFAULT_SERVICE_FEES);
+
+  function updateFee(id: string, patch: Partial<ServiceFeeRow>) {
+    setServiceFees((prev) =>
+      prev.map((fee) => (fee.id === id ? { ...fee, ...patch } : fee))
+    );
+  }
+
+  function addCustomFee() {
+    setServiceFees((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        name: "",
+        mode: "FIXED_ROOM",
+        priceVnd: ""
+      }
+    ]);
+  }
+
+  function removeFee(id: string) {
+    setServiceFees((prev) => prev.filter((fee) => fee.id !== id));
+  }
 
   const loadPricing = useCallback(async (propertyId: string) => {
     if (!propertyId) {
@@ -253,15 +291,45 @@ export function PricingSetupClient() {
         addItem("parkingPriceVnd", "PARKING", "Phí gửi xe (khoán phòng)", 40);
       }
 
-      addItem(
-        "servicePerPersonPriceVnd",
-        "SERVICE_PER_PERSON",
-        "Phí dịch vụ chung (theo người)",
-        50
-      );
-      addItem("elevatorPriceVnd", "ELEVATOR", "Phí thang máy", 55);
-      addItem("internetPriceVnd", "INTERNET", "Internet", 60);
-      addItem("trashPriceVnd", "TRASH", "Rác / vệ sinh", 70);
+      let feeSortOrder = 50;
+      for (const fee of serviceFees) {
+        if (fee.priceVnd === "" || Number(fee.priceVnd) <= 0) {
+          continue;
+        }
+        const name = fee.name.trim();
+        if (!name) {
+          throw new Error("Vui lòng nhập tên cho các khoản phí có đơn giá.");
+        }
+        const unitPriceVnd = Number(fee.priceVnd);
+        if (!Number.isSafeInteger(unitPriceVnd) || unitPriceVnd < 0) {
+          throw new Error(`Đơn giá của khoản phí "${name}" phải là số nguyên VND không âm.`);
+        }
+
+        let itemType: PricingItemType = "CUSTOM";
+        if (fee.mode === "PER_PERSON") {
+          itemType = "SERVICE_PER_PERSON";
+        } else {
+          const lower = name.toLowerCase();
+          if (lower === "phí thang máy" || lower === "thang máy") {
+            itemType = "ELEVATOR";
+          } else if (lower === "internet" || lower === "wifi" || lower === "internet / wifi" || lower === "mạng") {
+            itemType = "INTERNET";
+          } else if (lower === "rác / vệ sinh" || lower === "tiền rác" || lower === "rác" || lower === "vệ sinh") {
+            itemType = "TRASH";
+          }
+        }
+
+        const isDynamic = itemType === "SERVICE_PER_PERSON";
+        items.push({
+          id: crypto.randomUUID(),
+          itemType,
+          description: name,
+          unitPriceVnd,
+          fixedQuantity: isDynamic ? undefined : 1,
+          sortOrder: feeSortOrder
+        });
+        feeSortOrder += 5;
+      }
 
       const effectiveFrom = String(form.get("effectiveFrom") ?? "");
       const effectiveTo = String(form.get("effectiveTo") ?? "") || null;
@@ -533,51 +601,124 @@ export function PricingSetupClient() {
               )}
             </div>
 
-            <label>
-              <span>Phí dịch vụ theo đầu người · VND/người/tháng (vệ sinh...)</span>
-              <input
-                name="servicePerPersonPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="50000"
-              />
-            </label>
-            <label>
-              <span>Phí thang máy · VND/phòng/tháng</span>
-              <input
-                name="elevatorPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="50000"
-              />
-            </label>
-            <label>
-              <span>Internet · VND/tháng</span>
-              <input
-                name="internetPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="100000"
-              />
-            </label>
-            <label>
-              <span>Rác / vệ sinh · VND/tháng</span>
-              <input
-                name="trashPriceVnd"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="50000"
-              />
-            </label>
-            <div className="button-row">
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                <div>
+                  <strong style={{ fontSize: "14px", color: "var(--color-heading, #0f172a)" }}>
+                    Các khoản phí dịch vụ & tiện ích
+                  </strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    Tự do đặt tên khoản phí theo mong muốn (VD: &quot;Phí dịch vụ nói chung&quot;), chọn cách tính và thêm/bớt các phí khác.
+                  </p>
+                </div>
+              </div>
+
+              {serviceFees.length === 0 ? (
+                <div
+                  style={{
+                    padding: "16px",
+                    textAlign: "center",
+                    border: "1px dashed var(--color-border, #cbd5e1)",
+                    borderRadius: "8px",
+                    color: "var(--color-text-muted)",
+                    fontSize: "13px"
+                  }}
+                >
+                  Chưa có khoản phí dịch vụ nào. Bấm nút bên dưới để thêm.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {serviceFees.map((fee, idx) => (
+                    <div key={fee.id} className="pricing-fee-row">
+                      <div>
+                        <span style={{ fontSize: "11px", color: "var(--color-text-muted)", display: "block", marginBottom: "3px" }}>
+                          Tên khoản phí #{idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={fee.name}
+                          onChange={(e) => updateFee(fee.id, { name: e.target.value })}
+                          placeholder="VD: Phí dịch vụ nói chung"
+                          style={{ width: "100%", fontSize: "13px" }}
+                        />
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "11px", color: "var(--color-text-muted)", display: "block", marginBottom: "3px" }}>
+                          Hình thức tính
+                        </span>
+                        <select
+                          value={fee.mode}
+                          onChange={(e) =>
+                            updateFee(fee.id, {
+                              mode: e.target.value as "FIXED_ROOM" | "PER_PERSON"
+                            })
+                          }
+                          style={{
+                            width: "100%",
+                            fontSize: "13px",
+                            padding: "0.55rem 0.65rem",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border-color, #d1d5db)",
+                            background: "white"
+                          }}
+                        >
+                          <option value="FIXED_ROOM">Khoán phòng (VND/phòng/tháng)</option>
+                          <option value="PER_PERSON">Theo số người (VND/người/tháng)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <span style={{ fontSize: "11px", color: "var(--color-text-muted)", display: "block", marginBottom: "3px" }}>
+                          Đơn giá (VND)
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1000"
+                          value={fee.priceVnd}
+                          onChange={(e) =>
+                            updateFee(fee.id, {
+                              priceVnd: e.target.value === "" ? "" : Number(e.target.value)
+                            })
+                          }
+                          placeholder="VD: 50000"
+                          style={{ width: "100%", fontSize: "13px" }}
+                        />
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "center", paddingTop: "14px" }}>
+                        <button
+                          type="button"
+                          className="text-button text-button--danger"
+                          onClick={() => removeFee(fee.id)}
+                          title="Xóa khoản phí này"
+                          style={{ padding: "4px", fontSize: "15px" }}
+                        >
+                          <DeleteOutlined />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  className="secondary-button secondary-button--compact"
+                  onClick={addCustomFee}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  <PlusOutlined />
+                  <span>Thêm khoản phí khác</span>
+                </button>
+                <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                  💡 Khoản phí để trống mức giá hoặc 0đ sẽ không được đưa vào bảng giá.
+                </span>
+              </div>
+            </div>
+            <div className="button-row" style={{ marginTop: "16px" }}>
               <button className="primary-button" type="submit" disabled={saving}>
                 Xem lại biểu giá
               </button>
