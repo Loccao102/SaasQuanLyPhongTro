@@ -18,7 +18,6 @@ import {
   DashboardOutlined,
   DesktopOutlined,
   DollarOutlined,
-  ExclamationCircleFilled,
   EyeInvisibleOutlined,
   EyeOutlined,
   FileDoneOutlined,
