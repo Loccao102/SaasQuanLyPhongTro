@@ -261,6 +261,11 @@ export function LeaseCreateClient() {
       };
     }
 
+    const occupantCountVal = Math.max(
+      1,
+      Math.min(20, Math.floor(Number(form.get("occupantCount") ?? 1)))
+    );
+
     setSaving(true);
     setMutationError(null);
     try {
@@ -273,12 +278,15 @@ export function LeaseCreateClient() {
         baseRentVnd: Number(form.get("baseRentVnd") ?? 0),
         depositRequiredVnd: Number(form.get("depositRequiredVnd") ?? 0),
         billingDay: Number(form.get("billingDay") ?? 1),
+        occupantCount: occupantCountVal,
         primaryResident: selectedResident
           ? null
           : {
               fullName: String(form.get("fullName") ?? ""),
               phone: String(form.get("phone") ?? "") || null,
-              email: String(form.get("email") ?? "") || null
+              email: String(form.get("email") ?? "") || null,
+              identityDocumentNumber:
+                String(form.get("identityDocumentNumber") ?? "").trim() || null
             }
       });
       commandIdentity.current = null;
@@ -604,6 +612,25 @@ export function LeaseCreateClient() {
                 <span>Ngày chốt tiền hàng tháng (1-31) *</span>
                 <input name="billingDay" type="number" min="1" max="31" step="1" defaultValue="1" required />
               </label>
+
+              <label className="asset-form__wide" style={{ background: "var(--color-bg-subtle, #f8fafc)", padding: "12px 14px", borderRadius: "8px", border: "1px dashed var(--color-border, #cbd5e1)" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+                  <UserOutlined style={{ color: "var(--color-primary)" }} /> Số lượng khách ở phòng này (tính tiền nước / dịch vụ theo đầu người) *
+                </span>
+                <input
+                  name="occupantCount"
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                  defaultValue="1"
+                  required
+                  style={{ maxWidth: "160px", marginTop: "4px" }}
+                />
+                <small style={{ display: "block", color: "var(--color-text-muted, #64748b)", fontSize: "12px", marginTop: "6px", lineHeight: "1.5" }}>
+                  💡 <strong>Ví dụ phòng ở 3 người:</strong> Bạn chỉ cần nhập thông tin 1 người đại diện (chủ hợp đồng) bên dưới. Hệ thống sẽ tự tạo sẵn 2 khách ở cùng để tiện tính tiền nước và phí dịch vụ theo đầu người ngay từ đầu. Thông tin chi tiết (CCCD, SĐT...) của các khách này có thể cập nhật sau bất cứ lúc nào.
+                </small>
+              </label>
             </div>
           </section>
 
@@ -685,6 +712,10 @@ export function LeaseCreateClient() {
                 <label>
                   <span>Họ và tên *</span>
                   <input name="fullName" required placeholder="Nguyễn Văn A" />
+                </label>
+                <label>
+                  <span>Số CCCD / Mã định danh (tùy chọn)</span>
+                  <input name="identityDocumentNumber" placeholder="Ví dụ: 001200001234" maxLength={20} />
                 </label>
                 <label>
                   <span>Số điện thoại</span>

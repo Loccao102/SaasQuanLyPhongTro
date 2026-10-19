@@ -57,6 +57,7 @@ export type LeaseDetailResponse = {
     fullName: string;
     phone: string | null;
     email: string | null;
+    identityDocumentNumber?: string | null;
     role: string;
     joinedOn: string | null;
     leftOn: string | null;
@@ -179,10 +180,12 @@ export type CreateLeaseDraftInput = {
   baseRentVnd: number;
   depositRequiredVnd: number;
   billingDay: number;
+  occupantCount?: number | null;
   primaryResident?: {
     fullName: string;
     phone?: string | null;
     email?: string | null;
+    identityDocumentNumber?: string | null;
   } | null;
 };
 
@@ -246,6 +249,30 @@ export const adminLeasesApi = {
     request<{ leaseId: string; residentId: string; status: "DRAFT" }>("", {
       method: "POST",
       body: input
+    }),
+  updatePartyResident: (
+    leaseId: string,
+    residentId: string,
+    data: {
+      fullName: string;
+      phone?: string | null;
+      email?: string | null;
+      identityDocumentNumber?: string | null;
+      dateOfBirth?: string | null;
+      notes?: string | null;
+    }
+  ) =>
+    request<{
+      residentId: string;
+      fullName: string;
+      phone: string | null;
+      email: string | null;
+      identityDocumentNumber: string | null;
+      dateOfBirth: string | null;
+      notes: string | null;
+    }>("/" + encodeURIComponent(leaseId) + "/parties/" + encodeURIComponent(residentId), {
+      method: "PATCH",
+      body: data
     }),
   attachments: (leaseId: string) =>
     request<{ leaseId: string; attachments: LeaseAttachment[] }>(

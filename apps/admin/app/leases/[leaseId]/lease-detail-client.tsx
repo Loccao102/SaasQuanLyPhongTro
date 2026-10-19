@@ -3,7 +3,15 @@
 import { DateInput, DateTimeInput } from "@propops/ui/date-input";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  CloseOutlined,
+  EditOutlined,
+  IdcardOutlined,
+  PlusOutlined,
+  UserOutlined
+} from "@ant-design/icons";
 import { MoneyDisplay, PageHeader, SectionHeader, StatusBadge, formatDateVi } from "@propops/ui";
 import { AdminShell } from "../../../components/admin-shell";
 import {
@@ -133,8 +141,23 @@ function auditLabel(action: string): string {
       return "Xóa tệp đính kèm";
     case "LEASE_AMENDED":
       return "Ký phụ lục hợp đồng";
+    case "LEASE_PARTY_RESIDENT_UPDATED":
+      return "Cập nhật thông tin khách ở";
     default:
       return action;
+  }
+}
+
+function partyRoleMeta(role: string) {
+  switch (role) {
+    case "PRIMARY_TENANT":
+      return { label: "Chủ hợp đồng (Đại diện)", tone: "info" as const };
+    case "CO_TENANT":
+      return { label: "Đồng thuê", tone: "neutral" as const };
+    case "OCCUPANT":
+      return { label: "Người ở cùng", tone: "neutral" as const };
+    default:
+      return { label: role, tone: "neutral" as const };
   }
 }
 
@@ -171,6 +194,14 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [amendmentModalOpen, setAmendmentModalOpen] = useState(false);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [editingParty, setEditingParty] = useState<{
+    residentId: string;
+    fullName: string;
+    phone: string | null;
+    email: string | null;
+    identityDocumentNumber?: string | null;
+    role: string;
+  } | null>(null);
   const commandKeys = useRef<Record<string, string>>({});
 
   const keyFor = (action: string) => {
@@ -721,6 +752,46 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Không thể xóa phương tiện.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitUpdateParty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingParty) return;
+    const form = new FormData(event.currentTarget);
+    const fullName = String(form.get("fullName") ?? "").trim();
+    if (!fullName) {
+      setActionError("Vui lòng nhập họ và tên khách ở.");
+      return;
+    }
+    const identityDocumentNumber =
+      String(form.get("identityDocumentNumber") ?? "").trim() || null;
+    const phone = String(form.get("phone") ?? "").trim() || null;
+    const email = String(form.get("email") ?? "").trim() || null;
+
+    setSaving(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await adminLeasesApi.updatePartyResident(leaseId, editingParty.residentId, {
+        fullName,
+        phone,
+        email,
+        identityDocumentNumber
+      });
+      setEditingParty(null);
+      setActionSuccess(
+        `Đã cập nhật thông tin khách ở "${fullName}" thành công.`
+      );
+      await load();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "Không thể cập nhật thông tin khách ở."
+      );
     } finally {
       setSaving(false);
     }
@@ -1502,39 +1573,105 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
         {data.parties.length === 0 ? (
           <div className="admin-state">Chưa có bên thuê trên hợp đồng.</div>
         ) : (
-          data.parties.map((party) => (
-            <div className="resident-row" key={party.residentId}>
-              <div className="resident-avatar">
-                {party.fullName
-                  .split(" ")
-                  .slice(-2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase()}
-              </div>
-              <div>
-                <strong>{party.fullName}</strong>
-                <span>{party.phone ?? party.email ?? "Chưa có liên hệ"}</span>
-              </div>
-              <div className="button-row">
-                <StatusBadge tone={party.role === "PRIMARY_TENANT" ? "info" : "neutral"}>
-                  {party.role}
-                </StatusBadge>
-                {lease.status === "DRAFT" &&
-                data.permissions.manage &&
-                party.role !== "PRIMARY_TENANT" ? (
-                  <button
-                    className="secondary-button secondary-button--compact"
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void removeParty(party.residentId)}
+          data.parties.map((party) => {
+            const roleInfo = partyRoleMeta(party.role);
+            const isPlaceholder = party.fullName.includes("Chờ cập nhật");
+            return (
+              <div
+                className="resident-row"
+                key={party.residentId}
+                style={
+                  isPlaceholder
+                    ? {
+                        background: "rgba(245, 158, 11, 0.04)",
+                        borderLeft: "3px solid #f59e0b",
+                        paddingLeft: "12px"
+                      }
+                    : undefined
+                }
+              >
+                <div
+                  className="resident-avatar"
+                  style={
+                    isPlaceholder
+                      ? {
+                          border: "1px dashed #f59e0b",
+                          background: "#fffbeb",
+                          color: "#d97706"
+                        }
+                      : undefined
+                  }
+                >
+                  {isPlaceholder ? (
+                    <UserOutlined />
+                  ) : (
+                    party.fullName
+                      .split(" ")
+                      .slice(-2)
+                      .map((part) => part[0])
+                      .join("")
+                      .toUpperCase()
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: "14px", color: isPlaceholder ? "#92400e" : undefined }}>
+                      {party.fullName}
+                    </strong>
+                    <StatusBadge tone={roleInfo.tone}>{roleInfo.label}</StatusBadge>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      fontSize: "13px",
+                      color: "var(--color-text-muted, #64748b)",
+                      marginTop: "3px"
+                    }}
                   >
-                    Xóa
-                  </button>
-                ) : null}
+                    <span>{party.phone ? `SĐT: ${party.phone}` : "Chưa có SĐT"}</span>
+                    {party.email ? <span>· {party.email}</span> : null}
+                    {party.identityDocumentNumber ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--color-primary, #2563eb)", fontWeight: 500 }}>
+                        <IdcardOutlined /> CCCD: {party.identityDocumentNumber}
+                      </span>
+                    ) : (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#d97706", fontSize: "12px", background: "#fef3c7", padding: "1px 6px", borderRadius: "4px" }}>
+                        <IdcardOutlined /> Chưa cập nhật CCCD
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="button-row">
+                  {data.permissions.manage ? (
+                    <button
+                      className="secondary-button secondary-button--compact"
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setEditingParty(party)}
+                      title="Sửa họ tên, CCCD, SĐT của khách"
+                    >
+                      <EditOutlined aria-hidden="true" /> Sửa thông tin
+                    </button>
+                  ) : null}
+                  {lease.status === "DRAFT" &&
+                  data.permissions.manage &&
+                  party.role !== "PRIMARY_TENANT" ? (
+                    <button
+                      className="secondary-button secondary-button--compact"
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void removeParty(party.residentId)}
+                    >
+                      Xóa
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </section>
 
@@ -1987,6 +2124,106 @@ export function LeaseDetailClient({ leaseId }: { leaseId: string }) {
           </ol>
         )}
       </section>
+      {editingParty ? (
+        <div className="habi-modal-backdrop" onClick={() => setEditingParty(null)}>
+          <div
+            className="habi-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="habi-modal-header">
+              <div>
+                <h3>Cập nhật thông tin khách ở</h3>
+                <p>
+                  {editingParty.role === "PRIMARY_TENANT"
+                    ? "Chủ hợp đồng (Người đại diện)"
+                    : editingParty.role === "CO_TENANT"
+                      ? "Đồng thuê"
+                      : "Người ở cùng"}
+                  {" · "}Phòng {lease.room.code}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="habi-modal-close-btn"
+                onClick={() => setEditingParty(null)}
+                aria-label="Đóng"
+              >
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <form className="asset-form" onSubmit={(e) => void submitUpdateParty(e)}>
+              <label className="asset-form__wide">
+                <span>Họ và tên khách ở *</span>
+                <input
+                  name="fullName"
+                  required
+                  defaultValue={editingParty.fullName}
+                  placeholder="Ví dụ: Nguyễn Văn B"
+                  autoFocus
+                />
+              </label>
+
+              <label className="asset-form__wide">
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <IdcardOutlined /> Số CCCD / CMND / Mã định danh
+                </span>
+                <input
+                  name="identityDocumentNumber"
+                  defaultValue={editingParty.identityDocumentNumber ?? ""}
+                  placeholder="Ví dụ: 001200001234 (12 số)"
+                  maxLength={20}
+                />
+                <small style={{ color: "var(--color-text-muted, #64748b)", fontSize: "11px", marginTop: "2px" }}>
+                  Số CCCD sẽ dùng để lập Danh sách tạm trú và đối soát cư trú với công an.
+                </small>
+              </label>
+
+              <label>
+                <span>Số điện thoại</span>
+                <input
+                  name="phone"
+                  inputMode="tel"
+                  defaultValue={editingParty.phone ?? ""}
+                  placeholder="0912345678"
+                />
+              </label>
+
+              <label>
+                <span>Email</span>
+                <input
+                  name="email"
+                  type="email"
+                  defaultValue={editingParty.email ?? ""}
+                  placeholder="khach@example.com"
+                />
+              </label>
+
+              <div className="inline-note asset-form__wide" style={{ marginTop: "4px" }}>
+                Thay đổi thông tin khách ở sẽ tự động cập nhật vào hợp đồng, danh sách nhân khẩu và file xuất khai báo tạm trú mà không làm ảnh hưởng tới hóa đơn tiền phòng hay chu kỳ thanh toán đã phát hành.
+              </div>
+
+              <div className="button-row asset-form__wide" style={{ marginTop: "12px" }}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setEditingParty(null)}
+                  disabled={saving}
+                >
+                  Hủy
+                </button>
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving ? "Đang lưu…" : "Lưu thông tin"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </AdminShell>
   );
 }

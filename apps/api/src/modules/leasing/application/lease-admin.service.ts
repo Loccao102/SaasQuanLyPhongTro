@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { PoolClient, QueryResultRow } from "pg";
 import { CommercialPolicyService } from "../../commercial/application/commercial-policy.service.js";
 import { DatabaseService } from "../../database/database.service.js";
@@ -57,6 +58,7 @@ type PartyRow = QueryResultRow & {
   full_name: string;
   phone: string | null;
   email: string | null;
+  identity_document_number: string | null;
   party_role: string;
   joined_on: Date | string;
   left_on: Date | string | null;
@@ -98,11 +100,22 @@ export interface CreateLeaseDraftInput {
   baseRentVnd: number;
   depositRequiredVnd: number;
   billingDay: number;
+  occupantCount?: number | null;
   primaryResident?: {
     fullName: string;
     phone?: string | null;
     email?: string | null;
+    identityDocumentNumber?: string | null;
   } | null;
+}
+
+export interface UpdatePartyResidentInput {
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  identityDocumentNumber?: string | null;
+  dateOfBirth?: string | null;
+  notes?: string | null;
 }
 
 export interface RenewLeaseInput {
@@ -338,6 +351,7 @@ export class LeaseAdminService {
            res.full_name,
            res.phone,
            res.email,
+           res.identity_document_number,
            lr.party_role,
            lr.joined_on,
            lr.left_on
@@ -417,6 +431,7 @@ export class LeaseAdminService {
         fullName: party.full_name,
         phone: party.phone,
         email: party.email,
+        identityDocumentNumber: party.identity_document_number ?? null,
         role: party.party_role,
         joinedOn: this.dateOnly(party.joined_on),
         leftOn: this.dateOnly(party.left_on)
@@ -582,18 +597,22 @@ export class LeaseAdminService {
         );
         const phone = this.optionalText(input.primaryResident.phone);
         const email = this.optionalText(input.primaryResident.email);
+        const identityDocumentNumber = this.optionalText(
+          input.primaryResident.identityDocumentNumber
+        );
 
         await client.query(
           `INSERT INTO residents (
-             id, organization_id, full_name, phone, email
+             id, organization_id, full_name, phone, email, identity_document_number
            )
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             input.residentId,
             principal.organizationId,
             fullName,
             phone,
-            email
+            email,
+            identityDocumentNumber
           ]
         );
       }
@@ -645,6 +664,45 @@ export class LeaseAdminService {
         ]
       );
 
+      const occupantCount = input.occupantCount
+        ? Math.max(1, Math.min(20, Math.floor(Number(input.occupantCount))))
+        : 1;
+
+      if (occupantCount > 1) {
+        for (let i = 2; i <= occupantCount; i++) {
+          const placeholderResidentId = randomUUID();
+          await client.query(
+            `INSERT INTO residents (
+               id, organization_id, full_name, notes
+             )
+             VALUES ($1, $2, $3, $4)`,
+            [
+              placeholderResidentId,
+              principal.organizationId,
+              `Khách ở cùng ${i} (Chờ cập nhật)`,
+              `Tự động tạo theo số lượng khách (${occupantCount} người) khi tạo hợp đồng. Có thể cập nhật thông tin sau.`
+            ]
+          );
+
+          await client.query(
+            `INSERT INTO lease_residents (
+               organization_id,
+               lease_id,
+               resident_id,
+               party_role,
+               joined_on
+             )
+             VALUES ($1, $2, $3, 'OCCUPANT', $4)`,
+            [
+              principal.organizationId,
+              input.leaseId,
+              placeholderResidentId,
+              startDate
+            ]
+          );
+        }
+      }
+
       await client.query(
         `INSERT INTO audit_events (
            organization_id,
@@ -663,6 +721,7 @@ export class LeaseAdminService {
             roomId: input.roomId,
             residentId: input.residentId,
             residentReused,
+            occupantCount,
             leaseCode,
             startDate,
             plannedEndDate,
@@ -1563,5 +1622,183 @@ export class LeaseAdminService {
       total: records.length,
       excelBuffer
     };
+  }
+
+  async updatePartyResident(
+    principal: TenantPrincipal,
+    leaseId: string,
+    residentId: string,
+    input: UpdatePartyResidentInput
+  ) {
+    const fullName = this.required(input.fullName, "fullName");
+    const phone = this.optionalText(input.phone);
+    const email = this.optionalText(input.email);
+    const identityDocumentNumber = this.optionalText(input.identityDocumentNumber);
+    const dateOfBirth = input.dateOfBirth
+      ? this.isoDate(input.dateOfBirth, "dateOfBirth")
+      : null;
+    const notes = this.optionalText(input.notes);
+
+    return this.db.withTransaction(async (client) => {
+      const leaseResult = await client.query<QueryResultRow & {
+        property_id: string;
+        operational_group_ids: string[];
+      }>(
+        `SELECT
+           p.id::text AS property_id,
+           COALESCE(
+             array_agg(DISTINCT pog.operational_group_id::text)
+               FILTER (WHERE pog.operational_group_id IS NOT NULL),
+             '{}'::text[]
+           ) AS operational_group_ids
+         FROM leases l
+         JOIN rooms r
+           ON r.organization_id = l.organization_id
+          AND r.id = l.room_id
+         JOIN properties p
+           ON p.organization_id = r.organization_id
+          AND p.id = r.property_id
+         LEFT JOIN property_operational_groups pog
+           ON pog.organization_id = p.organization_id
+          AND pog.property_id = p.id
+         WHERE l.organization_id = $1::uuid
+           AND l.id = $2::uuid
+         GROUP BY p.id`,
+        [principal.organizationId, leaseId]
+      );
+
+      const lease = leaseResult.rows[0];
+      if (!lease) {
+        throw new NotFoundException("Lease was not found.");
+      }
+
+      if (
+        !this.accessControl.can(principal.membership, "lease.manage", {
+          organizationId: principal.organizationId,
+          propertyId: lease.property_id,
+          operationalGroupIds: lease.operational_group_ids
+        })
+      ) {
+        throw new ForbiddenException("Lease manage permission denied.");
+      }
+
+      await this.commercialPolicy.assertTenantWriteAllowed(
+        client,
+        principal.organizationId
+      );
+
+      const partyResult = await client.query<QueryResultRow & {
+        party_role: string;
+      }>(
+        `SELECT party_role
+         FROM lease_residents
+         WHERE organization_id = $1::uuid
+           AND lease_id = $2::uuid
+           AND resident_id = $3::uuid
+         LIMIT 1`,
+        [principal.organizationId, leaseId, residentId]
+      );
+
+      if (partyResult.rows.length === 0) {
+        throw new NotFoundException("Resident is not a party on this lease.");
+      }
+
+      const existingRes = await client.query<QueryResultRow & {
+        full_name: string;
+        phone: string | null;
+        email: string | null;
+        identity_document_number: string | null;
+        date_of_birth: string | null;
+        notes: string | null;
+      }>(
+        `SELECT full_name, phone, email, identity_document_number, date_of_birth::text, notes
+         FROM residents
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         LIMIT 1`,
+        [principal.organizationId, residentId]
+      );
+
+      const before = existingRes.rows[0];
+      if (!before) {
+        throw new NotFoundException("Resident record was not found.");
+      }
+
+      const updateResult = await client.query<QueryResultRow & {
+        id: string;
+        full_name: string;
+        phone: string | null;
+        email: string | null;
+        identity_document_number: string | null;
+        date_of_birth: string | null;
+        notes: string | null;
+      }>(
+        `UPDATE residents
+         SET full_name = $3,
+             phone = $4,
+             email = $5,
+             identity_document_number = $6,
+             date_of_birth = $7,
+             notes = $8,
+             updated_at = now()
+         WHERE organization_id = $1::uuid
+           AND id = $2::uuid
+         RETURNING id::text, full_name, phone, email, identity_document_number, date_of_birth::text, notes`,
+        [
+          principal.organizationId,
+          residentId,
+          fullName,
+          phone,
+          email,
+          identityDocumentNumber,
+          dateOfBirth,
+          notes
+        ]
+      );
+
+      await client.query(
+        `INSERT INTO audit_events (
+           organization_id,
+           actor_user_id,
+           action,
+           resource_type,
+           resource_id,
+           metadata
+         )
+         VALUES ($1, $2, 'LEASE_PARTY_RESIDENT_UPDATED', 'LEASE', $3, $4::jsonb)`,
+        [
+          principal.organizationId,
+          principal.userId,
+          leaseId,
+          JSON.stringify({
+            residentId,
+            partyRole: partyResult.rows[0]?.party_role,
+            before: {
+              fullName: before.full_name,
+              phone: before.phone,
+              email: before.email,
+              identityDocumentNumber: before.identity_document_number
+            },
+            after: {
+              fullName,
+              phone,
+              email,
+              identityDocumentNumber
+            }
+          })
+        ]
+      );
+
+      const updated = updateResult.rows[0]!;
+      return {
+        residentId: updated.id,
+        fullName: updated.full_name,
+        phone: updated.phone,
+        email: updated.email,
+        identityDocumentNumber: updated.identity_document_number,
+        dateOfBirth: updated.date_of_birth,
+        notes: updated.notes
+      };
+    });
   }
 }

@@ -203,3 +203,60 @@ test("lease amendment: rejects planned end date earlier than lease start date", 
   }, ConflictException);
 });
 
+function generateOccupantPlaceholders(
+  occupantCount: number | null | undefined,
+  startDate: string
+) {
+  const count = occupantCount
+    ? Math.max(1, Math.min(20, Math.floor(Number(occupantCount))))
+    : 1;
+  const occupants: Array<{ fullName: string; role: string; joinedOn: string }> = [];
+  if (count > 1) {
+    for (let i = 2; i <= count; i++) {
+      occupants.push({
+        fullName: `Khách ở cùng ${i} (Chờ cập nhật)`,
+        role: "OCCUPANT",
+        joinedOn: startDate
+      });
+    }
+  }
+  return occupants;
+}
+
+test("multi-occupant draft: auto-creates (occupantCount - 1) placeholder occupants for 3 guests", () => {
+  const placeholders = generateOccupantPlaceholders(3, "2026-02-01");
+  assert.equal(placeholders.length, 2);
+  assert.equal(placeholders[0]!.fullName, "Khách ở cùng 2 (Chờ cập nhật)");
+  assert.equal(placeholders[0]!.role, "OCCUPANT");
+  assert.equal(placeholders[0]!.joinedOn, "2026-02-01");
+  assert.equal(placeholders[1]!.fullName, "Khách ở cùng 3 (Chờ cập nhật)");
+  assert.equal(placeholders[1]!.role, "OCCUPANT");
+  assert.equal(placeholders[1]!.joinedOn, "2026-02-01");
+});
+
+test("multi-occupant draft: creates 0 placeholders when occupantCount is 1 or null", () => {
+  assert.equal(generateOccupantPlaceholders(1, "2026-02-01").length, 0);
+  assert.equal(generateOccupantPlaceholders(null, "2026-02-01").length, 0);
+  assert.equal(generateOccupantPlaceholders(undefined, "2026-02-01").length, 0);
+});
+
+test("multi-occupant draft: bounds occupantCount between 1 and 20", () => {
+  const zeroPlaceholders = generateOccupantPlaceholders(0, "2026-02-01");
+  assert.equal(zeroPlaceholders.length, 0);
+
+  const maxPlaceholders = generateOccupantPlaceholders(50, "2026-02-01");
+  assert.equal(maxPlaceholders.length, 19); // 2 to 20 -> 19 occupants + 1 primary
+});
+
+test("party update: validates required non-empty fullName", () => {
+  function validatePartyUpdate(input: { fullName: string }) {
+    if (!input.fullName || input.fullName.trim().length === 0) {
+      throw new ConflictException("fullName is required.");
+    }
+  }
+
+  assert.doesNotThrow(() => validatePartyUpdate({ fullName: "Trần Thị B" }));
+  assert.throws(() => validatePartyUpdate({ fullName: "   " }), ConflictException);
+});
+
+

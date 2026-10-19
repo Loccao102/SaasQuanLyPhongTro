@@ -9,6 +9,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -80,6 +81,19 @@ function requiredUuid(input: BodyInput, field: string): string {
 
 function requiredInteger(input: BodyInput, field: string): number {
   const value = input[field];
+  if (!Number.isSafeInteger(value)) {
+    throw new BadRequestException(field + " must be an integer.");
+  }
+  return Number(value);
+}
+
+function optionalInteger(
+  input: BodyInput,
+  field: string
+): number | null | undefined {
+  const value = input[field];
+  if (value === undefined) return undefined;
+  if (value === null) return null;
   if (!Number.isSafeInteger(value)) {
     throw new BadRequestException(field + " must be an integer.");
   }
@@ -165,6 +179,7 @@ export class LeaseAdminController {
           fullName: string;
           phone?: string | null;
           email?: string | null;
+          identityDocumentNumber?: string | null;
         }
       | null = null;
 
@@ -179,7 +194,8 @@ export class LeaseAdminController {
       primaryResident = {
         fullName: requiredString(raw, "fullName"),
         phone: optionalString(raw, "phone"),
-        email: optionalString(raw, "email")
+        email: optionalString(raw, "email"),
+        identityDocumentNumber: optionalString(raw, "identityDocumentNumber")
       };
     }
 
@@ -194,8 +210,31 @@ export class LeaseAdminController {
       baseRentVnd: requiredInteger(input, "baseRentVnd"),
       depositRequiredVnd: requiredInteger(input, "depositRequiredVnd"),
       billingDay: requiredInteger(input, "billingDay"),
+      occupantCount: optionalInteger(input, "occupantCount"),
       primaryResident
     });
+  }
+
+  @Patch(":leaseId/parties/:residentId")
+  updatePartyResident(
+    @Req() request: TenantRequest,
+    @Param("leaseId", new ParseUUIDPipe({ version: "4" })) leaseId: string,
+    @Param("residentId", new ParseUUIDPipe({ version: "4" })) residentId: string,
+    @Body() input: BodyInput
+  ) {
+    return this.admin.updatePartyResident(
+      this.principal(request),
+      leaseId,
+      residentId,
+      {
+        fullName: requiredString(input, "fullName"),
+        phone: optionalString(input, "phone"),
+        email: optionalString(input, "email"),
+        identityDocumentNumber: optionalString(input, "identityDocumentNumber"),
+        dateOfBirth: optionalString(input, "dateOfBirth"),
+        notes: optionalString(input, "notes")
+      }
+    );
   }
 
   @Post(":leaseId/renew")
