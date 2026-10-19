@@ -1224,7 +1224,7 @@ export class AuthenticationRepository {
            session_id,
            expires_at
          )
-         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6)`,
+         VALUES ($1::uuid, $2, $3, $4::bytea, $5::uuid, $6)`,
         [
           input.userId,
           input.challenge,

@@ -8,12 +8,30 @@ import {
   ApartmentOutlined,
   BarChartOutlined,
   BellOutlined,
+  CheckCircleFilled,
+  CheckCircleOutlined,
+  CheckOutlined,
+  CloseCircleFilled,
   CloseOutlined,
+  CopyOutlined,
   CrownOutlined,
   DashboardOutlined,
+  DesktopOutlined,
   DollarOutlined,
+  ExclamationCircleFilled,
+  EyeInvisibleOutlined,
+  EyeOutlined,
   FileDoneOutlined,
   FileTextOutlined,
+  InfoCircleFilled,
+  KeyOutlined,
+  LaptopOutlined,
+  LogoutOutlined,
+  MobileOutlined,
+  QrcodeOutlined,
+  ReloadOutlined,
+  SafetyCertificateFilled,
+  SafetyCertificateOutlined,
   SettingOutlined,
   TeamOutlined,
   ThunderboltOutlined,
@@ -97,8 +115,13 @@ export function AdminShell({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
   const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessions, setSessions] = useState<AdminAuthSessionItem[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -115,6 +138,8 @@ export function AdminShell({
   const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaError, setMfaError] = useState<string | null>(null);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [copiedCodes, setCopiedCodes] = useState(false);
   const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyName, setPasskeyName] = useState("Thiết bị này");
@@ -438,6 +463,16 @@ export function AdminShell({
     }
   }
 
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await auth.logout();
+    } finally {
+      setLoggingOut(false);
+      setLogoutConfirmOpen(false);
+    }
+  }
+
   if (auth.status === "loading") {
     return (
       <main className="session-state-page" aria-live="polite">
@@ -564,44 +599,73 @@ export function AdminShell({
           </div>
 
           <div className="account-card">
-            <span className="account-card__avatar">
-              {initials(userLabel)}
-            </span>
-            <div>
-              <strong>{userLabel}</strong>
-              <span>{auth.session.user.email}</span>
+            <div className="account-card__header">
+              <span className="account-card__avatar">
+                {initials(userLabel)}
+              </span>
+              <div className="account-card__info">
+                <strong className="account-card__name" title={userLabel}>
+                  {userLabel}
+                </strong>
+                <span className="account-card__email" title={auth.session.user.email}>
+                  {auth.session.user.email}
+                </span>
+                <span className="account-card__role">
+                  {auth.selectedMembership.role === "OWNER"
+                    ? "Chủ hệ thống"
+                    : auth.selectedMembership.role === "ADMIN"
+                      ? "Quản trị viên"
+                      : auth.selectedMembership.role}
+                </span>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "6px" }}>
+
+            <div className="account-card__actions">
               <button
                 type="button"
-                className="secondary-button secondary-button--compact"
+                className="account-action-btn"
                 onClick={() => {
                   setChangePasswordOpen(true);
                   setChangePasswordError(null);
                   setChangePasswordSuccess(null);
                 }}
+                title="Đổi mật khẩu tài khoản"
               >
-                Đổi MK
+                <KeyOutlined aria-hidden="true" />
+                <span>Đổi MK</span>
               </button>
+
               <button
                 type="button"
-                className="secondary-button secondary-button--compact"
+                className="account-action-btn"
                 onClick={() => void openMfa()}
+                title="Bảo mật hai lớp & Passkey"
               >
-                MFA
+                <SafetyCertificateOutlined aria-hidden="true" />
+                <span>MFA</span>
+                {auth.session.mfaEnabled || mfaEnabled ? (
+                  <span className="account-action-btn__indicator" title="MFA đang bật" />
+                ) : null}
               </button>
+
               <button
                 type="button"
-                className="secondary-button secondary-button--compact"
+                className="account-action-btn"
                 onClick={() => void openSessions()}
+                title="Quản lý các thiết bị đăng nhập"
               >
-                Phiên
+                <LaptopOutlined aria-hidden="true" />
+                <span>Phiên</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => void auth.logout()}
+                className="account-action-btn account-action-btn--danger"
+                onClick={() => setLogoutConfirmOpen(true)}
+                title="Đăng xuất khỏi tài khoản"
               >
-                Đăng xuất
+                <LogoutOutlined aria-hidden="true" />
+                <span>Đăng xuất</span>
               </button>
             </div>
           </div>
@@ -655,113 +719,143 @@ export function AdminShell({
           role="dialog"
           aria-modal="true"
           aria-labelledby="change-password-title"
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px"
-          }}
+          className="habi-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) setChangePasswordOpen(false);
           }}
         >
-          <div
-            style={{
-              background: "var(--color-surface, #ffffff)",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "460px",
-              width: "100%",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-              border: "1px solid var(--color-border, #e2e8f0)"
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 id="change-password-title" style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
-                Đổi mật khẩu tài khoản
-              </h3>
+          <div className="habi-modal-card">
+            <div className="habi-modal-header">
+              <div>
+                <span className="eyebrow">TÀI KHOẢN & BẢO MẬT</span>
+                <h3 id="change-password-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <KeyOutlined style={{ color: "var(--color-primary, #0284c7)" }} />
+                  Đổi mật khẩu tài khoản
+                </h3>
+                <p>Tài khoản: <strong>{auth.session.user.email}</strong></p>
+              </div>
               <button
                 type="button"
+                className="habi-modal-close-btn"
                 onClick={() => setChangePasswordOpen(false)}
                 aria-label="Đóng"
-                style={{ cursor: "pointer", background: "none", border: "none", fontSize: "18px", color: "var(--color-muted)" }}
               >
                 <CloseOutlined aria-hidden="true" />
               </button>
             </div>
 
-            <p style={{ fontSize: "13px", color: "var(--color-muted, #64748b)", margin: "0 0 16px 0" }}>
-              Tài khoản: <strong>{auth.session.user.email}</strong>. Mật khẩu mới cần tối thiểu 12 ký tự để đảm bảo an toàn.
-            </p>
-
             {changePasswordError ? (
-              <div className="admin-state admin-state--error" style={{ marginBottom: "16px" }}>
+              <div className="habi-alert habi-alert--error" role="alert">
+                <CloseCircleFilled style={{ marginTop: "2px", flexShrink: 0 }} />
                 <span>{changePasswordError}</span>
               </div>
             ) : null}
 
             {changePasswordSuccess ? (
-              <div className="admin-state admin-state--success" style={{ marginBottom: "16px" }}>
+              <div className="habi-alert habi-alert--success" role="status">
+                <CheckCircleFilled style={{ marginTop: "2px", flexShrink: 0 }} />
                 <span>{changePasswordSuccess}</span>
               </div>
             ) : null}
 
             <form onSubmit={(e) => void handleChangePassword(e)} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px" }}>
                 <span style={{ fontWeight: 600 }}>Mật khẩu hiện tại *</span>
-                <input
-                  type="password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu đang sử dụng"
-                  style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
-                />
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu đang sử dụng"
+                    style={{ width: "100%", padding: "9px 36px 9px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", fontSize: "13px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+                    aria-label={showCurrentPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showCurrentPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                  </button>
+                </div>
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px" }}>
                 <span style={{ fontWeight: 600 }}>Mật khẩu mới (tối thiểu 12 ký tự) *</span>
-                <input
-                  type="password"
-                  required
-                  minLength={12}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu mới an toàn"
-                  style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
-                />
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    minLength={12}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới an toàn"
+                    style={{ width: "100%", padding: "9px 36px 9px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", fontSize: "13px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+                    aria-label={showNewPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showNewPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                  </button>
+                </div>
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px" }}>
                 <span style={{ fontWeight: 600 }}>Xác nhận mật khẩu mới *</span>
-                <input
-                  type="password"
-                  required
-                  minLength={12}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Nhập lại mật khẩu mới"
-                  style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
-                />
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    minLength={12}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới"
+                    style={{ width: "100%", padding: "9px 36px 9px 12px", borderRadius: "8px", border: "1px solid var(--color-border)", fontSize: "13px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{ position: "absolute", right: "10px", background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+                    aria-label={showConfirmPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showConfirmPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                  </button>
+                </div>
               </label>
 
-              <div className="button-row" style={{ marginTop: "12px", justifyContent: "flex-end" }}>
+              {/* Password strength checklist */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", background: "#f8fafc", borderRadius: "8px", fontSize: "12px", border: "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", color: newPassword.length >= 12 ? "#16a34a" : "#64748b" }}>
+                  {newPassword.length >= 12 ? <CheckCircleFilled /> : <CheckCircleOutlined />}
+                  <span>Độ dài tối thiểu 12 ký tự</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", color: newPassword && currentPassword && newPassword !== currentPassword ? "#16a34a" : "#64748b" }}>
+                  {newPassword && currentPassword && newPassword !== currentPassword ? <CheckCircleFilled /> : <CheckCircleOutlined />}
+                  <span>Khác mật khẩu đang sử dụng</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", color: confirmPassword && newPassword === confirmPassword ? "#16a34a" : "#64748b" }}>
+                  {confirmPassword && newPassword === confirmPassword ? <CheckCircleFilled /> : <CheckCircleOutlined />}
+                  <span>Mật khẩu xác nhận trùng khớp</span>
+                </div>
+              </div>
+
+              <div className="button-row" style={{ marginTop: "8px", justifyContent: "flex-end" }}>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => setChangePasswordOpen(false)}
+                  disabled={changingPassword}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   className="primary-button"
-                  disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+                  disabled={changingPassword || !currentPassword || newPassword.length < 12 || newPassword !== confirmPassword || currentPassword === newPassword}
                 >
                   {changingPassword ? "Đang cập nhật…" : "Cập nhật mật khẩu"}
                 </button>
@@ -897,383 +991,549 @@ export function AdminShell({
           role="dialog"
           aria-modal="true"
           aria-labelledby="mfa-title"
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px"
-          }}
+          className="habi-modal-backdrop"
           onClick={(event) => {
             if (event.target === event.currentTarget) setMfaOpen(false);
           }}
         >
-          <div
-            style={{
-              background: "var(--color-surface, #ffffff)",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "560px",
-              width: "100%",
-              maxHeight: "82vh",
-              overflowY: "auto",
-              border: "1px solid var(--color-border, #e2e8f0)"
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "12px",
-                alignItems: "center"
-              }}
-            >
+          <div className="habi-modal-card habi-modal-card--wide" style={{ maxHeight: "88vh" }}>
+            <div className="habi-modal-header">
               <div>
                 <span className="eyebrow">BẢO MẬT TÀI KHOẢN</span>
-                <h3 id="mfa-title" style={{ margin: "4px 0 0" }}>
-                  Xác thực hai bước
+                <h3 id="mfa-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <SafetyCertificateFilled style={{ color: "var(--color-primary, #2563eb)" }} />
+                  Xác thực hai bước & Passkey
                 </h3>
+                <p>Bảo vệ tài khoản bằng ứng dụng Authenticator (TOTP), khóa Passkey và mã dự phòng.</p>
               </div>
               <button
-                className="secondary-button secondary-button--compact"
+                className="habi-modal-close-btn"
                 type="button"
                 onClick={() => setMfaOpen(false)}
+                title="Đóng"
               >
-                Đóng
+                <CloseOutlined />
               </button>
             </div>
 
+            {/* Step-up / Recent auth status badge */}
             {recentAuthStatus ? (
-              <div className="admin-state">
-                <span>
-                  Recent authentication:{" "}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  background: recentAuthStatus.recent ? "#f0fdf4" : "#fefce8",
+                  border: recentAuthStatus.recent ? "1px solid #bbf7d0" : "1px solid #fef08a",
+                  color: recentAuthStatus.recent ? "#166534" : "#854d0e"
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {recentAuthStatus.recent ? <CheckCircleFilled /> : <InfoCircleFilled />}
                   {recentAuthStatus.recent
-                    ? "còn hiệu lực đến " +
-                      new Date(recentAuthStatus.expiresAt).toLocaleTimeString(
-                        "vi-VN"
-                      )
-                    : "đã hết hạn — thay đổi security tiếp theo sẽ yêu cầu xác thực lại"}
+                    ? `Phiên bảo mật: Hiệu lực đến ${new Date(recentAuthStatus.expiresAt).toLocaleTimeString("vi-VN")}`
+                    : "Phiên bảo mật đã hết hạn — thao tác nhạy cảm tiếp theo sẽ yêu cầu xác thực lại."}
                 </span>
+                {recentAuthStatus.recent ? (
+                  <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8 }}>Đã xác minh</span>
+                ) : null}
               </div>
             ) : null}
 
+            {/* Error alert */}
             {mfaError ? (
-              <div className="admin-state admin-state--error" role="alert">
-                <span>{mfaError}</span>
+              <div className="habi-alert habi-alert--error" role="alert">
+                <CloseCircleFilled style={{ marginTop: 2, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>{mfaError}</div>
               </div>
             ) : null}
 
+            {/* Loading state */}
             {mfaLoading && mfaEnabled === null ? (
-              <div className="admin-state">Đang tải trạng thái MFA…</div>
+              <div style={{ padding: "32px 0", textAlign: "center", color: "var(--color-text-muted)" }}>
+                <ReloadOutlined spin style={{ fontSize: 24, marginBottom: 8 }} />
+                <div>Đang tải thông tin xác thực hai bước…</div>
+              </div>
             ) : null}
 
+            {/* RECOVERY CODES DISPLAY (shown when generated/confirmed) */}
             {mfaRecoveryCodes.length > 0 ? (
-              <div style={{ display: "grid", gap: "12px", marginTop: "16px" }}>
-                <div className="admin-state admin-state--success">
-                  <span>
-                    MFA đã bật. Lưu các recovery code này ở nơi an toàn. Mỗi mã
-                    chỉ dùng được một lần và Habi sẽ không hiển thị lại.
-                  </span>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  padding: 16,
+                  borderRadius: 12,
+                  background: "#f0fdf4",
+                  border: "1.5px solid #86efac"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <CheckCircleFilled style={{ color: "#16a34a", fontSize: 20, marginTop: 2 }} />
+                  <div>
+                    <strong style={{ color: "#166534", fontSize: 14 }}>
+                      MFA đã được kích hoạt thành công!
+                    </strong>
+                    <p style={{ margin: "4px 0 0", color: "#15803d", fontSize: 12, lineHeight: 1.5 }}>
+                      Hãy lưu lại 10 mã khôi phục dự phòng dưới đây ở nơi an toàn. Mỗi mã chỉ sử dụng được 1 lần để đăng nhập nếu bạn bị mất thiết bị Authenticator. Habi sẽ không hiển thị lại danh sách mã này.
+                    </p>
+                  </div>
                 </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "6px",
-                    fontFamily: "monospace",
-                    background: "var(--color-background, #f8fafc)",
-                    padding: "14px",
-                    borderRadius: "8px"
-                  }}
-                >
+
+                <div className="habi-recovery-grid">
                   {mfaRecoveryCodes.map((code) => (
-                    <code key={code}>{code}</code>
+                    <div key={code} className="habi-recovery-code">
+                      {code}
+                    </div>
                   ))}
                 </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() =>
-                    void navigator.clipboard.writeText(
-                      mfaRecoveryCodes.join("\n")
-                    )
-                  }
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(mfaRecoveryCodes.join("\n"));
+                      setCopiedCodes(true);
+                      setTimeout(() => setCopiedCodes(false), 2500);
+                    }}
+                  >
+                    {copiedCodes ? <CheckOutlined /> : <CopyOutlined />}
+                    <span>{copiedCodes ? "Đã sao chép 10 mã!" : "Sao chép tất cả mã"}</span>
+                  </button>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => setMfaRecoveryCodes([])}
+                  >
+                    Tôi đã lưu mã an toàn
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* SECTION 1: TOTP AUTHENTICATOR APP */}
+            <div className="habi-section-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: mfaEnabled ? "#dcfce7" : "#f1f5f9",
+                      color: mfaEnabled ? "#15803d" : "#475569",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 18,
+                      flexShrink: 0
+                    }}
+                  >
+                    <QrcodeOutlined />
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <strong style={{ fontSize: 14 }}>Ứng dụng xác thực (TOTP)</strong>
+                      {mfaEnabled ? (
+                        <span className="habi-badge habi-badge--success">
+                          <CheckCircleFilled /> Đang bật
+                        </span>
+                      ) : (
+                        <span className="habi-badge habi-badge--warning">Chưa bật</span>
+                      )}
+                    </div>
+                    <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                      Google Authenticator, Microsoft Authenticator, 1Password, Authy...
+                    </p>
+                  </div>
+                </div>
+
+                {/* Status action or re-enroll button */}
+                {mfaEnabled && !mfaSetup ? (
+                  <button
+                    className="secondary-button secondary-button--compact"
+                    type="button"
+                    disabled={mfaLoading}
+                    onClick={() => void beginMfaSetup()}
+                    title="Quét lại mã QR trên điện thoại mới"
+                  >
+                    <ReloadOutlined />
+                    <span>Quét lại QR</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Policy note if required by role */}
+              {mfaRequiredByRole ? (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    background: "#eff6ff",
+                    border: "1px solid #bfdbfe",
+                    fontSize: 12,
+                    color: "#1e40af",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}
                 >
-                  Copy recovery codes
-                </button>
-              </div>
-            ) : mfaEnabled === false ? (
-              <div style={{ display: "grid", gap: "14px", marginTop: "16px" }}>
-                {!mfaSetup ? (
-                  <>
-                    <p style={{ margin: 0 }}>
-                      {mfaRequiredByRole
-                        ? "Role " +
-                          mfaRequiredByRole +
-                          " đang bắt buộc MFA. "
-                        : ""}
-                      Dùng Google Authenticator, Microsoft Authenticator, 1Password
-                      hoặc ứng dụng TOTP tương thích.
-                    </p>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={mfaLoading}
-                      onClick={() => void beginMfaSetup()}
-                    >
-                      {mfaLoading ? "Đang tạo secret…" : "Bắt đầu thiết lập MFA"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="admin-state">
-                      <span>
-                        Thêm tài khoản bằng URI dưới đây hoặc nhập secret thủ
-                        công vào ứng dụng Authenticator.
-                      </span>
-                    </div>
-                    <div style={{ display: "grid", placeItems: "center" }}>
-                      <TotpQrCode value={mfaSetup.provisioningUri} />
-                    </div>
-                    <p style={{ margin: 0, color: "var(--color-muted)" }}>
-                      Quét QR trực tiếp trong Habi; secret không được gửi tới
-                      dịch vụ QR bên thứ ba.
-                    </p>
-                    <details>
-                      <summary>Không quét được QR?</summary>
-                      <label style={{ display: "grid", gap: "6px", marginTop: 8 }}>
-                        <span style={{ fontWeight: 600 }}>Secret</span>
-                        <input readOnly value={mfaSetup.secret} />
-                      </label>
-                    </details>
-                    <label style={{ display: "grid", gap: "6px" }}>
-                      <span style={{ fontWeight: 600 }}>
-                        Mã 6 số để xác nhận
-                      </span>
-                      <input
-                        value={mfaCode}
-                        onChange={(event) => setMfaCode(event.target.value)}
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        placeholder="123456"
-                      />
-                    </label>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={mfaLoading || mfaCode.trim().length === 0}
-                      onClick={() => void confirmMfaSetup()}
-                    >
-                      {mfaLoading ? "Đang xác nhận…" : "Bật MFA"}
-                    </button>
-                  </>
-                )}
-              </div>
-            ) : mfaEnabled === true && mfaRecoveryCodes.length === 0 ? (
-              <div style={{ display: "grid", gap: "14px", marginTop: "16px" }}>
-                <div className="admin-state admin-state--success">
+                  <CrownOutlined />
                   <span>
-                    MFA đang bật. Những lần đăng nhập mới sẽ cần mã TOTP hoặc
-                    recovery code.
-                    {mfaRequiredByRole
-                      ? " Role " +
-                        mfaRequiredByRole +
-                        " đang thuộc policy bắt buộc MFA."
-                      : ""}
+                    Vai trò <strong>{mfaRequiredByRole}</strong> thuộc chính sách bắt buộc bật MFA. Không thể tắt MFA khi còn giữ vai trò này.
                   </span>
                 </div>
-                {mfaRequiredByRole ? (
-                  <div className="admin-state">
-                    MFA không thể tắt khi role {mfaRequiredByRole} còn nằm
-                    trong policy bảo mật.
+              ) : null}
+
+              {/* If not enabled and not in setup, show Begin button */}
+              {!mfaEnabled && !mfaSetup ? (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={mfaLoading}
+                    onClick={() => void beginMfaSetup()}
+                  >
+                    <QrcodeOutlined />
+                    <span>{mfaLoading ? "Đang tạo mã…" : "Bắt đầu thiết lập Authenticator"}</span>
+                  </button>
+                </div>
+              ) : null}
+
+              {/* If setting up (either first time or re-enrolling) */}
+              {mfaSetup ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
+                    padding: 16,
+                    borderRadius: 10,
+                    background: "white",
+                    border: "1px solid var(--color-border)"
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
+                    Bước 1: Quét mã QR trong ứng dụng Authenticator
                   </div>
-                ) : (
-                  <>
-                    <label style={{ display: "grid", gap: "6px" }}>
-                      <span style={{ fontWeight: 600 }}>
-                        Mã TOTP / recovery code để tắt MFA
-                      </span>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: 14,
+                      background: "#f8fafc",
+                      borderRadius: 10,
+                      border: "1px dashed #cbd5e1"
+                    }}
+                  >
+                    <div style={{ background: "white", padding: 10, borderRadius: 8, boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+                      <TotpQrCode value={mfaSetup.provisioningUri} />
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+                      Mã QR được tạo cục bộ trên trình duyệt, an toàn tuyệt đối.
+                    </span>
+                  </div>
+
+                  <details style={{ fontSize: 12 }}>
+                    <summary style={{ cursor: "pointer", color: "var(--color-primary, #2563eb)", fontWeight: 600 }}>
+                      Không quét được mã QR? Nhập Secret thủ công
+                    </summary>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
                       <input
-                        value={mfaCode}
-                        onChange={(event) => setMfaCode(event.target.value)}
-                        autoComplete="one-time-code"
-                        placeholder="123456 hoặc HABI-..."
+                        readOnly
+                        value={mfaSetup.secret}
+                        style={{ fontFamily: "monospace", fontSize: 12, background: "#f8fafc", flex: 1 }}
                       />
-                    </label>
+                      <button
+                        type="button"
+                        className="secondary-button secondary-button--compact"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(mfaSetup.secret);
+                          setCopiedSecret(true);
+                          setTimeout(() => setCopiedSecret(false), 2000);
+                        }}
+                      >
+                        {copiedSecret ? <CheckOutlined /> : <CopyOutlined />}
+                        <span>{copiedSecret ? "Đã chép" : "Chép Secret"}</span>
+                      </button>
+                    </div>
+                  </details>
+
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginTop: 4 }}>
+                    Bước 2: Nhập mã 6 chữ số từ app Authenticator để kích hoạt
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <input
+                      value={mfaCode}
+                      onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="VD: 123456"
+                      style={{
+                        maxWidth: 160,
+                        fontFamily: "monospace",
+                        fontSize: 18,
+                        letterSpacing: "0.2em",
+                        textAlign: "center",
+                        fontWeight: 700
+                      }}
+                      maxLength={6}
+                    />
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={mfaLoading || mfaCode.trim().length < 6}
+                      onClick={() => void confirmMfaSetup()}
+                    >
+                      <CheckOutlined />
+                      <span>{mfaLoading ? "Đang xác minh…" : "Kích hoạt & Lưu mã"}</span>
+                    </button>
                     <button
                       className="secondary-button"
                       type="button"
-                      disabled={mfaLoading || mfaCode.trim().length === 0}
-                      onClick={() => void disableMfa()}
-                    >
-                      {mfaLoading ? "Đang xử lý…" : "Tắt MFA"}
-                    </button>
-                  </>
-                )}
-              </div>
-            ) : null}
-
-            <div
-              style={{
-                marginTop: 22,
-                paddingTop: 18,
-                borderTop: "1px solid var(--color-border, #e2e8f0)",
-                display: "grid",
-                gap: 10
-              }}
-            >
-              <div>
-                <strong>Cảnh báo bảo mật gần đây</strong>
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    color: "var(--color-muted)",
-                    fontSize: 13
-                  }}
-                >
-                  Các thay đổi credential hoặc pattern xác thực đáng chú ý.
-                </p>
-              </div>
-              {securityAlerts.length === 0 ? (
-                <small>Chưa có cảnh báo bảo mật nào.</small>
-              ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {securityAlerts.slice(0, 6).map((alert) => (
-                    <article
-                      key={alert.id}
-                      style={{
-                        border: "1px solid var(--color-border, #e2e8f0)",
-                        borderRadius: 9,
-                        padding: 10,
-                        display: "grid",
-                        gap: 4
+                      onClick={() => {
+                        setMfaSetup(null);
+                        setMfaCode("");
                       }}
                     >
-                      <strong>
-                        {alert.severity === "HIGH"
-                          ? "Quan trọng"
-                          : alert.severity === "MEDIUM"
-                            ? "Cần chú ý"
-                            : "Thông tin"}
-                      </strong>
-                      <span>{alert.summary}</span>
-                      <small>
-                        {new Date(alert.createdAt).toLocaleString("vi-VN")}
-                        {alert.deliveryStatus === "SENT"
-                          ? " · đã gửi email"
-                          : ""}
-                      </small>
-                    </article>
-                  ))}
+                      Hủy
+                    </button>
+                  </div>
                 </div>
-              )}
+              ) : null}
+
+              {/* Disable MFA form (only if enabled and not required by role) */}
+              {mfaEnabled && !mfaRequiredByRole && !mfaSetup ? (
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ fontSize: 12, color: "#dc2626", cursor: "pointer", fontWeight: 600 }}>
+                    Tắt xác thực hai bước (Không khuyến nghị)
+                  </summary>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      marginTop: 8,
+                      padding: 12,
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: 8
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#991b1b" }}>
+                      Để tắt MFA, nhập mã OTP 6 số từ app Authenticator hoặc mã dự phòng (HABI-...).
+                    </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value)}
+                        placeholder="Mã OTP 6 số hoặc HABI-..."
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        className="secondary-button secondary-button--danger"
+                        type="button"
+                        disabled={mfaLoading || !mfaCode.trim()}
+                        onClick={() => void disableMfa()}
+                      >
+                        Xác nhận tắt
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              ) : null}
             </div>
 
-            <div
-              style={{
-                marginTop: 22,
-                paddingTop: 18,
-                borderTop: "1px solid var(--color-border, #e2e8f0)",
-                display: "grid",
-                gap: 12
-              }}
-            >
-              <div>
-                <strong>Passkey / Windows Hello / Touch ID</strong>
-                <p
+            {/* SECTION 2: PASSKEY / WINDOWS HELLO / TOUCH ID */}
+            <div className="habi-section-card">
+              <div style={{ display: "flex", gap: 10 }}>
+                <div
                   style={{
-                    margin: "6px 0 0",
-                    color: "var(--color-muted)",
-                    fontSize: 13
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: passkeys.length > 0 ? "#dcfce7" : "#f1f5f9",
+                    color: passkeys.length > 0 ? "#15803d" : "#475569",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 18,
+                    flexShrink: 0
                   }}
                 >
-                  Passkey có thể thay mã TOTP ở bước xác thực hai lớp sau khi
-                  email/mật khẩu hoặc Google đã được xác minh.
-                </p>
+                  <KeyOutlined />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <strong style={{ fontSize: 14 }}>Passkey (Vân tay / Windows Hello / Touch ID)</strong>
+                    {passkeys.length > 0 ? (
+                      <span className="habi-badge habi-badge--success">
+                        {passkeys.length} thiết bị
+                      </span>
+                    ) : (
+                      <span className="habi-badge habi-badge--neutral">Tùy chọn</span>
+                    )}
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--color-text-muted)", lineHeight: 1.45 }}>
+                    Sử dụng cảm biến vân tay, nhận diện khuôn mặt hoặc mã PIN phần cứng trên máy tính/điện thoại để đăng nhập siêu tốc mà không cần nhập mã OTP 6 số.
+                  </p>
+                </div>
               </div>
 
               {passkeySupported ? (
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                    gap: 8
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    padding: 12,
+                    borderRadius: 8,
+                    background: "white",
+                    border: "1px solid var(--color-border)"
                   }}
                 >
-                  <input
-                    value={passkeyName}
-                    onChange={(event) => setPasskeyName(event.target.value)}
-                    placeholder="VD: Laptop Windows Hello"
-                    maxLength={80}
-                    disabled={passkeyBusy}
-                  />
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={passkeyBusy}
-                    onClick={() => void registerPasskey()}
-                  >
-                    {passkeyBusy ? "Đang xử lý…" : "Thêm passkey"}
-                  </button>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+                      Tên nhận diện thiết bị mới
+                    </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        value={passkeyName}
+                        onChange={(event) => setPasskeyName(event.target.value)}
+                        placeholder="VD: Laptop ThinkPad - Windows Hello, MacBook Touch ID..."
+                        maxLength={80}
+                        disabled={passkeyBusy}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        className="primary-button"
+                        type="button"
+                        disabled={passkeyBusy || !passkeyName.trim()}
+                        onClick={() => void registerPasskey()}
+                      >
+                        <KeyOutlined />
+                        <span>{passkeyBusy ? "Đang xử lý…" : "Thêm Passkey thiết bị này"}</span>
+                      </button>
+                    </div>
+                  </label>
+                  <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+                    💡 Khi bấm &quot;Thêm Passkey&quot;, trình duyệt sẽ kích hoạt hộp thoại Windows Hello / Touch ID để xác thực phần cứng.
+                  </span>
                 </div>
               ) : (
-                <div className="admin-state">
-                  Trình duyệt/thiết bị này chưa hỗ trợ WebAuthn passkey.
+                <div className="habi-alert habi-alert--warning" style={{ fontSize: 12 }}>
+                  <InfoCircleFilled />
+                  <span>Trình duyệt hoặc hệ điều hành hiện tại chưa hỗ trợ WebAuthn Passkey.</span>
                 </div>
               )}
 
+              {/* Passkey list */}
               {passkeys.length === 0 ? (
-                <small>Chưa có passkey nào được đăng ký.</small>
+                <div style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic", textAlign: "center", padding: "8px 0" }}>
+                  Chưa có passkey nào được liên kết với tài khoản này.
+                </div>
               ) : (
                 <div style={{ display: "grid", gap: 8 }}>
                   {passkeys.map((passkey) => (
-                    <article
+                    <div
                       key={passkey.id}
                       style={{
-                        border: "1px solid var(--color-border, #e2e8f0)",
-                        borderRadius: 9,
-                        padding: 12,
-                        display: "grid",
-                        gap: 4
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        border: "1px solid var(--color-border)",
+                        background: "white"
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 10
-                        }}
-                      >
-                        <strong>{passkey.name}</strong>
-                        <button
-                          className="text-button text-button--danger"
-                          type="button"
-                          disabled={passkeyBusy}
-                          onClick={() => void revokePasskey(passkey)}
-                        >
-                          Thu hồi
-                        </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <LaptopOutlined style={{ fontSize: 18, color: "#475569" }} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <strong style={{ fontSize: 13, color: "#0f172a" }}>{passkey.name}</strong>
+                            <span className="habi-badge habi-badge--neutral">
+                              {passkey.deviceType === "multiDevice" ? "Đồng bộ iCloud/Google" : "Phần cứng thiết bị"}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+                            Tạo: {new Date(passkey.createdAt).toLocaleDateString("vi-VN")}
+                            {passkey.lastUsedAt ? ` · Dùng gần nhất: ${new Date(passkey.lastUsedAt).toLocaleDateString("vi-VN")}` : ""}
+                          </span>
+                        </div>
                       </div>
-                      <small>
-                        {passkey.deviceType === "multiDevice"
-                          ? "Passkey đồng bộ"
-                          : "Passkey trên thiết bị"}
-                        {passkey.backedUp ? " · đã backup" : ""}
-                      </small>
-                      <small>
-                        Tạo lúc:{" "}
-                        {new Date(passkey.createdAt).toLocaleString("vi-VN")}
-                      </small>
-                      {passkey.lastUsedAt ? (
-                        <small>
-                          Dùng gần nhất:{" "}
-                          {new Date(passkey.lastUsedAt).toLocaleString("vi-VN")}
-                        </small>
-                      ) : null}
-                    </article>
+                      <button
+                        className="text-button text-button--danger"
+                        type="button"
+                        disabled={passkeyBusy}
+                        onClick={() => void revokePasskey(passkey)}
+                        style={{ fontSize: 12 }}
+                      >
+                        Thu hồi
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 3: RECENT SECURITY ALERTS */}
+            <div className="habi-section-card">
+              <div>
+                <strong style={{ fontSize: 14 }}>Nhật ký bảo mật gần đây</strong>
+                <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--color-text-muted)" }}>
+                  Ghi nhận sự kiện đăng nhập mới, thay đổi mật khẩu hoặc xác thực 2 bước.
+                </p>
+              </div>
+
+              {securityAlerts.length === 0 ? (
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                  Chưa ghi nhận sự kiện cảnh báo bảo mật bất thường nào.
+                </span>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {securityAlerts.slice(0, 5).map((alert) => (
+                    <div
+                      key={alert.id}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid var(--color-border)",
+                        background: "white",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span
+                          className={`habi-badge ${
+                            alert.severity === "HIGH"
+                              ? "habi-alert--error"
+                              : alert.severity === "MEDIUM"
+                                ? "habi-badge--warning"
+                                : "habi-badge--neutral"
+                          }`}
+                          style={{ padding: "1px 6px" }}
+                        >
+                          {alert.severity === "HIGH"
+                            ? "Quan trọng"
+                            : alert.severity === "MEDIUM"
+                              ? "Cần chú ý"
+                              : "Thông tin"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+                          {new Date(alert.createdAt).toLocaleString("vi-VN")}
+                          {alert.deliveryStatus === "SENT" ? " · Đã gửi email" : ""}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#1e293b", marginTop: 2 }}>{alert.summary}</div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1287,71 +1547,41 @@ export function AdminShell({
           role="dialog"
           aria-modal="true"
           aria-labelledby="sessions-title"
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px"
-          }}
+          className="habi-modal-backdrop"
           onClick={(event) => {
             if (event.target === event.currentTarget) setSessionsOpen(false);
           }}
         >
-          <div
-            style={{
-              background: "var(--color-surface, #ffffff)",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "620px",
-              width: "100%",
-              maxHeight: "80vh",
-              overflowY: "auto",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
-              border: "1px solid var(--color-border, #e2e8f0)"
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "12px",
-                marginBottom: "12px"
-              }}
-            >
+          <div className="habi-modal-card habi-modal-card--wide" style={{ maxHeight: "85vh" }}>
+            <div className="habi-modal-header">
               <div>
                 <span className="eyebrow">BẢO MẬT TÀI KHOẢN</span>
-                <h3 id="sessions-title" style={{ margin: "4px 0 0" }}>
-                  Phiên đăng nhập
+                <h3 id="sessions-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <LaptopOutlined style={{ color: "var(--color-primary, #2563eb)" }} />
+                  Quản lý phiên đăng nhập
                 </h3>
+                <p>Danh sách các thiết bị và trình duyệt đang truy cập tài khoản Habi của bạn.</p>
               </div>
               <button
                 type="button"
-                className="secondary-button secondary-button--compact"
+                className="habi-modal-close-btn"
                 onClick={() => setSessionsOpen(false)}
+                title="Đóng"
               >
-                Đóng
+                <CloseOutlined />
               </button>
             </div>
 
-            <p style={{ color: "var(--color-muted)", fontSize: "13px" }}>
-              Phiên không hoạt động quá thời gian idle sẽ tự hết hạn. Nếu thấy
-              phiên lạ, hãy thu hồi phiên đó và đổi mật khẩu.
-            </p>
-
             {sessionsError ? (
-              <div className="admin-state admin-state--error" role="alert">
+              <div className="habi-alert habi-alert--error" role="alert">
+                <CloseCircleFilled style={{ marginTop: 2, flexShrink: 0 }} />
                 <span>{sessionsError}</span>
               </div>
             ) : null}
 
             {sessionsSuccess ? (
-              <div className="admin-state admin-state--success">
+              <div className="habi-alert habi-alert--success">
+                <CheckCircleFilled style={{ marginTop: 2, flexShrink: 0 }} />
                 <span>{sessionsSuccess}</span>
               </div>
             ) : null}
@@ -1359,80 +1589,184 @@ export function AdminShell({
             <div
               style={{
                 display: "flex",
-                justifyContent: "flex-end",
-                margin: "14px 0"
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                background: "#f8fafc",
+                borderRadius: 8,
+                border: "1px solid var(--color-border)"
               }}
             >
+              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                Tổng cộng <strong>{sessions.length}</strong> phiên đang hoạt động.
+              </span>
               <button
                 type="button"
-                className="secondary-button"
+                className="secondary-button secondary-button--compact"
                 disabled={sessionsLoading || sessions.length <= 1}
                 onClick={() => void revokeOtherSessions()}
+                title="Đăng xuất khỏi tất cả máy tính và điện thoại khác"
               >
-                Thu hồi tất cả phiên khác
+                <span>Thu hồi tất cả phiên khác</span>
               </button>
             </div>
 
             {sessionsLoading && sessions.length === 0 ? (
-              <div className="admin-state">Đang tải phiên đăng nhập…</div>
+              <div style={{ padding: "32px 0", textAlign: "center", color: "var(--color-text-muted)" }}>
+                <ReloadOutlined spin style={{ fontSize: 24, marginBottom: 8 }} />
+                <div>Đang tải danh sách phiên…</div>
+              </div>
             ) : sessions.length === 0 ? (
-              <div className="admin-state">Không có phiên đăng nhập đang hoạt động.</div>
+              <div style={{ textAlign: "center", padding: "24px 0", color: "var(--color-text-muted)" }}>
+                Không có phiên đăng nhập nào khác.
+              </div>
             ) : (
-              <div style={{ display: "grid", gap: "10px" }}>
-                {sessions.map((session) => (
-                  <article
-                    key={session.id}
-                    style={{
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "10px",
-                      padding: "14px",
-                      display: "grid",
-                      gap: "6px"
-                    }}
-                  >
-                    <div
+              <div style={{ display: "grid", gap: 10 }}>
+                {sessions.map((session) => {
+                  const isMobile =
+                    session.deviceLabel?.toLowerCase().includes("mobile") ||
+                    session.deviceLabel?.toLowerCase().includes("iphone") ||
+                    session.deviceLabel?.toLowerCase().includes("android");
+
+                  return (
+                    <article
+                      key={session.id}
                       style={{
+                        border: session.current ? "1.5px solid #86efac" : "1px solid var(--color-border)",
+                        background: session.current ? "#f0fdf4" : "white",
+                        borderRadius: 12,
+                        padding: "14px 16px",
                         display: "flex",
                         justifyContent: "space-between",
-                        gap: "12px",
-                        alignItems: "center"
+                        alignItems: "center",
+                        gap: 14
                       }}
                     >
-                      <strong>
-                        {session.current
-                          ? "Phiên hiện tại"
-                          : session.deviceLabel ?? "Phiên đăng nhập khác"}
-                      </strong>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            background: session.current ? "#dcfce7" : "#f1f5f9",
+                            color: session.current ? "#15803d" : "#475569",
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: 18,
+                            flexShrink: 0
+                          }}
+                        >
+                          {isMobile ? <MobileOutlined /> : <DesktopOutlined />}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <strong style={{ fontSize: 13, color: "#0f172a" }}>
+                              {session.deviceLabel ?? "Trình duyệt Web"}
+                            </strong>
+                            {session.current ? (
+                              <span className="habi-badge habi-badge--success">
+                                <CheckCircleFilled /> Phiên này (Thiết bị hiện tại)
+                              </span>
+                            ) : null}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-muted)", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                            <span>
+                              Hoạt động: {new Date(session.lastSeenAt).toLocaleString("vi-VN")}
+                            </span>
+                            <span>·</span>
+                            <span>Tạo: {new Date(session.createdAt).toLocaleDateString("vi-VN")}</span>
+                            <span>·</span>
+                            <span>Hết hạn: {new Date(session.expiresAt).toLocaleDateString("vi-VN")}</span>
+                          </div>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
                         className={
                           session.current
-                            ? "text-button text-button--danger"
-                            : "text-button"
+                            ? "secondary-button secondary-button--compact secondary-button--danger"
+                            : "secondary-button secondary-button--compact"
                         }
                         disabled={sessionsLoading}
-                        onClick={() => void revokeSession(session)}
+                        onClick={() => {
+                          if (session.current) {
+                            setLogoutConfirmOpen(true);
+                          } else {
+                            void revokeSession(session);
+                          }
+                        }}
+                        style={{ flexShrink: 0 }}
                       >
-                        {session.current ? "Đăng xuất phiên này" : "Thu hồi"}
+                        {session.current ? "Đăng xuất" : "Thu hồi"}
                       </button>
-                    </div>
-                    <small>
-                      Thiết bị: {session.deviceLabel ?? "Chưa xác định"}
-                    </small>
-                    <small title={session.userAgent ?? undefined}>
-                      Hoạt động gần nhất:{" "}
-                      {new Date(session.lastSeenAt).toLocaleString("vi-VN")}
-                    </small>
-                    <small>
-                      Tạo lúc: {new Date(session.createdAt).toLocaleString("vi-VN")}
-                    </small>
-                    <small>
-                      Hết hạn: {new Date(session.expiresAt).toLocaleString("vi-VN")}
-                    </small>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {logoutConfirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-title"
+          className="habi-modal-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !loggingOut) setLogoutConfirmOpen(false);
+          }}
+        >
+          <div className="habi-modal-card" style={{ maxWidth: 420 }}>
+            <div className="habi-modal-header">
+              <div>
+                <span className="eyebrow" style={{ color: "#dc2626" }}>XÁC NHẬN</span>
+                <h3 id="logout-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <LogoutOutlined style={{ color: "#dc2626" }} />
+                  Đăng xuất tài khoản
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="habi-modal-close-btn"
+                disabled={loggingOut}
+                onClick={() => setLogoutConfirmOpen(false)}
+                title="Đóng"
+              >
+                <CloseOutlined />
+              </button>
+            </div>
+
+            <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.5 }}>
+              Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>{auth.session.user.email}</strong> trên thiết bị này không?
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={loggingOut}
+                onClick={() => setLogoutConfirmOpen(false)}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="primary-button primary-button--danger"
+                disabled={loggingOut}
+                onClick={() => void handleLogout()}
+                style={{
+                  background: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "white"
+                }}
+              >
+                <LogoutOutlined />
+                <span>{loggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
