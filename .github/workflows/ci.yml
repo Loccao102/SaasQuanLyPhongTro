@@ -45,7 +45,9 @@ jobs:
 
 
       - name: QA seed script syntax check
-        run: node --check apps/api/scripts/seed-loccao102-qa.mjs
+        run: |
+          node --check apps/api/scripts/seed-loccao102-qa.mjs
+          node --check apps/api/scripts/seed-loccao102-september-catchup.mjs
 
       - name: Lint
         if: always()
