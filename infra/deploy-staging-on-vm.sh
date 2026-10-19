@@ -75,5 +75,15 @@ echo "Deploying reviewed main commit: ${GITHUB_SHA:?}"
 # This step does not retry queued messages or unpause PLAYWRIGHT_ZALO.
 "${compose[@]}" up -d --no-deps --no-build worker-notification worker-zalo-login
 
+# One-time, account-scoped QA fixture for staging; never touches other tenants.
+# A persistent VM marker prevents re-seeding on subsequent deployments.
+# It is written only after the transaction and verification succeed.
+seed_marker="${HOME}/.local/share/habi/loccao102-qa-20261019.done"
+if [[ ! -f "$seed_marker" ]]; then
+  echo "Applying one-time loccao102@gmail.com staging QA fixture..."
+  "${compose[@]}" exec -T -w /app/apps/api api node scripts/seed-loccao102-qa.mjs
+  mkdir -p "$(dirname "$seed_marker")"
+  printf "%s\n" "$GITHUB_SHA" > "$seed_marker"
+fi
 "${compose[@]}" ps
 echo "Staging VM deploy finished at commit $GITHUB_SHA"
