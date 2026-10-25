@@ -32,6 +32,6 @@
     "@types/ioredis": "^5.0.0",
     "@types/pg": "8.23.1",
     "tsx": "^4.20.0",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   }
 }
